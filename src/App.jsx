@@ -998,133 +998,6 @@ const allFeats = (customs) => {
 };
 
 
-/* ============ BUILD ADVISOR + LEVEL ROADMAP ============ */
-const CLASS_GUIDES = {
-  Barbarian: { role: "front-line brawler", primary: ["str"], secondary: ["con", "dex", "wis"], note: "Strength wins attacks, Constitution keeps Rage alive, Dexterity helps AC/initiative." },
-  Bard: { role: "face / support caster", primary: ["cha"], secondary: ["dex", "con", "wis"], note: "Charisma drives spells and social pressure; Dexterity keeps you quick and alive." },
-  Cleric: { role: "durable divine caster", primary: ["wis"], secondary: ["con", "str", "dex"], note: "Wisdom fuels prepared spells and save DCs; Constitution protects concentration." },
-  Druid: { role: "controller / primal caster", primary: ["wis"], secondary: ["con", "dex"], note: "Wisdom is the engine; Constitution protects concentration on battlefield control." },
-  Fighter: { role: "weapon specialist", primary: ["str"], secondary: ["con", "dex", "wis"], note: "Pick Strength for melee/heavy weapons or Dexterity for archery/finesse." },
-  Monk: { role: "mobile skirmisher", primary: ["dex"], secondary: ["wis", "con"], note: "Dexterity and Wisdom both feed defense; Constitution keeps you from becoming paste." },
-  Paladin: { role: "armored striker / aura anchor", primary: ["str"], secondary: ["cha", "con"], note: "Strength lands hits, Charisma later powers Aura of Protection and spells." },
-  Ranger: { role: "scout / weapon caster", primary: ["dex"], secondary: ["wis", "con"], note: "Dexterity is the cleanest combat stat; Wisdom carries exploration and spellcasting." },
-  Rogue: { role: "skill striker", primary: ["dex"], secondary: ["con", "wis", "cha"], note: "Dexterity drives attacks, AC, stealth, initiative, and most rogue nonsense." },
-  Sorcerer: { role: "arcane blaster / controller", primary: ["cha"], secondary: ["con", "dex"], note: "Charisma sets your DC; Constitution guards concentration and your tiny hit die." },
-  Warlock: { role: "short-rest arcane striker", primary: ["cha"], secondary: ["con", "dex"], note: "Charisma powers pact magic; Constitution and Dexterity prevent embarrassing collapse." },
-  Wizard: { role: "prepared arcane problem-solver", primary: ["int"], secondary: ["con", "dex", "wis"], note: "Intelligence controls the spellbook; Constitution protects concentration." },
-};
-const uniqList = (arr) => arr.filter((x, i) => arr.indexOf(x) === i);
-function guideForClass(clsName, styles = []) {
-  const base = CLASS_GUIDES[clsName] || { role: "adventurer", primary: ["str"], secondary: ["con", "dex"], note: "Keep your attack or spell stat high and do not neglect Constitution." };
-  if (clsName === "Fighter") {
-    const dexStyle = styles.includes("Archery") || styles.includes("Two-Weapon Fighting");
-    return dexStyle
-      ? { ...base, primary: ["dex"], secondary: ["con", "wis", "str"], note: "Your style points toward Dexterity: ranged/finesse pressure, initiative, and AC." }
-      : base;
-  }
-  return base;
-}
-function recommendedBaseScores(clsName, styles = []) {
-  const guide = guideForClass(clsName, styles);
-  const order = uniqList([...guide.primary, ...guide.secondary, "con", "dex", "wis", "str", "cha", "int"]);
-  const next = {};
-  order.slice(0, 6).forEach((a, i) => { next[a] = STD_ARRAY[i]; });
-  ABILITIES.forEach((a) => { if (!next[a]) next[a] = 8; });
-  return next;
-}
-function abilityGrade(score) {
-  if (score >= 18) return { label: "excellent", color: T.green };
-  if (score >= 16) return { label: "strong", color: T.gold };
-  if (score >= 14) return { label: "workable", color: T.ink };
-  return { label: "fragile", color: T.blood };
-}
-function acBaseline(clsName, subclass, abilities) {
-  const dex = mod(abilities.dex);
-  let val = 10 + dex;
-  let label = "unarmored baseline";
-  if (clsName === "Barbarian") { val = 10 + dex + mod(abilities.con); label = "Barbarian unarmored"; }
-  if (clsName === "Monk") { val = 10 + dex + mod(abilities.wis); label = "Monk unarmored"; }
-  if (clsName === "Sorcerer" && baseSubName(subclass) === "Draconic Bloodline") { val = 13 + dex; label = "Draconic Resilience"; }
-  return { val, label };
-}
-function dominantClass(ch) {
-  return ch.classes.reduce((best, c) => (c.level > best.level ? c : best), ch.classes[0]);
-}
-function slotSig(slots) {
-  return slots && slots.length ? slots.map((n, i) => `${n}x${i + 1}`).join("|") : "";
-}
-function slotLabel(slots) {
-  return slots && slots.length ? slots.map((n, i) => `L${i + 1}:${n}`).join(" · ") : "—";
-}
-function pactSig(classes) {
-  const wl = classes.find((c) => c.name === "Warlock");
-  if (!wl) return "";
-  const p = PACT(wl.level);
-  return `${p.n}x${p.lvl}`;
-}
-function pactLabel(classes) {
-  const wl = classes.find((c) => c.name === "Warlock");
-  if (!wl) return "";
-  const p = PACT(wl.level);
-  return `${p.n} pact slot${p.n === 1 ? "" : "s"} at level ${p.lvl}`;
-}
-
-function BuildAdvisor({ title = "Build Advisor", race, cls, level = 1, abilities, skills = [], styles = [], subclass, onApplyArray }) {
-  const pb = profBonus(level);
-  const guide = guideForClass(cls, styles);
-  const primary = guide.primary[0];
-  const spellStat = SPELL_ABILITY[cls];
-  const spellM = spellStat ? mod(abilities[spellStat]) : null;
-  const ac = acBaseline(cls, subclass, abilities);
-  const nudges = [];
-  if (abilities[primary] < 16) nudges.push(`Raise ${ABIL_NAMES[primary]} toward 16 before taking luxury feats.`);
-  if (abilities.con < 14 && !["Rogue", "Monk"].includes(cls)) nudges.push("Constitution below 14 makes concentration and hit points feel cursed.");
-  if (spellStat && abilities[spellStat] < 16) nudges.push(`${ABIL_NAMES[spellStat]} below 16 means softer spell DCs and spell attacks.`);
-  if (!skills.includes("Perception")) nudges.push("Perception proficiency is not required, but it is the party's burglar alarm.");
-  if (cls === "Paladin" && abilities.cha < 14) nudges.push("Plan to improve Charisma before Aura of Protection at Paladin 6.");
-  if (nudges.length === 0) nudges.push("The bones are clean. Future ASIs can chase damage, DCs, or table flavor.");
-  const grade = abilityGrade(abilities[primary]);
-  return (
-    <div style={{ ...card, padding: 16, marginTop: 14, borderColor: T.gold }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <div>
-          <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17 }}>{title}</div>
-          <div style={{ color: T.dim, fontSize: 12, marginTop: 3 }}>{race ? `${race} · ` : ""}{cls} · {guide.role}</div>
-        </div>
-        {onApplyArray && <button style={{ ...btn(false), padding: "6px 12px", fontSize: 13, minHeight: 0 }} onClick={onApplyArray}>Apply recommended array</button>}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 8, marginTop: 12 }}>
-        <div style={{ background: T.panel2, borderRadius: 8, padding: 10 }}>
-          <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Primary</div>
-          <div style={{ color: grade.color, fontFamily: "Georgia, serif", fontSize: 21 }}>{ABIL_NAMES[primary]} {abilities[primary]}</div>
-          <div style={{ color: T.dim, fontSize: 12 }}>{fmtMod(mod(abilities[primary]))} · {grade.label}</div>
-        </div>
-        <div style={{ background: T.panel2, borderRadius: 8, padding: 10 }}>
-          <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Attack Math</div>
-          <div style={{ color: T.ink, fontFamily: "Georgia, serif", fontSize: 21 }}>{fmtMod(pb + mod(abilities[primary]))}</div>
-          <div style={{ color: T.dim, fontSize: 12 }}>prof +{pb} + {primary.toUpperCase()} mod</div>
-        </div>
-        {spellStat && (
-          <div style={{ background: T.panel2, borderRadius: 8, padding: 10 }}>
-            <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Spell DC</div>
-            <div style={{ color: T.ink, fontFamily: "Georgia, serif", fontSize: 21 }}>{8 + pb + spellM}</div>
-            <div style={{ color: T.dim, fontSize: 12 }}>spell attack {fmtMod(pb + spellM)}</div>
-          </div>
-        )}
-        <div style={{ background: T.panel2, borderRadius: 8, padding: 10 }}>
-          <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>AC Lens</div>
-          <div style={{ color: T.ink, fontFamily: "Georgia, serif", fontSize: 21 }}>{ac.val}</div>
-          <div style={{ color: T.dim, fontSize: 12 }}>{ac.label}</div>
-        </div>
-      </div>
-      <div style={{ color: T.dim, fontSize: 12, lineHeight: 1.65, marginTop: 10 }}>{guide.note}</div>
-      <div style={{ display: "grid", gap: 5, marginTop: 10 }}>
-        {nudges.slice(0, 3).map((n, i) => <div key={i} style={{ color: i === 0 && n.includes("Raise") ? T.gold : T.dim, fontSize: 13 }}>• {n}</div>)}
-      </div>
-    </div>
-  );
-}
-
 /* ============ PHOTO ============ */
 function usePhotoUpload(onPhoto) {
   return useCallback((e) => {
@@ -1530,14 +1403,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
       )}
 
       {step === 4 && (
-        <>
-          <AbilityStep scores={scores} setScores={setScores} method={method} setMethod={setMethod} />
-          <BuildAdvisor
-            title="Array Advisor" race={race} cls={cls} level={1} abilities={finalScores} skills={[...skills, ...heSkills, ...(bg === "Acolyte" ? ["Insight", "Religion"] : bgSkills)]}
-            styles={style ? [style] : []} subclass={subclass}
-            onApplyArray={() => { setScores(recommendedBaseScores(cls, style ? [style] : [])); setMethod("Standard Array"); }}
-          />
-        </>
+        <AbilityStep scores={scores} setScores={setScores} method={method} setMethod={setMethod} />
       )}
 
       {step === 5 && (
@@ -2724,10 +2590,6 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
       </div>
       <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>● save proficiencies from first class only, per multiclass rules ({ch.classes[0].name}: {CLASSES[ch.classes[0].name].saves.map(s=>s.toUpperCase()).join(", ")}){feats.aura ? " · Aura of Protection adds +" + feats.aura + " to all saves" : ""} · tap an ability to roll a check, its save line to roll a save</div>
 
-      {(() => {
-        const lead = dominantClass(ch);
-        return <BuildAdvisor race={ch.race} cls={lead.name} level={lvl} abilities={ch.abilities} skills={ch.skills} styles={ch.styles || []} subclass={lead.subclass} />;
-      })()}
 
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginTop: 14 }}>
