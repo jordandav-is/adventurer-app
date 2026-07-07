@@ -796,6 +796,14 @@ const BOON_INFO = {
   "Pact of the Tome": "Your patron grants a Book of Shadows containing three cantrips from any class's list — you can cast them at will.",
 };
 
+const ABILITY_INFO = {
+  Strength: "Raw physical power. Governs melee attack and damage rolls, Athletics, carrying capacity, and Strength saves against being shoved or restrained.",
+  Dexterity: "Agility and reflexes. Governs finesse and ranged attacks, Armor Class in light armor, initiative, Acrobatics, Sleight of Hand, Stealth, and Dexterity saves against effects you must dodge.",
+  Constitution: "Endurance and vitality. Adds to every Hit Die you roll, powers concentration saves for spellcasters, and resists poison, disease, and exhaustion.",
+  Intelligence: "Reasoning and memory. Governs Arcana, History, Investigation, Nature, Religion — and it's the Wizard's casting ability.",
+  Wisdom: "Awareness and intuition. Governs Perception, Insight, Survival, Medicine, Animal Handling; casting ability for Clerics, Druids, and Rangers; resists charms and frights.",
+  Charisma: "Force of personality. Governs Deception, Intimidation, Performance, Persuasion; casting ability for Bards, Paladins, Sorcerers, and Warlocks.",
+};
 const CORE_FEATURE_INFO = {
   "Pact Magic": "Your patron grants you spell slots unlike anyone else's. You have a small number of slots (shown as the purple Pact diamonds), and every one of them is cast at the same level — the highest you can manage. You regain ALL expended pact slots on a SHORT rest, not just a long one. Any leveled warlock spell you know is cast using a pact slot; your cantrips cost nothing and are cast at will.",
   "Spellcasting": "You can cast spells of this class using its spell slots. Cantrips are cast at will without slots. See your Grimoire below for known/prepared spells and the Spell Slots card to track expenditure.",
@@ -823,6 +831,7 @@ function infoFor(rawName, customs) {
   const fs = strip.replace(/^Fighting Style:\s*/, "");
   if (STYLE_DESC[fs]) return { title: `Fighting Style: ${fs}`, meta: "Fighting Style", body: STYLE_DESC[fs] };
   if (LANG_INFO[name]) return { title: name, meta: "Language", body: LANG_INFO[name] };
+  if (ABILITY_INFO[name]) return { title: name, meta: "Ability score", body: ABILITY_INFO[name] };
   if (SKILL_ABIL[name]) return { title: name, meta: `Skill · ${ABIL_NAMES[SKILL_ABIL[name]]}`, body: SKILL_INFO[name] };
   const feat = allFeats(customs || EMPTY_CUSTOM).find((f) => f.name === name || f.name === strip);
   if (feat) return { title: feat.name, meta: ["Feat", feat.prereq && `Prerequisite: ${feat.prereq}`].filter(Boolean).join(" · "), body: feat.text || feat.desc || null };
@@ -834,6 +843,7 @@ function infoFor(rawName, customs) {
   const ft = customs?.featureTexts || {};
   let key = ft[name] ? name : ft[strip] ? strip : Object.keys(ft).find((k) => baseSubName(k) === strip || k.startsWith(strip + " ("));
   if (!key) { const cp = name.match(/^([^:]+):/); if (cp && ft[cp[1].trim()]) key = cp[1].trim(); }
+  if (!key) key = Object.keys(ft).filter((k) => k.length > 3 && strip.startsWith(k + " ")).sort((a, b) => b.length - a.length)[0];
   if (key) return { title: strip, meta: "Feature", body: ft[key] };
   if (CORE_FEATURE_INFO[strip]) return { title: strip, meta: "Feature", body: CORE_FEATURE_INFO[strip] };
   return null;
@@ -946,7 +956,11 @@ const customSubFeats = (subclass, level, customs) => {
   return [];
 };
 const allSubFeats = (subclass, level, customs) => subFeatsFor(subclass, level).concat(customSubFeats(subclass, level, customs));
-const allFeats = (customs) => FEATS.concat(customs?.feats || []);
+const allFeats = (customs) => {
+  const map = new Map(FEATS.map((f) => [f.name, f]));
+  (customs?.feats || []).forEach((f) => map.set(f.name, f)); // imported full text shadows the stub
+  return [...map.values()];
+};
 
 
 /* ============ BUILD ADVISOR + LEVEL ROADMAP ============ */
@@ -1075,88 +1089,6 @@ function BuildAdvisor({ title = "Build Advisor", race, cls, level = 1, abilities
     </div>
   );
 }
-
-function LevelRoadmap({ ch, customs }) {
-  const lvl = totalLevel(ch);
-  const [focus, setFocus] = useState(dominantClass(ch).name);
-  const [target, setTarget] = useState(Math.min(20, lvl + 5));
-  useEffect(() => { if (target <= lvl && lvl < 20) setTarget(Math.min(20, lvl + 1)); }, [lvl, target]);
-  if (lvl >= 20) return null;
-
-  const currentOk = ch.classes.every((c) => meetsPrereq(c.name, ch.abilities));
-  const canTake = (name) => ch.classes.some((c) => c.name === name) || (currentOk && meetsPrereq(name, ch.abilities));
-  const explainLock = (name) => {
-    if (ch.classes.some((c) => c.name === name)) return "";
-    if (!currentOk) return "current multiclass prerequisites unmet";
-    return "requires " + MC_PREREQ[name].map((r) => Object.entries(r).map(([k, v]) => `${k.toUpperCase()} ${v}`).join(" & ")).join(" or ");
-  };
-  const focusOk = canTake(focus);
-  const clampedTarget = Math.max(lvl + 1, target);
-  let classes = ch.classes.map((c) => ({ ...c }));
-  let prevSlots = slotSig(spellSlots(classes));
-  let prevPact = pactSig(classes);
-  const rows = [];
-  if (focusOk) {
-    for (let characterLevel = lvl + 1; characterLevel <= clampedTarget; characterLevel++) {
-      let entry = classes.find((c) => c.name === focus);
-      if (entry) entry.level += 1;
-      else { entry = { name: focus, level: 1, subclass: null }; classes = [...classes, entry]; }
-      const data = CLASSES[focus];
-      const classLevel = entry.level;
-      let bits = [];
-      if (profBonus(characterLevel) !== profBonus(characterLevel - 1)) bits.push(`Proficiency +${profBonus(characterLevel)}`);
-      bits = bits.concat(data.feats[classLevel] || []);
-      if (data.asi.includes(classLevel)) bits.push(ASI);
-      if (classLevel === data.subLvl && !entry.subclass) bits.push(`Choose ${data.subName}`);
-      if (entry.subclass) bits = bits.concat(allSubFeats(entry.subclass, classLevel, customs));
-      if (focus === "Rogue" && classLevel > 1 && classLevel % 2 === 1) bits.push(`Sneak Attack ${Math.ceil(classLevel / 2)}d6`);
-      const nowSlots = slotSig(spellSlots(classes));
-      if (nowSlots !== prevSlots) bits.push(`Spell slots ${slotLabel(spellSlots(classes))}`);
-      prevSlots = nowSlots;
-      const nowPact = pactSig(classes);
-      if (nowPact !== prevPact) bits.push(`Pact Magic ${pactLabel(classes)}`);
-      prevPact = nowPact;
-      if (focus === "Warlock" && INVOCATIONS(classLevel) !== INVOCATIONS(classLevel - 1)) bits.push(`Invocations known ${INVOCATIONS(classLevel)}`);
-      rows.push({ characterLevel, classLevel, bits: uniqList(bits).filter(Boolean) });
-    }
-  }
-
-  return (
-    <div style={{ ...card, padding: 16, marginTop: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17 }}>Level Roadmap</div>
-          <div style={{ color: T.dim, fontSize: 12, marginTop: 3 }}>Preview the next seals before committing the level-up ritual.</div>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <select value={focus} onChange={(e) => setFocus(e.target.value)} style={{ background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 10 }}>
-            {Object.keys(CLASSES).map((name) => <option key={name} value={name} disabled={!canTake(name)}>{name}{canTake(name) ? "" : " ⚿"}</option>)}
-          </select>
-          <label style={{ color: T.dim, fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
-            target {clampedTarget}
-            <input type="range" min={lvl + 1} max={20} value={clampedTarget} onChange={(e) => setTarget(+e.target.value)} />
-          </label>
-        </div>
-      </div>
-      {!focusOk ? (
-        <div style={{ color: T.blood, fontSize: 13, marginTop: 12 }}>{focus} is locked: {explainLock(focus)}.</div>
-      ) : (
-        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-          {rows.map((r) => (
-            <div key={r.characterLevel} style={{ display: "grid", gridTemplateColumns: "78px 1fr", gap: 10, alignItems: "start", background: T.panel2, borderRadius: 8, padding: 10 }}>
-              <div>
-                <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 18 }}>Lv {r.characterLevel}</div>
-                <div style={{ color: T.dim, fontSize: 11 }}>{focus} {r.classLevel}</div>
-              </div>
-              <div style={{ color: T.dim, fontSize: 13, lineHeight: 1.55 }}>{r.bits.length ? r.bits.join(" · ") : "HP, hit die, and the quiet accumulation of menace."}</div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 
 /* ============ PHOTO ============ */
 function usePhotoUpload(onPhoto) {
@@ -2724,7 +2656,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontFamily: "Georgia, serif", fontSize: 28, color: T.gold }}>{ch.name}</div>
           <div style={{ color: T.ink }}>{ch.race} · {ch.classes.map((c) => `${c.name} ${c.level}${c.subclass ? ` (${c.subclass})` : ""}`).join(" / ")}</div>
-          <div style={{ color: T.dim, fontSize: 13 }}>Character level {lvl} · Proficiency +{pb} · {ch.background}{ch.alignment ? ` · ${ch.alignment}` : ""}</div>
+          <div style={{ color: T.dim, fontSize: 13 }}>Character level {lvl} · Proficiency +{pb} · <span {...lorePress(ch.background)} style={{ textDecoration: "underline dotted" }}>{ch.background}</span>{ch.alignment ? ` · ${ch.alignment}` : ""}</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexDirection: "column" }}>
           <button style={{ ...btn(true), opacity: lvl >= 20 ? 0.4 : 1 }} disabled={lvl >= 20} onClick={onLevelUp}><Icon name="up" /> Level Up</button>
@@ -2738,7 +2670,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         {ABILITIES.map((a) => {
           const saveProf = saveProfFor(a);
           return (
-            <div key={a} style={{ ...card, padding: 12, textAlign: "center", cursor: "pointer" }} title={`Roll a ${ABIL_NAMES[a]} check`}
+            <div key={a} {...lorePress(ABIL_NAMES[a])} style={{ ...card, padding: 12, textAlign: "center", cursor: "pointer" }} title={`Roll a ${ABIL_NAMES[a]} check`}
               onClick={() => rollIt(`${ABIL_NAMES[a]} check`, checkPartsFor(a), "check", a)}>
               <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>{ABIL_NAMES[a]}</div>
               <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: T.ink }}>{ch.abilities[a]}</div>
@@ -2758,7 +2690,6 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         return <BuildAdvisor race={ch.race} cls={lead.name} level={lvl} abilities={ch.abilities} skills={ch.skills} styles={ch.styles || []} subclass={lead.subclass} />;
       })()}
 
-      <LevelRoadmap ch={ch} customs={customs} />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginTop: 14 }}>
         <div style={{ ...card, padding: 12, textAlign: "center" }}>
@@ -2906,6 +2837,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
               {(() => {
                 const items = Array.from({ length: c.level }, (_, i) => i + 1)
                   .flatMap((l) => (CLASSES[c.name].feats[l] || [])
+                    .filter((f) => !(c.subclass && /\bfeature\b$/i.test(f)))
                     .concat(allSubFeats(c.subclass, l, customs))
                     .concat(CLASSES[c.name].asi.includes(l) ? [ASI] : []));
                 return items.length ? items.map((f, i) => <span key={i} {...lorePress(f)}>{i > 0 ? " · " : ""}{f}</span>) : "—";
@@ -2945,7 +2877,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           {ch.styles?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Fighting Styles: {ch.styles.map((f) => `${f} (${STYLE_DESC[f]})`).join(" · ")}</div>}
           <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Proficiencies ({ch.classes[0].name}): {PROF_TEXT[ch.classes[0].name]}{ch.classes.length > 1 ? " — plus multiclass grants (see Chronicle)" : ""}</div>
           {ch.languages?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Languages: {ch.languages.map((l, i) => <span key={l + i} {...lorePress(l)}>{i > 0 ? ", " : ""}{l}</span>)}</div>}
-          <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Racial traits: {RACES[ch.race].traits.join(" · ")}{ch.racialChoices?.ancestry ? ` · ${ch.racialChoices.ancestry} dragon ancestry (${ANCESTRIES[ch.racialChoices.ancestry]})` : ""}{ch.racialChoices?.cantrip ? ` · Cantrip: ${ch.racialChoices.cantrip}` : ""}</div>
+          <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Racial traits: {RACES[ch.race].traits.map((t, i) => <span key={t} {...lorePress(t.replace(/\s*\(.*$/, ""))}>{i > 0 ? " · " : ""}{t}</span>)}{ch.racialChoices?.ancestry ? ` · ${ch.racialChoices.ancestry} dragon ancestry (${ANCESTRIES[ch.racialChoices.ancestry]})` : ""}{ch.racialChoices?.cantrip ? ` · Cantrip: ${ch.racialChoices.cantrip}` : ""}</div>
         </div>
         <div style={{ ...card, padding: 16 }}>
           <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>Notes & Inventory</div>
@@ -3031,6 +2963,19 @@ function parseCompendiumXML(text) {
     });
   });
 
+  doc.querySelectorAll("compendium > race, compendium > background").forEach((el) => {
+    const owner = el.querySelector(":scope > name")?.textContent?.trim();
+    const bodies = [];
+    el.querySelectorAll(":scope > trait").forEach((tr) => {
+      const tn = tr.querySelector(":scope > name")?.textContent?.trim();
+      const txt = [...tr.querySelectorAll(":scope > text")].map((x) => x.textContent).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+      if (!tn || !txt) return;
+      if (tn !== "Description") { keepText(tn, txt); const cp = splitColon(tn); if (cp) keepText(cp[1], txt); }
+      bodies.push(tn === "Description" ? txt : `${tn}: ${txt}`);
+    });
+    if (owner && bodies.length) keepText(owner, bodies.join("\n\n"));
+  });
+
   doc.querySelectorAll("compendium > spell").forEach((sp) => {
     const name = sp.querySelector(":scope > name")?.textContent?.trim();
     if (!name) return;
@@ -3075,9 +3020,8 @@ function HomebrewForge({ customs, onSave, onBack }) {
         const existingSubs = new Set(Object.values(customs.subs).flat().map((x) => x.name));
         Object.keys(res.subs).forEach((c) => { res.subs[c] = res.subs[c].filter((x) => !existingSubs.has(x.name)); if (!res.subs[c].length) delete res.subs[c]; });
         // duplicates are skipped — unless the incoming copy carries rules text the stored one lacks
-        const builtinFeats = new Set(FEATS.map((f) => f.name));
         const oldFeats = new Map(customs.feats.map((f) => [f.name, f]));
-        res.feats = res.feats.filter((f) => !builtinFeats.has(f.name) && (!oldFeats.has(f.name) || (f.text && !oldFeats.get(f.name).text)));
+        res.feats = res.feats.filter((f) => !oldFeats.has(f.name) || (f.text && !oldFeats.get(f.name).text));
         const oldSpells = new Map((customs.spells || []).map((x) => [x.name, x]));
         res.spells = res.spells.filter((x) => !oldSpells.has(x.name) || (x.text && !oldSpells.get(x.name).text) || oldSpells.get(x.name).ritual === undefined);
         setParsed(res);
