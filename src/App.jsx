@@ -1628,6 +1628,35 @@ const searchRank = (name, q) => {
 const SCHOOL_NAMES = { A: "Abjuration", C: "Conjuration", D: "Divination", EN: "Enchantment", EV: "Evocation", I: "Illusion", N: "Necromancy", T: "Transmutation" };
 const schoolName = (s) => SCHOOL_NAMES[(s || "").toUpperCase()] || s;
 
+/* Scrollable list that renders in batches and keeps loading as you approach the
+   bottom — long compendium lists (1,700 items, 850 spells) stay fully reachable
+   without mounting thousands of rows up front. resetKey (usually the search
+   query) snaps back to the top batch when it changes. */
+function LazyList({ items, render, resetKey, empty, style }) {
+  const BATCH = 80;
+  const [count, setCount] = useState(BATCH);
+  const ref = useRef(null);
+  useEffect(() => {
+    setCount(BATCH);
+    if (ref.current) ref.current.scrollTop = 0;
+  }, [resetKey]);
+  const onScroll = () => {
+    const el = ref.current;
+    if (el && count < items.length && el.scrollTop + el.clientHeight >= el.scrollHeight - 400) setCount((c) => c + BATCH);
+  };
+  return (
+    <div ref={ref} onScroll={onScroll} style={{ overflowY: "auto", ...style }}>
+      {items.slice(0, count).map(render)}
+      {items.length === 0 && empty}
+      {count < items.length && (
+        <div style={{ color: T.dim, fontSize: 12, padding: "10px 8px", textAlign: "center" }}>
+          ⌄ {items.length - count} more below — keep scrolling
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* Searchable multi-pick list used by the level-up flow for cantrips, spells, and arcanum */
 function SpellPickGrid({ options, picks, cap, onChange, placeholder = "Search spells…" }) {
   const [q, setQ] = useState("");
@@ -1648,16 +1677,15 @@ function SpellPickGrid({ options, picks, cap, onChange, placeholder = "Search sp
         <>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder}
             style={{ width: "100%", boxSizing: "border-box", background: T.panel, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 10px", fontSize: 14 }} />
-          <div style={{ maxHeight: 200, overflowY: "auto", marginTop: 6, border: `1px solid ${T.edge}`, borderRadius: 8 }}>
-            {shown.map((sp) => (
+          <LazyList items={shown} resetKey={q} style={{ maxHeight: 200, marginTop: 6, border: `1px solid ${T.edge}`, borderRadius: 8 }}
+            empty={<div style={{ padding: "8px 10px", color: T.dim, fontSize: 13 }}>Nothing matches.</div>}
+            render={(sp) => (
               <div key={sp.name} {...lorePress(sp.name)} onClick={() => onChange([...picks, sp.name])}
                 style={{ padding: "8px 10px", borderBottom: `1px solid ${T.edge}`, cursor: "pointer" }}>
                 <span style={{ color: T.ink }}>{sp.name}</span>
                 <span style={{ color: T.dim, fontSize: 12 }}> · {sp.level === 0 ? "cantrip" : `level ${sp.level}`}{sp.school ? ` · ${schoolName(sp.school)}` : ""}{sourceOf(sp.text) ? ` · ${sourceOf(sp.text)}` : ""}</span>
               </div>
-            ))}
-            {shown.length === 0 && <div style={{ padding: "8px 10px", color: T.dim, fontSize: 13 }}>Nothing matches.</div>}
-          </div>
+            )} />
         </>
       )}
     </div>
@@ -2334,7 +2362,7 @@ function InventoryCard({ ch, customs, onUpdate }) {
   };
   const shown = pool.filter((x) => x.name.toLowerCase().includes(q.toLowerCase()))
     .filter((x) => !usableOnly || !(isArmorType(x.type) || x.type === "S" || isWeaponType(x.type)) || canEquip(x, ch))
-    .sort((a, b) => searchRank(a.name, q) - searchRank(b.name, q) || a.name.localeCompare(b.name)).slice(0, 60);
+    .sort((a, b) => searchRank(a.name, q) - searchRank(b.name, q) || a.name.localeCompare(b.name));
   return (
     <div style={{ ...card, padding: 16, marginTop: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
@@ -2384,8 +2412,9 @@ function InventoryCard({ ch, customs, onUpdate }) {
             </div>
             <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search items…"
               style={{ background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 16, marginBottom: 10 }} />
-            <div style={{ overflowY: "auto" }}>
-              {shown.map((it) => (
+            <LazyList items={shown} resetKey={`${q}|${usableOnly}`}
+              empty={<div style={{ color: T.dim, fontSize: 13, padding: 8 }}>Nothing matches.</div>}
+              render={(it) => (
                 <div key={it.name} {...lorePress(it.name)} onClick={() => {
                   const has = inv.find((r) => r.name === it.name);
                   save(has ? inv.map((r) => (r.name === it.name ? { ...r, qty: (r.qty || 1) + 1 } : r)) : [...inv, { name: it.name, qty: 1 }]);
@@ -2394,9 +2423,7 @@ function InventoryCard({ ch, customs, onUpdate }) {
                   <span style={{ color: T.ink }}>{it.name}</span>
                   <span style={{ color: T.dim, fontSize: 12 }}> · {ITEM_TYPES[it.type] || it.type}{it.ac ? ` · AC ${it.type === "S" ? "+" : ""}${it.ac}` : ""}{it.dmg1 ? ` · ${it.dmg1} ${DMG_TYPES[it.dmgType] || ""}` : ""}{it.value ? ` · ${it.value} gp` : ""}{sourceOf(it.text) ? ` · ${sourceOf(it.text)}` : ""}</span>
                 </div>
-              ))}
-              {shown.length === 0 && <div style={{ color: T.dim, fontSize: 13, padding: 8 }}>Nothing matches.</div>}
-            </div>
+              )} />
           </div>
         </div>
       )}
@@ -2614,8 +2641,9 @@ function SpellManager({ ch, customs, onSpells, onUpdate }) {
             </div>
             <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…"
               style={{ background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 16, marginBottom: 10 }} />
-            <div style={{ overflowY: "auto" }}>
-              {listFor(adding.cls, adding.kind, adding.lvl).slice(0, 60).map((sp) => (
+            <LazyList items={listFor(adding.cls, adding.kind, adding.lvl)} resetKey={`${q}|${adding.cls}|${adding.kind}|${adding.lvl}`}
+              empty={<div style={{ color: T.dim, fontSize: 13, padding: 8 }}>No matching spells in your imported list.</div>}
+              render={(sp) => (
                 <div key={sp.name} {...lorePress(sp.name)} onClick={() => {
                   if (adding.kind === "arcanum") { setArcanum(adding.cls, adding.lvl, sp.name); setAdding(null); return; }
                   if (adding.kind === "boas") { onUpdate({ boasRituals: [...(ch.boasRituals || []), sp.name] }); setAdding(null); return; }
@@ -2627,9 +2655,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate }) {
                   <span style={{ color: T.ink }}>{sp.name}</span>
                   <span style={{ color: T.dim, fontSize: 12 }}> · {sp.level === 0 ? "cantrip" : `level ${sp.level}`}{sp.school ? ` · ${schoolName(sp.school)}` : ""}</span>
                 </div>
-              ))}
-              {listFor(adding.cls, adding.kind, adding.lvl).length === 0 && <div style={{ color: T.dim, fontSize: 13, padding: 8 }}>No matching spells in your imported list.</div>}
-            </div>
+              )} />
           </div>
         </div>
       )}
