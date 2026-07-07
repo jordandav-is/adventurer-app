@@ -1276,7 +1276,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     (!gainsExpertise || expPicks.length === 2) && (!gainsMeta || metaPicks.length === metaNeed) && (!gainsBoon || boonPick);
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 50, overflowY: "auto", padding: "30px 14px" }}>
+    <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 50, overflowY: "auto", padding: "calc(30px + env(safe-area-inset-top)) 14px calc(30px + env(safe-area-inset-bottom))" }}>
       <div style={{ ...card, maxWidth: 640, margin: "0 auto", padding: 22 }}>
         <div style={{ fontFamily: "Georgia, serif", fontSize: 22, color: T.gold, marginBottom: 4 }}>Level {lvl} → {lvl + 1}</div>
         <div style={{ color: T.dim, fontSize: 13, marginBottom: 16 }}>{ch.name} · proficiency bonus becomes +{profBonus(lvl + 1)}</div>
