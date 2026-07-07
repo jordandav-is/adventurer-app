@@ -24,15 +24,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run build
-      - uses: actions/configure-pages@v5
-        with:
-          # Auto-enables Pages (Source: GitHub Actions) on first run —
-          # no manual Settings → Pages step needed.
-          enablement: true
+      # All actions here are GitHub first-party (actions/* org) — no third
+      # parties beyond GitHub itself. Requires Pages enabled once in
+      # Settings → Pages → Source: GitHub Actions.
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
