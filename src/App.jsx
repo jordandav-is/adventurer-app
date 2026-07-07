@@ -766,6 +766,60 @@ const isArmorType = (t) => ["LA", "MA", "HA"].includes(t);
 const isWeaponType = (t) => ["M", "R"].includes(t);
 const equippedOf = (ch) => (ch.inventory || []).filter((r) => r.equipped);
 
+/* ---- who may wield what: structured armor & weapon proficiencies ---- */
+/* First class grants its full training; classes added by multiclassing grant the reduced multiclass set. */
+const CLASS_GEAR_PROFS = {
+  Barbarian: { armor: ["LA", "MA", "S"], weapons: { martial: true } },
+  Bard: { armor: ["LA"], weapons: { simple: true, named: ["Hand Crossbow", "Longsword", "Rapier", "Shortsword"] } },
+  Cleric: { armor: ["LA", "MA", "S"], weapons: { simple: true } },
+  Druid: { armor: ["LA", "MA", "S"], weapons: { named: ["Club", "Dagger", "Dart", "Javelin", "Mace", "Quarterstaff", "Scimitar", "Sickle", "Sling", "Spear"] } },
+  Fighter: { armor: ["LA", "MA", "HA", "S"], weapons: { martial: true } },
+  Monk: { armor: [], weapons: { simple: true, named: ["Shortsword"] } },
+  Paladin: { armor: ["LA", "MA", "HA", "S"], weapons: { martial: true } },
+  Ranger: { armor: ["LA", "MA", "S"], weapons: { martial: true } },
+  Rogue: { armor: ["LA"], weapons: { simple: true, named: ["Hand Crossbow", "Longsword", "Rapier", "Shortsword"] } },
+  Sorcerer: { armor: [], weapons: { named: ["Dagger", "Dart", "Sling", "Quarterstaff", "Light Crossbow"] } },
+  Warlock: { armor: ["LA"], weapons: { simple: true } },
+  Wizard: { armor: [], weapons: { named: ["Dagger", "Dart", "Sling", "Quarterstaff", "Light Crossbow"] } },
+};
+const MC_GEAR_PROFS = {
+  Barbarian: { armor: ["S"], weapons: { martial: true } },
+  Bard: { armor: ["LA"], weapons: {} },
+  Cleric: { armor: ["LA", "MA", "S"], weapons: {} },
+  Druid: { armor: ["LA", "MA", "S"], weapons: {} },
+  Fighter: { armor: ["LA", "MA", "S"], weapons: { martial: true } },
+  Monk: { armor: [], weapons: { simple: true, named: ["Shortsword"] } },
+  Paladin: { armor: ["LA", "MA", "S"], weapons: { martial: true } },
+  Ranger: { armor: ["LA", "MA", "S"], weapons: { martial: true } },
+  Rogue: { armor: ["LA"], weapons: {} },
+  Sorcerer: { armor: [], weapons: {} },
+  Warlock: { armor: ["LA"], weapons: { simple: true } },
+  Wizard: { armor: [], weapons: {} },
+};
+const isMartial = (it) => (it.property || "").split(",").map((x) => x.trim()).includes("M");
+const nameMatchesAny = (itemName, names) => {
+  const hay = itemName.toLowerCase();
+  return names.some((n) => n.toLowerCase().split(/[\s,]+/).every((w) => hay.includes(w)));
+};
+/* Can this character legitimately equip this item, per their training? */
+function canEquip(item, ch) {
+  if (!item) return true; // freeform items: the player's call
+  const profs = ch.classes.map((c, i) => (i === 0 ? CLASS_GEAR_PROFS[c.name] : MC_GEAR_PROFS[c.name])).filter(Boolean);
+  if (isArmorType(item.type) || item.type === "S") {
+    const want = item.type === "S" ? "S" : item.type;
+    return profs.some((p) => p.armor.includes(want));
+  }
+  if (isWeaponType(item.type)) {
+    return profs.some((p) => {
+      const w = p.weapons || {};
+      if (w.martial) return true; // martial training includes simple weapons
+      if (w.simple && !isMartial(item)) return true;
+      return w.named ? nameMatchesAny(item.name, w.named) : false;
+    });
+  }
+  return true;
+}
+
 /* Armor Class from equipped gear + class features, with a readable breakdown */
 function armorClass(ch, customs) {
   const dex = mod(ch.abilities.dex);
@@ -2260,6 +2314,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
 function InventoryCard({ ch, customs, onUpdate }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
+  const [usableOnly, setUsableOnly] = useState(true);
   const [freeText, setFreeText] = useState("");
   const inv = ch.inventory || [];
   const pool = customs?.items || [];
@@ -2278,6 +2333,7 @@ function InventoryCard({ ch, customs, onUpdate }) {
     }));
   };
   const shown = pool.filter((x) => x.name.toLowerCase().includes(q.toLowerCase()))
+    .filter((x) => !usableOnly || !(isArmorType(x.type) || x.type === "S" || isWeaponType(x.type)) || canEquip(x, ch))
     .sort((a, b) => searchRank(a.name, q) - searchRank(b.name, q) || a.name.localeCompare(b.name)).slice(0, 60);
   return (
     <div style={{ ...card, padding: 16, marginTop: 14 }}>
@@ -2300,11 +2356,13 @@ function InventoryCard({ ch, customs, onUpdate }) {
               {row.qty || 1}
               <button style={{ ...btn(false), padding: "1px 8px", minHeight: 0, fontSize: 13 }} onClick={() => save(inv.map((r) => (r.name === row.name ? { ...r, qty: (r.qty || 1) + 1 } : r)))}>＋</button>
             </span>
-            {equippable && (
-              <button style={{ ...btn(!!row.equipped), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => equip(row)}>
-                {row.equipped ? "✓ Equipped" : "Equip"}
-              </button>
-            )}
+            {equippable && (canEquip(it, ch)
+              ? (
+                <button style={{ ...btn(!!row.equipped), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => equip(row)}>
+                  {row.equipped ? "✓ Equipped" : "Equip"}
+                </button>
+              )
+              : <span style={{ color: T.blood, fontSize: 11 }}>not proficient</span>)}
             <span style={{ color: T.blood, cursor: "pointer", fontWeight: 700, padding: "0 4px" }} onClick={() => save(inv.filter((r) => r.name !== row.name))}>✕</span>
           </div>
         );
@@ -2318,7 +2376,12 @@ function InventoryCard({ ch, customs, onUpdate }) {
       {open && (
         <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={() => setOpen(false)}>
           <div style={{ ...card, width: "min(560px, 100%)", maxHeight: "75vh", display: "flex", flexDirection: "column", borderRadius: "16px 16px 0 0", padding: 16, paddingBottom: "calc(16px + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ color: T.gold, fontFamily: "Georgia, serif", marginBottom: 8 }}>Add gear <span style={{ color: T.dim, fontSize: 12 }}>· long-press to inspect first</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+              <div style={{ color: T.gold, fontFamily: "Georgia, serif" }}>Add gear <span style={{ color: T.dim, fontSize: 12 }}>· long-press to inspect first</span></div>
+              <button style={{ ...btn(usableOnly), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => setUsableOnly(!usableOnly)}>
+                {usableOnly ? `✓ Usable by ${ch.name}` : "Showing everything"}
+              </button>
+            </div>
             <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search items…"
               style={{ background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 16, marginBottom: 10 }} />
             <div style={{ overflowY: "auto" }}>
