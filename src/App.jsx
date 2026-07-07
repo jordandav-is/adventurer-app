@@ -1631,6 +1631,13 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const [spellSwapOut, setSpellSwapOut] = useState(null);
   const [spellSwapIn, setSpellSwapIn] = useState(null);
   const [arcanumPick, setArcanumPick] = useState(null);
+  const [boasPicks, setBoasPicks] = useState([]);       // Book of Ancient Secrets rituals
+  const [tomePicks, setTomePicks] = useState([]);       // Pact of the Tome cantrips
+  const [secretsPicks, setSecretsPicks] = useState([]); // Magical Secrets (any class)
+  const [favEnemyPick, setFavEnemyPick] = useState(null);
+  const [terrainPick2, setTerrainPick2] = useState(null);
+  const [masteryPicks, setMasteryPicks] = useState({}); // { 1: spell, 2: spell }
+  const [signaturePicks, setSignaturePicks] = useState([]);
 
   if (lvl >= 20) return (
     <div style={{ ...card, padding: 24, textAlign: "center" }}>
@@ -1691,18 +1698,32 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     if (invSwapOut && invSwapIn) { invocations = [...invocations.filter((n) => n !== invSwapOut), invSwapIn]; logBits.push(`Invocation swap: ${invSwapOut} → ${invSwapIn}`); }
     if (invPicks.length) { invocations = [...invocations, ...invPicks]; logBits.push(`Invocations: ${invPicks.join(", ")}`); }
     const spellsBook = { ...(ch.spells || {}) };
-    if (cantripPicks.length || spellPicks.length || (spellSwapOut && spellSwapIn) || arcanumPick) {
+    if (cantripPicks.length || spellPicks.length || secretsPicks.length || (spellSwapOut && spellSwapIn) || arcanumPick) {
       const mine = { cantrips: [], spells: [], ...(spellsBook[pick] || {}) };
-      const learned = [...mine.spells.filter((n) => n !== spellSwapOut), ...(spellSwapOut && spellSwapIn ? [spellSwapIn] : []), ...spellPicks];
+      const learned = [...mine.spells.filter((n) => n !== spellSwapOut), ...(spellSwapOut && spellSwapIn ? [spellSwapIn] : []), ...spellPicks, ...secretsPicks];
       spellsBook[pick] = { ...mine, cantrips: [...mine.cantrips, ...cantripPicks], spells: learned, ...(arcanumPick ? { arcanum: { ...(mine.arcanum || {}), [arcLvlGained]: arcanumPick } } : {}) };
       if (cantripPicks.length) logBits.push(`Cantrips: ${cantripPicks.join(", ")}`);
       if (spellSwapOut && spellSwapIn) logBits.push(`Spell swap: ${spellSwapOut} → ${spellSwapIn}`);
       if (spellPicks.length) logBits.push(`Spells: ${spellPicks.join(", ")}`);
+      if (secretsPicks.length) logBits.push(`Magical Secrets: ${secretsPicks.join(", ")}`);
       if (arcanumPick) logBits.push(`Mystic Arcanum: ${arcanumPick}`);
     }
+    const boasRituals = takingBoAS && boasPicks.length ? [...(ch.boasRituals || []), ...boasPicks] : ch.boasRituals;
+    if (takingBoAS && boasPicks.length) logBits.push(`Book of Shadows rituals: ${boasPicks.join(", ")}`);
+    const tomeCantrips = boonPick === "Pact of the Tome" && tomePicks.length ? tomePicks : ch.tomeCantrips;
+    if (boonPick === "Pact of the Tome" && tomePicks.length) logBits.push(`Tome cantrips: ${tomePicks.join(", ")}`);
+    const rangerChoices = pick === "Ranger" && (favEnemyPick || terrainPick2)
+      ? { ...rc, extraEnemies: [...(rc.extraEnemies || []), ...(favEnemyPick ? [favEnemyPick] : [])], extraTerrains: [...(rc.extraTerrains || []), ...(terrainPick2 ? [terrainPick2] : [])] }
+      : ch.rangerChoices;
+    if (favEnemyPick) logBits.push(`Favored Enemy: ${favEnemyPick}`);
+    if (terrainPick2) logBits.push(`Natural Explorer: ${terrainPick2}`);
+    let choices = ch.choices;
+    if (gainsMastery && (masteryPicks[1] || masteryPicks[2])) { choices = { ...choices, "Spell Mastery": [masteryPicks[1], masteryPicks[2]].filter(Boolean) }; logBits.push(`Spell Mastery: ${choices["Spell Mastery"].join(", ")}`); }
+    if (gainsSignature && signaturePicks.length) { choices = { ...choices, "Signature Spell": signaturePicks }; logBits.push(`Signature Spells: ${signaturePicks.join(", ")}`); }
     const skills = mcSkill ? [...ch.skills, mcSkill] : ch.skills;
     onDone({
       ...ch, classes, abilities, skills, invocations, spells: spellsBook,
+      boasRituals, tomeCantrips, rangerChoices, choices,
       maxHp: ch.maxHp + hpGain + conM + dwarfBonus,
       hpLog: [...ch.hpLog, { cls: pick, gained: hpGain + conM + dwarfBonus, how: hpGain === avg ? "average" : `rolled ${hpGain}` }],
       log: [...ch.log, `Level ${lvl + 1}: ${logBits.join(" · ")}`],
@@ -1768,17 +1789,60 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     ? pool.filter((sp) => sp.level === arcLvlGained && fits(sp)).sort(sortSp) : [];
   const gainsArcanum = arcPool.length > 0;
 
+  // Book of Ancient Secrets — two 1st-level rituals from any class when the invocation is taken
+  const takingBoAS = invPicks.includes("Book of Ancient Secrets") || invSwapIn === "Book of Ancient Secrets";
+  const boasPool = takingBoAS && !(ch.boasRituals || []).length
+    ? pool.filter((sp) => sp.level === 1 && sp.ritual && !boasPicks.includes(sp.name)).sort(sortSp) : [];
+  const gainsBoAS = boasPool.length > 0 || boasPicks.length > 0;
+
+  // Pact of the Tome — three cantrips from any class's list
+  const tomePool = boonPick === "Pact of the Tome" ? pool.filter((sp) => sp.level === 0).sort(sortSp) : [];
+  const gainsTome = tomePool.length > 0;
+
+  // Magical Secrets — Bard 10/14/18 (counted in spells known) and College of Lore 6 (extra)
+  const secretsN = pick === "Bard"
+    ? ([10, 14, 18].includes(newClsLevel) ? 2 : 0) + (baseSubName(effSub || "") === "College of Lore" && newClsLevel === 6 ? 2 : 0) : 0;
+  const secretsPool = secretsN > 0
+    ? pool.filter((sp) => sp.level >= 1 && sp.level <= maxLvlNew && !(book.spells || []).includes(sp.name) && !spellPicks.includes(sp.name)).sort(sortSp) : [];
+  const gainsSecrets = secretsPool.length > 0 || secretsPicks.length > 0;
+  const secretsReq = Math.min(secretsN, secretsPool.length + secretsPicks.length);
+  const countedSecrets = pick === "Bard" && [10, 14, 18].includes(newClsLevel) ? 2 : 0;
+  const spellReqNet = Math.max(0, Math.min(spellReq, spellAllow - Math.min(countedSecrets, secretsPicks.length)));
+
+  // Ranger — additional Favored Enemy (6, 14) and Natural Explorer terrain (6, 10)
+  const rc = ch.rangerChoices || {};
+  const enemiesTaken = [rc.favEnemy, ...(rc.extraEnemies || [])].filter(Boolean);
+  const terrainsTaken = [rc.natTerrain, ...(rc.extraTerrains || [])].filter(Boolean);
+  const gainsFavEnemy = pick === "Ranger" && [6, 14].includes(newClsLevel);
+  const gainsNatTerrain = pick === "Ranger" && [6, 10].includes(newClsLevel);
+
+  // Wizard — Spell Mastery (18: one 1st- and one 2nd-level from the spellbook), Signature Spell (20: two 3rd-level)
+  const spLevel = (n) => pool.find((sp) => sp.name === n)?.level;
+  const masteryPools = pick === "Wizard" && newClsLevel === 18 && !ch.choices?.["Spell Mastery"]
+    ? { 1: (book.spells || []).filter((n) => spLevel(n) === 1), 2: (book.spells || []).filter((n) => spLevel(n) === 2) } : null;
+  const gainsMastery = !!masteryPools && (masteryPools[1].length > 0 || masteryPools[2].length > 0);
+  const signaturePool = pick === "Wizard" && newClsLevel === 20 && !ch.choices?.["Signature Spell"]
+    ? (book.spells || []).filter((n) => spLevel(n) === 3) : [];
+  const gainsSignature = signaturePool.length > 0;
+
   const preparedCaster = ["Cleric", "Druid", "Paladin"].includes(pick);
 
   const extrasNeeded = gainsASI || gainsSub || gainsMcSkill || gainsStyle || gainsExpertise || gainsMeta || gainsBoon ||
-    invNeed > 0 || canSwapInv || gainsCantrips || gainsSpells || canSwapSpell || gainsArcanum;
+    invNeed > 0 || canSwapInv || gainsCantrips || gainsSpells || canSwapSpell || gainsArcanum ||
+    gainsBoAS || gainsTome || gainsSecrets || gainsFavEnemy || gainsNatTerrain || gainsMastery || gainsSignature;
   const extrasDone =
     (!gainsASI || (asiMode === "feat" && featPick && (!(allFeats(customs).find((f) => f.name === featPick)?.bump?.length) || featBump)) || (asiMode === "asi" && asiPicks.length === 2)) &&
     (!gainsSub || newSub) && (!gainsMcSkill || mcSkill) && (!gainsStyle || stylePick) && (!gainsTerrain || terrPick) &&
-    (!gainsExpertise || expPicks.length === 2) && (!gainsMeta || metaPicks.length === metaNeed) && (!gainsBoon || boonPick) &&
+    (!gainsExpertise || expPicks.length === Math.min(2, expPool.length)) && (!gainsMeta || metaPicks.length === metaNeed) && (!gainsBoon || boonPick) &&
     invPicks.length >= invNeed && !!invSwapOut === !!invSwapIn &&
-    cantripPicks.length >= cantripReq && spellPicks.length >= spellReq && !!spellSwapOut === !!spellSwapIn &&
-    (!gainsArcanum || arcanumPick);
+    cantripPicks.length >= cantripReq && spellPicks.length >= spellReqNet && !!spellSwapOut === !!spellSwapIn &&
+    (!gainsArcanum || arcanumPick) &&
+    (!gainsBoAS || boasPicks.length >= Math.min(2, boasPool.length + boasPicks.length)) &&
+    (!gainsTome || tomePicks.length >= Math.min(3, tomePool.length)) &&
+    secretsPicks.length >= secretsReq &&
+    (!gainsFavEnemy || favEnemyPick) && (!gainsNatTerrain || terrainPick2) &&
+    (!gainsMastery || ((masteryPools[1].length === 0 || masteryPicks[1]) && (masteryPools[2].length === 0 || masteryPicks[2]))) &&
+    (!gainsSignature || signaturePicks.length >= Math.min(2, signaturePool.length));
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 50, overflowY: "auto", padding: "calc(30px + env(safe-area-inset-top)) 14px calc(30px + env(safe-area-inset-bottom))" }}>
@@ -1992,7 +2056,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
             {gainsSpells && (
               <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
                 <div style={{ color: T.gold, marginBottom: 8 }}>
-                  {pick === "Wizard" ? "Scribe spells into your spellbook" : "New spells known"} — choose {spellReq}{spellAllow > spellReq ? ` (up to ${spellAllow})` : ""} ({spellPicks.length}/{spellReq})
+                  {pick === "Wizard" ? "Scribe spells into your spellbook" : "New spells known"} — choose {spellReqNet}{spellAllow > spellReqNet ? ` (up to ${spellAllow})` : ""} ({spellPicks.length}/{spellReqNet})
                 </div>
                 <SpellPickGrid options={spellPool.filter((sp) => sp.name !== spellSwapIn)} picks={spellPicks} cap={spellAllow} onChange={setSpellPicks} />
               </div>
@@ -2017,6 +2081,74 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                 <div style={{ color: T.gold, marginBottom: 8 }}>Mystic Arcanum — choose one {arcLvlGained}th-level spell</div>
                 <SpellPickGrid options={arcPool} picks={arcanumPick ? [arcanumPick] : []} cap={1}
                   onChange={(arr) => setArcanumPick(arr[arr.length - 1] || null)} placeholder="Search arcanum…" />
+              </div>
+            )}
+            {gainsBoAS && (
+              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
+                <div style={{ color: T.gold, marginBottom: 4 }}>Book of Ancient Secrets — inscribe two 1st-level rituals ({boasPicks.length}/2)</div>
+                <div style={{ color: T.dim, fontSize: 12, marginBottom: 8 }}>From any class's list. Rituals you find later can be added in the Grimoire's Book of Shadows.</div>
+                <SpellPickGrid options={boasPool} picks={boasPicks} cap={2} onChange={setBoasPicks} placeholder="Search ritual spells…" />
+              </div>
+            )}
+            {gainsTome && (
+              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
+                <div style={{ color: T.gold, marginBottom: 4 }}>Pact of the Tome — choose three cantrips ({tomePicks.length}/3)</div>
+                <div style={{ color: T.dim, fontSize: 12, marginBottom: 8 }}>From any class's list. They're castable at will from your Book of Shadows.</div>
+                <SpellPickGrid options={tomePool} picks={tomePicks} cap={3} onChange={setTomePicks} placeholder="Search cantrips…" />
+              </div>
+            )}
+            {gainsSecrets && (
+              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
+                <div style={{ color: T.gold, marginBottom: 4 }}>Magical Secrets — choose {secretsN} from ANY class ({secretsPicks.length}/{secretsN})</div>
+                <div style={{ color: T.dim, fontSize: 12, marginBottom: 8 }}>Any spell of a level you can cast, from any class's list.</div>
+                <SpellPickGrid options={secretsPool} picks={secretsPicks} cap={secretsN} onChange={setSecretsPicks} />
+              </div>
+            )}
+            {gainsFavEnemy && (
+              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
+                <div style={{ color: T.gold, marginBottom: 8 }}>Additional Favored Enemy</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {FAVORED_ENEMIES.filter((e) => !enemiesTaken.includes(e)).map((e) => (
+                    <button key={e} style={{ ...btn(favEnemyPick === e), padding: "5px 10px", fontSize: 13, minHeight: 0 }} onClick={() => setFavEnemyPick(e)}>{e}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {gainsNatTerrain && (
+              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
+                <div style={{ color: T.gold, marginBottom: 8 }}>Additional Natural Explorer Terrain</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {NE_TERRAINS.filter((t) => !terrainsTaken.includes(t)).map((t) => (
+                    <button key={t} style={{ ...btn(terrainPick2 === t), padding: "5px 10px", fontSize: 13, minHeight: 0 }} onClick={() => setTerrainPick2(t)}>{t}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {gainsMastery && (
+              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
+                <div style={{ color: T.gold, marginBottom: 4 }}>Spell Mastery — one 1st- and one 2nd-level spell from your spellbook</div>
+                <div style={{ color: T.dim, fontSize: 12, marginBottom: 8 }}>You can cast them at their lowest level without expending a slot.</div>
+                {[1, 2].map((l) => masteryPools[l].length > 0 && (
+                  <div key={l} style={{ marginBottom: 6 }}>
+                    <span style={{ color: T.dim, fontSize: 12 }}>Level {l}: </span>
+                    {masteryPools[l].map((n) => (
+                      <button key={n} {...lorePress(n)} style={{ ...btn(masteryPicks[l] === n), padding: "4px 10px", fontSize: 13, minHeight: 0, margin: 2 }}
+                        onClick={() => setMasteryPicks({ ...masteryPicks, [l]: masteryPicks[l] === n ? null : n })}>{n}</button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+            {gainsSignature && (
+              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
+                <div style={{ color: T.gold, marginBottom: 4 }}>Signature Spells — two 3rd-level spells from your spellbook ({signaturePicks.length}/2)</div>
+                <div style={{ color: T.dim, fontSize: 12, marginBottom: 8 }}>Always prepared; each castable once per short rest without a slot.</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {signaturePool.map((n) => (
+                    <button key={n} {...lorePress(n)} style={{ ...btn(signaturePicks.includes(n)), padding: "4px 10px", fontSize: 13, minHeight: 0 }}
+                      onClick={() => setSignaturePicks(signaturePicks.includes(n) ? signaturePicks.filter((x) => x !== n) : signaturePicks.length < 2 ? [...signaturePicks, n] : signaturePicks)}>{n}</button>
+                  ))}
+                </div>
               </div>
             )}
             {preparedCaster && (
@@ -2054,6 +2186,13 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
               {spellPicks.length > 0 && <>Spells: <b style={{ color: T.gold }}>{spellPicks.join(", ")}</b><br /></>}
               {spellSwapOut && spellSwapIn && <>Spell swap: {spellSwapOut} → <b style={{ color: T.gold }}>{spellSwapIn}</b><br /></>}
               {arcanumPick && <>Mystic Arcanum: <b style={{ color: T.gold }}>{arcanumPick}</b><br /></>}
+              {takingBoAS && boasPicks.length > 0 && <>Book of Shadows rituals: <b style={{ color: T.gold }}>{boasPicks.join(", ")}</b><br /></>}
+              {tomePicks.length > 0 && <>Tome cantrips: <b style={{ color: T.gold }}>{tomePicks.join(", ")}</b><br /></>}
+              {secretsPicks.length > 0 && <>Magical Secrets: <b style={{ color: T.gold }}>{secretsPicks.join(", ")}</b><br /></>}
+              {favEnemyPick && <>Favored Enemy: <b style={{ color: T.gold }}>{favEnemyPick}</b><br /></>}
+              {terrainPick2 && <>Natural Explorer: <b style={{ color: T.gold }}>{terrainPick2}</b><br /></>}
+              {(masteryPicks[1] || masteryPicks[2]) && <>Spell Mastery: <b style={{ color: T.gold }}>{[masteryPicks[1], masteryPicks[2]].filter(Boolean).join(", ")}</b><br /></>}
+              {signaturePicks.length > 0 && <>Signature Spells: <b style={{ color: T.gold }}>{signaturePicks.join(", ")}</b><br /></>}
               {feats.length > 0 && <>Features: {feats.join(", ")}</>}
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
@@ -2116,8 +2255,11 @@ function InvocationManager({ ch, onInvocations }) {
 
 const ARCANUM_UNLOCK = { 6: 11, 7: 13, 8: 15, 9: 17 }; // arcanum spell level -> warlock level
 
-function SpellManager({ ch, customs, onSpells }) {
+function SpellManager({ ch, customs, onSpells, onUpdate }) {
   const casters = ch.classes.filter((c) => CLASSES[c.name].caster);
+  const wl = ch.classes.find((c) => c.name === "Warlock");
+  const hasBoAS = (ch.invocations || []).includes("Book of Ancient Secrets");
+  const hasTome = ch.pactBoon === "Pact of the Tome";
   const [adding, setAdding] = useState(null); // { cls, kind: 'cantrips'|'spells'|'arcanum', lvl? }
   const [q, setQ] = useState("");
   if (!casters.length) return null;
@@ -2132,6 +2274,15 @@ function SpellManager({ ch, customs, onSpells }) {
       .flatMap(([, arr]) => arr).map((n) => pool.find((sp) => sp.name === n) || { name: n, level: SPELL_LVL_HINT[n] || 1, school: "", classes: clsName });
   };
   const listFor = (clsName, kind, arcLvl) => {
+    if (kind === "boas") {
+      const capLvl = Math.max(1, Math.ceil((wl?.level || 1) / 2));
+      return pool.filter((sp) => sp.ritual && sp.level >= 1 && sp.level <= capLvl && !(ch.boasRituals || []).includes(sp.name))
+        .filter((sp) => sp.name.toLowerCase().includes(q.toLowerCase())).sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+    }
+    if (kind === "tome") {
+      return pool.filter((sp) => sp.level === 0 && !(ch.tomeCantrips || []).includes(sp.name))
+        .filter((sp) => sp.name.toLowerCase().includes(q.toLowerCase())).sort((a, b) => a.name.localeCompare(b.name));
+    }
     const entry = ch.classes.find((c) => c.name === clsName);
     const maxLvl = maxSpellLevel(clsName, entry.level);
     const extra = kind === "spells" ? expandedFor(clsName).filter((x) => !pool.some((sp) => sp.name === x.name && spellFitsClass(sp, clsName, entry.subclass))) : [];
@@ -2224,13 +2375,44 @@ function SpellManager({ ch, customs, onSpells }) {
         );
       })}
 
+      {hasBoAS && (
+        <div style={{ marginBottom: 14, paddingTop: 10, borderTop: `1px solid ${T.edge}` }}>
+          <div style={{ color: T.ink, fontWeight: 700 }}>Book of Shadows — Ancient Secrets <span style={{ color: T.dim, fontWeight: 400, fontSize: 12 }}>· rituals only · level ≤ {Math.max(1, Math.ceil((wl?.level || 1) / 2))}</span></div>
+          <div style={{ marginTop: 6 }}>
+            {(ch.boasRituals || []).map((n) => (
+              <span key={n} {...lorePress(n)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel2, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13 }}>
+                {n}<span style={{ color: T.blood, cursor: "pointer", fontWeight: 700 }} onClick={() => onUpdate({ boasRituals: (ch.boasRituals || []).filter((x) => x !== n) })}>✕</span>
+              </span>
+            ))}
+            {pool.length > 0 && <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => { setAdding({ kind: "boas" }); setQ(""); }}>＋ transcribe ritual</button>}
+          </div>
+          {(ch.boasRituals || []).length < 2 && <div style={{ color: T.dim, fontSize: 11, marginTop: 4 }}>Start with two 1st-level rituals from any class; transcribe rituals you find in your travels.</div>}
+        </div>
+      )}
+      {hasTome && (
+        <div style={{ marginBottom: 14, paddingTop: 10, borderTop: `1px solid ${T.edge}` }}>
+          <div style={{ color: T.ink, fontWeight: 700 }}>Book of Shadows — Tome Cantrips <span style={{ color: T.dim, fontWeight: 400, fontSize: 12 }}>· {(ch.tomeCantrips || []).length}/3 · any class · cast at will</span></div>
+          <div style={{ marginTop: 6 }}>
+            {(ch.tomeCantrips || []).map((n) => (
+              <span key={n} {...lorePress(n)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel2, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13 }}>
+                {n}<span style={{ color: T.blood, cursor: "pointer", fontWeight: 700 }} onClick={() => onUpdate({ tomeCantrips: (ch.tomeCantrips || []).filter((x) => x !== n) })}>✕</span>
+              </span>
+            ))}
+            {(ch.tomeCantrips || []).length < 3 && pool.length > 0 && <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => { setAdding({ kind: "tome" }); setQ(""); }}>＋ add</button>}
+          </div>
+        </div>
+      )}
+
       {adding && (
         <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
           onClick={() => setAdding(null)}>
           <div style={{ ...card, width: "min(560px, 100%)", maxHeight: "75vh", display: "flex", flexDirection: "column", borderRadius: "16px 16px 0 0", padding: 16, paddingBottom: "calc(16px + env(safe-area-inset-bottom))" }}
             onClick={(e) => e.stopPropagation()}>
             <div style={{ color: T.gold, fontFamily: "Georgia, serif", marginBottom: 8 }}>
-              {adding.kind === "arcanum" ? `Choose ${adding.lvl}th-level Mystic Arcanum` : `Add ${adding.kind === "cantrips" ? "cantrip" : "spell"}`} — {adding.cls}
+              {adding.kind === "arcanum" ? `Choose ${adding.lvl}th-level Mystic Arcanum — ${adding.cls}`
+                : adding.kind === "boas" ? `Transcribe a ritual (any class, level ≤ ${Math.max(1, Math.ceil((wl?.level || 1) / 2))})`
+                : adding.kind === "tome" ? "Add a Tome cantrip (any class)"
+                : `Add ${adding.kind === "cantrips" ? "cantrip" : "spell"} — ${adding.cls}`}
             </div>
             <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…"
               style={{ background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 16, marginBottom: 10 }} />
@@ -2238,6 +2420,8 @@ function SpellManager({ ch, customs, onSpells }) {
               {listFor(adding.cls, adding.kind, adding.lvl).slice(0, 60).map((sp) => (
                 <div key={sp.name} {...lorePress(sp.name)} onClick={() => {
                   if (adding.kind === "arcanum") { setArcanum(adding.cls, adding.lvl, sp.name); setAdding(null); return; }
+                  if (adding.kind === "boas") { onUpdate({ boasRituals: [...(ch.boasRituals || []), sp.name] }); setAdding(null); return; }
+                  if (adding.kind === "tome") { onUpdate({ tomeCantrips: [...(ch.tomeCantrips || []), sp.name] }); setAdding(null); return; }
                   const mine = (ch.spells || {})[adding.cls] || { cantrips: [], spells: [] };
                   setList(adding.cls, adding.kind, [...(mine[adding.kind] || []), sp.name]);
                   setAdding(null);
@@ -2500,7 +2684,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         </div>
       )}
 
-      <SpellManager ch={ch} customs={customs} onSpells={onSpells} />
+      <SpellManager ch={ch} customs={customs} onSpells={onSpells} onUpdate={onUpdate} />
       <InvocationManager ch={ch} onInvocations={onInvocations} />
 
       <div style={{ ...card, padding: 16, marginTop: 14 }}>
@@ -2544,7 +2728,10 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>● proficient · ★ expertise (double proficiency) · tap any skill to roll it{feats.jack ? " · Jack of All Trades adds +" + feats.jack + " to the rest" : ""}{feats.reliable ? " · Reliable Talent floors proficient checks at 10" : ""}</div>
           {ch.feats?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Feats: {ch.feats.map((f, i) => <span key={f} {...lorePress(f)}>{i > 0 ? ", " : ""}{f}</span>)}</div>}
           {ch.metamagic?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Metamagic: {ch.metamagic.map((m, i) => <span key={m} {...lorePress(m)}>{i > 0 ? ", " : ""}{m}</span>)}</div>}
-          {ch.rangerChoices && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Favored Enemy: {ch.rangerChoices.favEnemy} · Natural Explorer: {ch.rangerChoices.natTerrain}</div>}
+          {ch.rangerChoices && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Favored Enemy: {[ch.rangerChoices.favEnemy, ...(ch.rangerChoices.extraEnemies || [])].filter(Boolean).join(", ")} · Natural Explorer: {[ch.rangerChoices.natTerrain, ...(ch.rangerChoices.extraTerrains || [])].filter(Boolean).join(", ")}</div>}
+          {ch.choices && Object.entries(ch.choices).map(([k, v]) => (
+            <div key={k} style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>{k}: {v.map((n, i) => <span key={n} {...lorePress(n)}>{i > 0 ? ", " : ""}{n}</span>)}</div>
+          ))}
           {ch.styles?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Fighting Styles: {ch.styles.map((f) => `${f} (${STYLE_DESC[f]})`).join(" · ")}</div>}
           <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Proficiencies ({ch.classes[0].name}): {PROF_TEXT[ch.classes[0].name]}{ch.classes.length > 1 ? " — plus multiclass grants (see Chronicle)" : ""}</div>
           {ch.languages?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Languages: {ch.languages.map((l, i) => <span key={l + i} {...lorePress(l)}>{i > 0 ? ", " : ""}{l}</span>)}</div>}
@@ -2640,7 +2827,7 @@ function parseCompendiumXML(text) {
     const grab = (tag) => sp.querySelector(`:scope > ${tag}`)?.textContent?.trim() || "";
     const level = +(sp.querySelector(":scope > level")?.textContent || 0);
     const text = [...sp.querySelectorAll(":scope > text")].map((t) => t.textContent).join("\n").replace(/\n{3,}/g, "\n\n").trim();
-    out.spells.push({ name, level, school: grab("school"), classes: grab("classes"), time: grab("time"), range: grab("range"), components: grab("components"), duration: grab("duration"), text });
+    out.spells.push({ name, level, school: grab("school"), classes: grab("classes"), time: grab("time"), range: grab("range"), components: grab("components"), duration: grab("duration"), ritual: /^y/i.test(grab("ritual")), text });
   });
 
   doc.querySelectorAll("compendium > feat").forEach((fe) => {
@@ -2682,7 +2869,7 @@ function HomebrewForge({ customs, onSave, onBack }) {
         const oldFeats = new Map(customs.feats.map((f) => [f.name, f]));
         res.feats = res.feats.filter((f) => !builtinFeats.has(f.name) && (!oldFeats.has(f.name) || (f.text && !oldFeats.get(f.name).text)));
         const oldSpells = new Map((customs.spells || []).map((x) => [x.name, x]));
-        res.spells = res.spells.filter((x) => !oldSpells.has(x.name) || (x.text && !oldSpells.get(x.name).text));
+        res.spells = res.spells.filter((x) => !oldSpells.has(x.name) || (x.text && !oldSpells.get(x.name).text) || oldSpells.get(x.name).ritual === undefined);
         setParsed(res);
       } catch (err) { setImportErr(err.message || "Could not parse this file"); }
     };
