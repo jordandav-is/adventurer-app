@@ -421,8 +421,11 @@ function buildDie(sides, size) {
 
 function Die3D({ sides, final, delay, size = 68 }) {
   const faces = buildDie(sides, size);
-  const target = faces[(final - 1) % faces.length];
+  const targetIdx = (final - 1) % faces.length;
+  const target = faces[targetIdx];
   const fontK = { 4: 0.26, 6: 0.4, 8: 0.3, 10: 0.26, 12: 0.3, 20: 0.22 }[sides] || 0.3;
+  // the rolled face lands flat to the camera, so its number can run much larger
+  const bigK = { 4: 0.32, 6: 0.5, 8: 0.4, 10: 0.36, 12: 0.4, 20: 0.33 }[sides] || 0.4;
   const dur = (1.15 + delay / 1000).toFixed(2);
   const tumble = (final + sides) % 2 ? "diceTumbleA" : "diceTumbleB";
   return (
@@ -443,7 +446,7 @@ function Die3D({ sides, final, delay, size = 68 }) {
                 <div style={{
                   position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
                   clipPath: f.clip, background: `linear-gradient(${135 + (i % 5) * 22}deg, #e0bd66, #a8842f)`,
-                  color: "#241a10", fontWeight: 800, fontFamily: "Georgia, serif", fontSize: size * fontK,
+                  color: "#241a10", fontWeight: 800, fontFamily: "Georgia, serif", fontSize: size * (i === targetIdx ? bigK : fontK),
                 }}>
                   <span style={{ opacity: 0.15 + 0.85 * tilt * tilt, ...(sides === 4 ? { marginTop: size * 0.14 } : {}) }}>
                     {i + 1}{sides >= 10 && (i + 1 === 6 || i + 1 === 9) ? "." : ""}
@@ -579,7 +582,7 @@ function RollTray({ title, mode, parts, kind, abil, proficient, ch, onClose }) {
         <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap", padding: "18px 0" }}>
           {res.dice.map((d, i) => (
             <div key={i} style={{ opacity: done && i !== res.kept ? 0.3 : 1, transition: "opacity 400ms", position: "relative" }}>
-              <Die sides={20} final={d.v} delay={i * 150} />
+              <Die sides={20} final={d.v} delay={i * 150} size={res.dice.length > 1 ? 104 : 128} />
               {done && i !== res.kept && <div style={{ position: "absolute", top: -10, right: -6, color: T.blood, fontSize: 11, fontWeight: 700 }}>dropped</div>}
             </div>
           ))}
