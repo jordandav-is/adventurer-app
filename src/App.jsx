@@ -333,6 +333,17 @@ const ICON_PATHS = {
   up: <><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></>,
   down: <><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></>,
   moon: <><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" /></>,
+  axe: <><path d="m14 12-8.5 8.5a2.12 2.12 0 1 1-3-3L11 9" /><path d="M15 13 9 7l4-4 6 6h3a8 8 0 0 1-7 7z" /></>,
+  music: <><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></>,
+  holy: <><path d="M12 2v20" /><path d="M5 8h14" /><path d="M7.5 21h9" /></>,
+  leaf: <><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" /><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" /></>,
+  swords: <><path d="M14.5 17.5 3 6V3h3l11.5 11.5" /><path d="M13 19l6-6" /><path d="M16 16l4 4" /><path d="M19 21l2-2" /><path d="M9.5 6.5 21 18v3h-3L6.5 9.5" /></>,
+  zen: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3" /></>,
+  shield: <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></>,
+  dagger: <><path d="M3 21l5-5" /><path d="m8 16 9.5-9.5a2.83 2.83 0 0 0-4-4L4 12l4 4Z" /><path d="M14 4l6 6" /></>,
+  flame: <><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z" /></>,
+  eye: <><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></>,
+  book: <><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /></>,
   sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" /></>,
 };
 const Icon = ({ name, size = 15, style }) => (
@@ -341,6 +352,30 @@ const Icon = ({ name, size = 15, style }) => (
     {ICON_PATHS[name]}
   </svg>
 );
+
+/* Every class wears its own colors and sigil, everywhere it appears */
+const CLASS_THEMES = {
+  Barbarian: { color: "#d1603d", icon: "axe" },
+  Bard: { color: "#c77dca", icon: "music" },
+  Cleric: { color: "#e8d27c", icon: "holy" },
+  Druid: { color: "#7fb069", icon: "leaf" },
+  Fighter: { color: "#a8b8c8", icon: "swords" },
+  Monk: { color: "#5eb1bf", icon: "zen" },
+  Paladin: { color: "#ffd166", icon: "shield" },
+  Ranger: { color: "#588157", icon: "bow" },
+  Rogue: { color: "#8d99ae", icon: "dagger" },
+  Sorcerer: { color: "#f4845f", icon: "flame" },
+  Warlock: { color: "#b48ead", icon: "eye" },
+  Wizard: { color: "#6c91e0", icon: "book" },
+};
+const ClassTag = ({ name, size = 14, dim, children }) => {
+  const t = CLASS_THEMES[name] || { color: T.ink, icon: "d20" };
+  return (
+    <span style={{ color: dim ? undefined : t.color, whiteSpace: "nowrap" }}>
+      <Icon name={t.icon} size={size} style={{ marginRight: 4, color: t.color }} />{children ?? name}
+    </span>
+  );
+};
 
 /* ============ ANIMATED 3D DICE ============ */
 /* Real polyhedra — tetrahedron, cube, octahedron, pentagonal trapezohedron,
@@ -1428,7 +1463,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
             {Object.entries(CLASSES).map(([c, d]) => (
               <div key={c} onClick={() => { setCls(c); setSkills([]); setSubclass(null); setStyle(null); setRogueExp([]); setFavEnemy(null); setNatTerrain(null); setSpellPicks({ cantrips: [], spells: [] }); }}
                 style={{ ...card, padding: 12, cursor: "pointer", borderColor: cls === c ? T.gold : T.edge, background: cls === c ? T.panel2 : T.panel }}>
-                <div style={{ fontFamily: "Georgia, serif", fontSize: 16, color: cls === c ? T.gold : T.ink }}>{c}</div>
+                <div style={{ fontFamily: "Georgia, serif", fontSize: 16 }}><ClassTag name={c} size={15} /></div>
                 <div style={{ color: T.dim, fontSize: 11, marginTop: 4 }}>d{d.die} · saves {d.saves.map((s) => s.toUpperCase()).join("/")}{d.caster ? ` · ${d.caster} caster` : ""}</div>
               </div>
             ))}
@@ -1648,7 +1683,7 @@ function SpellPickGrid({ options, picks, cap, onChange, placeholder = "Search sp
 function LevelUp({ ch, onDone, onCancel, customs }) {
   const lvl = totalLevel(ch);
   const [stage, setStage] = useState("class"); // class -> hp -> extras -> done
-  const [pick, setPick] = useState(null);
+  const [pick, setPick] = useState(() => [...ch.classes].sort((a, b) => b.level - a.level)[0]?.name || null);
   const [rollingHp, setRollingHp] = useState(false);
   const [hpGain, setHpGain] = useState(null);
   const [asiMode, setAsiMode] = useState(null); // 'asi' | 'feat'
@@ -1689,7 +1724,11 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const existing = ch.classes.map((c) => c.name);
   const currentOk = ch.classes.every((c) => meetsPrereq(c.name, ch.abilities));
 
-  const options = Object.keys(CLASSES).map((name) => {
+  const classOrder = [
+    ...[...ch.classes].sort((a, b) => b.level - a.level).map((c) => c.name),
+    ...Object.keys(CLASSES).filter((n) => !ch.classes.some((c) => c.name === n)),
+  ];
+  const options = classOrder.map((name) => {
     const isNew = !existing.includes(name);
     let ok = true, why = "";
     if (isNew) {
@@ -1919,7 +1958,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                   <div key={o.name} onClick={() => o.ok && setPick(o.name)}
                     style={{ ...card, background: pick === o.name ? T.panel2 : T.panel, borderColor: pick === o.name ? T.gold : T.edge, padding: 12, cursor: o.ok ? "pointer" : "not-allowed", opacity: o.ok ? 1 : 0.45 }}>
                     <div style={{ fontFamily: "Georgia, serif", color: pick === o.name ? T.gold : T.ink }}>
-                      {o.name} {e ? `${e.level} → ${e.level + 1}` : <span style={{ color: T.blood, fontSize: 12 }}>new</span>}
+                      <ClassTag name={o.name} /> {e ? `${e.level} → ${e.level + 1}` : <span style={{ color: T.blood, fontSize: 12 }}>new</span>}
                     </div>
                     {!o.ok && <div style={{ color: T.blood, fontSize: 11, marginTop: 4 }}>{o.why}</div>}
                     {o.ok && o.isNew && <div style={{ color: T.dim, fontSize: 11, marginTop: 4 }}>Grants: {MC_PROFS[o.name]}</div>}
@@ -2403,7 +2442,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate }) {
         );
         return (
           <div key={c.name} style={{ marginBottom: 14 }}>
-            <div style={{ color: T.ink, fontWeight: 700 }}>{c.name} {c.level} <span style={{ color: T.dim, fontWeight: 400, fontSize: 12 }}>· max spell level {maxLvl || "—"}{c.name === "Warlock" && c.level >= 11 ? " · Mystic Arcanum below" : ""}</span></div>
+            <div style={{ color: T.ink, fontWeight: 700 }}><ClassTag name={c.name} /> {c.level} <span style={{ color: T.dim, fontWeight: 400, fontSize: 12 }}>· max spell level {maxLvl || "—"}{c.name === "Warlock" && c.level >= 11 ? " · Mystic Arcanum below" : ""}</span></div>
             {canCap > 0 && (
               <div style={{ marginTop: 6 }}>
                 <span style={{ color: mine.cantrips.length > canCap ? T.blood : T.dim, fontSize: 12 }}>Cantrips {mine.cantrips.length}/{canCap} </span>
@@ -2655,7 +2694,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         </label>
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontFamily: "Georgia, serif", fontSize: 28, color: T.gold }}>{ch.name}</div>
-          <div style={{ color: T.ink }}>{ch.race} · {ch.classes.map((c) => `${c.name} ${c.level}${c.subclass ? ` (${c.subclass})` : ""}`).join(" / ")}</div>
+          <div style={{ color: T.ink }}>{ch.race} · {ch.classes.map((c, i) => <span key={c.name}>{i > 0 ? " / " : ""}<ClassTag name={c.name} /> {c.level}{c.subclass ? <span style={{ color: T.dim }}> (<span {...lorePress(c.subclass)}>{c.subclass}</span>)</span> : ""}</span>)}</div>
           <div style={{ color: T.dim, fontSize: 13 }}>Character level {lvl} · Proficiency +{pb} · <span {...lorePress(ch.background)} style={{ textDecoration: "underline dotted" }}>{ch.background}</span>{ch.alignment ? ` · ${ch.alignment}` : ""}</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexDirection: "column" }}>
@@ -2832,7 +2871,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>Class Features</div>
         {ch.classes.map((c) => (
           <div key={c.name} style={{ marginBottom: 10 }}>
-            <div style={{ color: T.ink, fontWeight: 700 }}>{c.name} {c.level}{c.subclass ? <> — <span {...lorePress(c.subclass)}>{c.subclass}</span></> : ""}</div>
+            <div style={{ color: T.ink, fontWeight: 700 }}><ClassTag name={c.name} /> {c.level}{c.subclass ? <> — <span {...lorePress(c.subclass)}>{c.subclass}</span></> : ""}</div>
             <div style={{ color: T.dim, fontSize: 13, lineHeight: 1.7 }}>
               {(() => {
                 const items = Array.from({ length: c.level }, (_, i) => i + 1)
@@ -3309,7 +3348,7 @@ export default function App() {
                 <Portrait photo={c.photo} size={56} name={c.name} />
                 <div>
                   <div style={{ fontFamily: "Georgia, serif", fontSize: 18, color: T.gold }}>{c.name}</div>
-                  <div style={{ color: T.dim, fontSize: 13 }}>{c.race} · {c.classes.map((x) => `${x.name} ${x.level}`).join(" / ")} · Level {totalLevel(c)} · {c.dmg ? `${Math.max(0, c.maxHp - c.dmg)}/` : ""}{c.maxHp} HP</div>
+                  <div style={{ color: T.dim, fontSize: 13 }}>{c.race} · {c.classes.map((x, i) => <span key={x.name}>{i > 0 ? " / " : ""}<ClassTag name={x.name} size={12} /> {x.level}</span>)} · Level {totalLevel(c)} · {c.dmg ? `${Math.max(0, c.maxHp - c.dmg)}/` : ""}{c.maxHp} HP</div>
                 </div>
               </div>
             ))}
