@@ -71,7 +71,23 @@ const SUB_SPELLS = {
   "The Fiend": { type: "expanded", label: "Expanded spell list (added to your Warlock options)", spells: { 1: ["Burning Hands", "Command"], 3: ["Blindness/Deafness", "Scorching Ray"], 5: ["Fireball", "Stinking Cloud"], 7: ["Fire Shield", "Wall of Fire"], 9: ["Flame Strike", "Hallow"] } },
 };
 const baseSubName = (sub) => (sub || "").replace(/\s*\([^)]*\)$/, "");
-function subSpellData(subclass) {
+/* Canonical form for subclass names so "The Archfey", "(Archfey)", "Life Domain" and "(Life)" all line up */
+const normSub = (s) => {
+  let x = (s || "").toLowerCase().trim();
+  const prefix = /^(the|college of|circle of|oath of|way of|path of|school of)\s+/;
+  while (prefix.test(x)) x = x.replace(prefix, "");
+  return x.replace(/\s+domain$/, "").trim();
+};
+/* Tokens a character's subclass answers to: base name plus any parenthetical (e.g. Land circle terrain) */
+const subTokens = (subclass) => {
+  const toks = [normSub(baseSubName(subclass))];
+  const m = (subclass || "").match(/\(([^)]+)\)$/);
+  if (m) toks.push(normSub(m[1]));
+  return toks;
+};
+/* Classes whose subclass spells are always prepared rather than added to the pickable list */
+const GRANTED_SUB_CLASSES = { Cleric: "Domain spells", Paladin: "Oath spells", Druid: "Circle spells" };
+function subSpellData(subclass, clsName, customs) {
   if (!subclass) return null;
   const base = baseSubName(subclass);
   if (base === "Circle of the Land") {
@@ -79,7 +95,26 @@ function subSpellData(subclass) {
     const terr = m && LAND_TERRAINS[m[1]];
     return terr ? { type: "granted", label: `Circle spells — ${m[1]} (always prepared)`, spells: terr } : null;
   }
-  return SUB_SPELLS[base] || null;
+  if (SUB_SPELLS[base]) return SUB_SPELLS[base];
+  /* Derive the list from imported compendium spells tagged "Class (Subclass)" */
+  if (!clsName || !customs) return null;
+  const toks = subTokens(subclass);
+  const tagged = (customs.spells || []).filter((sp) => (sp.classes || "").split(",").some((e) => {
+    const m = e.trim().match(/^(.+?)\s*\(([^)]+)\)$/);
+    return m && m[1].trim().toLowerCase() === clsName.toLowerCase() && toks.includes(normSub(m[2]));
+  }));
+  if (!tagged.length) return null;
+  const grantedLabel = GRANTED_SUB_CLASSES[clsName];
+  const spells = {};
+  tagged.forEach((sp) => {
+    let at = 1; // class level at which this spell's level unlocks
+    while (at < 20 && maxSpellLevel(clsName, at) < sp.level) at++;
+    (spells[at] = spells[at] || []).push(sp.name);
+  });
+  Object.values(spells).forEach((arr) => arr.sort());
+  return grantedLabel
+    ? { type: "granted", label: `${grantedLabel} — ${base} (always prepared)`, spells }
+    : { type: "expanded", label: `Expanded spell list — ${base} (added to your ${clsName} options)`, spells };
 }
 const SPELL_LVL_HINT = { "Burning Hands": 1, "Command": 1, "Blindness/Deafness": 2, "Scorching Ray": 2, "Fireball": 3, "Stinking Cloud": 3, "Fire Shield": 4, "Wall of Fire": 4, "Flame Strike": 5, "Hallow": 5 };
 
@@ -239,8 +274,17 @@ function maxSpellLevel(clsName, clsLevel) {
   if (c === "pact") return PACT(clsLevel).lvl;
   return 0;
 }
-/* A spell record's classes string mentions the base class name, e.g. "Bard, Cleric" or "Fighter (Eldritch Knight)" */
-const spellFitsClass = (sp, clsName) => new RegExp(`(^|[,\\s])${clsName}(?![a-z])`, "i").test(sp.classes || "");
+/* A spell's classes string lists entries like "Bard, Cleric (Arcana), Warlock (Archfey)".
+   A plain class entry fits any member of that class; a parenthesized entry fits only a matching subclass. */
+const spellFitsClass = (sp, clsName, subclass) => {
+  const want = clsName.toLowerCase();
+  const toks = subclass ? subTokens(subclass) : [];
+  return (sp.classes || "").split(",").some((entry) => {
+    const m = entry.trim().match(/^(.+?)(?:\s*\(([^)]*)\))?$/);
+    if (!m || m[1].trim().toLowerCase() !== want) return false;
+    return !m[2] || toks.includes(normSub(m[2]));
+  });
+};
 
 /* Multiclass spell slot table — index = combined caster level - 1 */
 const MC_SLOTS = [
@@ -831,7 +875,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const castsAt1 = !!CLASSES[cls].caster && CLASSES[cls].caster !== "half";
   const canCap1 = CANTRIPS_KNOWN[cls] ? CANTRIPS_KNOWN[cls](1) : 0;
   const spellCap1 = castsAt1 ? spellCapacity(cls, 1, finalScores).n : 0;
-  const pool1 = (customs?.spells || []).filter((x) => spellFitsClass(x, cls));
+  const pool1 = (customs?.spells || []).filter((x) => spellFitsClass(x, cls, subclass));
   const canNext =
     step === 0 ? name.trim().length > 0 :
     step === 1 ? (race !== "Half-Elf" || halfElfPicks.length === 2) :
@@ -1508,20 +1552,20 @@ function SpellManager({ ch, customs, onSpells }) {
 
   const expandedFor = (clsName) => {
     const e = ch.classes.find((c) => c.name === clsName);
-    const data = e && subSpellData(e.subclass);
+    const data = e && subSpellData(e.subclass, clsName, customs);
     if (!data || data.type !== "expanded") return [];
     return Object.entries(data.spells).filter(([lvl]) => +lvl <= e.level)
       .flatMap(([, arr]) => arr).map((n) => pool.find((sp) => sp.name === n) || { name: n, level: SPELL_LVL_HINT[n] || 1, school: "", classes: clsName });
   };
   const listFor = (clsName, kind, arcLvl) => {
-    const clsLevel = ch.classes.find((c) => c.name === clsName).level;
-    const maxLvl = maxSpellLevel(clsName, clsLevel);
-    const extra = kind === "spells" ? expandedFor(clsName).filter((x) => !pool.some((sp) => sp.name === x.name && spellFitsClass(sp, clsName))) : [];
+    const entry = ch.classes.find((c) => c.name === clsName);
+    const maxLvl = maxSpellLevel(clsName, entry.level);
+    const extra = kind === "spells" ? expandedFor(clsName).filter((x) => !pool.some((sp) => sp.name === x.name && spellFitsClass(sp, clsName, entry.subclass))) : [];
     const taken = kind === "arcanum"
       ? Object.values(book[clsName]?.arcanum || {})
       : (book[clsName]?.[kind]) || [];
     return [...pool, ...extra]
-      .filter((sp) => spellFitsClass(sp, clsName) || extra.includes(sp))
+      .filter((sp) => spellFitsClass(sp, clsName, entry.subclass) || extra.includes(sp))
       .filter((sp) => (kind === "cantrips" ? sp.level === 0 : kind === "arcanum" ? sp.level === arcLvl : sp.level >= 1 && sp.level <= maxLvl))
       .filter((sp) => !taken.includes(sp.name))
       .filter((sp) => sp.name.toLowerCase().includes(q.toLowerCase()))
@@ -1544,7 +1588,7 @@ function SpellManager({ ch, customs, onSpells }) {
         const canCap = CANTRIPS_KNOWN[c.name] ? CANTRIPS_KNOWN[c.name](c.level) : 0;
         const maxLvl = maxSpellLevel(c.name, c.level);
         const mine = book[c.name] || { cantrips: [], spells: [] };
-        const subData = subSpellData(c.subclass);
+        const subData = subSpellData(c.subclass, c.name, customs);
         const grantedNow = subData?.type === "granted"
           ? Object.entries(subData.spells).filter(([lvl]) => +lvl <= c.level).flatMap(([, arr]) => arr) : [];
         const chip = (name, kind) => (
@@ -1907,18 +1951,21 @@ function parseCompendiumXML(text) {
     // Introducers: "A: Y". Members: "Y: F" or "F (Y)".
     const colonPairs = rows.map((r) => ({ ...r, m: splitColon(r.n) })).filter((r) => r.m);
     const parenPairs = rows.map((r) => ({ ...r, m: splitParen(r.n) })).filter((r) => r.m);
+    // Members may drop a leading article the introducer keeps ("Hex Warrior (Hexblade)" under
+    // "Otherworldly Patron: The Hexblade"), so compare via normSub.
     const memberCount = (y) =>
-      colonPairs.filter((r) => r.m[0] === y).length + parenPairs.filter((r) => r.m[1] === y).length;
+      colonPairs.filter((r) => normSub(r.m[0]) === normSub(y)).length + parenPairs.filter((r) => normSub(r.m[1]) === normSub(y)).length;
     let cands = new Set(colonPairs.map((r) => r.m[1]).filter((y) => memberCount(y) > 0));
     // Drop nested groups: every introducer of Y has a prefix that is itself a candidate
     cands = new Set([...cands].filter((y) => colonPairs.some((r) => r.m[1] === y && !cands.has(r.m[0]))));
 
-    const known = new Set(CLASSES[clsName].subs);
+    const known = new Set(CLASSES[clsName].subs.map(normSub));
     cands.forEach((subName) => {
-      if (known.has(subName)) return;
+      if (known.has(normSub(subName))) return;
+      known.add(normSub(subName));
       const grouped = {};
-      colonPairs.forEach((r) => { if (r.m[0] === subName) (grouped[r.lvl] = grouped[r.lvl] || []).push(r.m[1]); });
-      parenPairs.forEach((r) => { if (r.m[1] === subName) (grouped[r.lvl] = grouped[r.lvl] || []).push(r.m[0]); });
+      colonPairs.forEach((r) => { if (normSub(r.m[0]) === normSub(subName)) (grouped[r.lvl] = grouped[r.lvl] || []).push(r.m[1]); });
+      parenPairs.forEach((r) => { if (normSub(r.m[1]) === normSub(subName)) (grouped[r.lvl] = grouped[r.lvl] || []).push(r.m[0]); });
       if (Object.keys(grouped).length) (out.subs[clsName] = out.subs[clsName] || []).push({ name: subName, feats: grouped });
     });
   });
@@ -2052,7 +2099,7 @@ function HomebrewForge({ customs, onSave, onBack }) {
           <div style={{ display: "grid", gap: 12 }}>
             <div style={{ color: T.dim, fontSize: 13, lineHeight: 1.6 }}>
               <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 15, marginBottom: 4 }}>Compendium XML import</div>
-              Feed me a compendium XML file (FightClub5 format) from your own collection. Parsing happens entirely in your browser — subclasses and feats are extracted by feature-name convention and merged into your custom content. Duplicates of anything already present are skipped. Only feature names are stored; your books remain the rules text.
+              Feed me a compendium XML file (FightClub5 format) from your own collection. Parsing happens entirely in your browser — subclasses, feats, and spells are extracted and merged into your custom content. Duplicates of anything already present are skipped. Spells tagged for a subclass (e.g. “Warlock (Archfey)”) power that subclass's expanded or always-prepared spell list. Feature names are stored without rules text; your books remain the rules text.
             </div>
             <label style={{ ...btn(true), textAlign: "center", cursor: "pointer" }}>
               Choose XML file…
