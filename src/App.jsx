@@ -447,6 +447,14 @@ function Die3D({ sides, final, delay, size = 68 }) {
   const bigK = { 4: 0.32, 6: 0.5, 8: 0.4, 10: 0.36, 12: 0.4, 20: 0.33 }[sides] || 0.4;
   const dur = (1.15 + delay / 1000).toFixed(2);
   const tumble = (final + sides) % 2 ? "diceTumbleA" : "diceTumbleB";
+  // no spoilers: every face looks identical until the tumble ends, THEN the rolled
+  // number swells and the grazing faces' numbers fade
+  const [landed, setLanded] = useState(false);
+  useEffect(() => {
+    setLanded(false);
+    const t = setTimeout(() => setLanded(true), 1200 + 2 * delay);
+    return () => clearTimeout(t);
+  }, [sides, final, delay]);
   return (
     // the drop-shadow lives outside the 3D chain: `filter` is a grouping property that
     // would force transform-style back to flat and crush the polyhedron
@@ -465,9 +473,10 @@ function Die3D({ sides, final, delay, size = 68 }) {
                 <div style={{
                   position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
                   clipPath: f.clip, background: `linear-gradient(${135 + (i % 5) * 22}deg, #e0bd66, #a8842f)`,
-                  color: "#241a10", fontWeight: 800, fontFamily: "Georgia, serif", fontSize: size * (i === targetIdx ? bigK : fontK),
+                  color: "#241a10", fontWeight: 800, fontFamily: "Georgia, serif",
+                  fontSize: size * (landed && i === targetIdx ? bigK : fontK), transition: "font-size 250ms ease",
                 }}>
-                  <span style={{ opacity: 0.15 + 0.85 * tilt * tilt, ...(sides === 4 ? { marginTop: size * 0.14 } : {}) }}>
+                  <span style={{ opacity: landed ? 0.15 + 0.85 * tilt * tilt : 1, transition: "opacity 350ms ease", ...(sides === 4 ? { marginTop: size * 0.14 } : {}) }}>
                     {i + 1}{sides >= 10 && (i + 1 === 6 || i + 1 === 9) ? "." : ""}
                   </span>
                 </div>
