@@ -224,6 +224,284 @@ const SUB_FEATS = {
 };
 const subFeatsFor = (subclass, level) => (subclass && SUB_FEATS[baseSubName(subclass)]?.[level]) || [];
 
+/* ============ FULL RULES TEXT (SRD 5.1, CC-BY-4.0) ============ */
+/* So a choice can be read in full BEFORE it's made — and long-pressed afterward. */
+const SRD_FOOT = "Source: SRD 5.1 (CC-BY 4.0)";
+
+const CLASS_BLURB = {
+  Barbarian: "A fierce warrior who channels primal fury into devastating melee power and unstoppable endurance.",
+  Bard: "An inspiring magician whose music and words weave magic, bolster allies, and unravel foes.",
+  Cleric: "A priestly champion who wields divine magic in service of a higher power.",
+  Druid: "A priest of the Old Faith, wielding the powers of nature and taking the shapes of beasts.",
+  Fighter: "A master of martial combat, skilled with a wide variety of weapons and armor.",
+  Monk: "A master of martial arts, harnessing the power of ki for speed, precision, and striking power.",
+  Paladin: "A holy warrior bound by a sacred oath, mixing martial prowess with divine magic.",
+  Ranger: "A warrior of the wilderness — tracker, hunter, and scourge of its monsters.",
+  Rogue: "A scoundrel who uses stealth, cunning, and precision strikes to overcome any obstacle.",
+  Sorcerer: "A spellcaster who draws on inborn magic — raw, instinctive, and dangerous.",
+  Warlock: "A wielder of magic derived from a bargain struck with an extraplanar patron.",
+  Wizard: "A scholarly magic-user who bends reality through long study of the arcane.",
+};
+
+/* Class feature rules text, keyed by feature name stripped of any parenthetical.
+   "Class:Name" keys disambiguate features that differ between classes. */
+const FEATURE_TEXT = {
+  /* markers for the subclass choice itself */
+  "Primal Path": "Choose the Primal Path that shapes the nature of your rage. It grants features at 3rd, 6th, 10th, and 14th level.",
+  "Bard College": "Choose a Bard College reflecting how you honed your craft. It grants features at 3rd, 6th, and 14th level.",
+  "Divine Domain": "Choose a domain related to your deity. It grants domain spells and features at 1st level, and again at 2nd, 6th, 8th, and 17th level.",
+  "Druid Circle": "Choose the circle whose mysteries you were initiated into. It grants features at 2nd, 6th, 10th, and 14th level.",
+  "Martial Archetype": "Choose the archetype you strive to emulate in combat. It grants features at 3rd, 7th, 10th, 15th, and 18th level.",
+  "Monastic Tradition": "Commit to a monastic tradition. It grants features at 3rd, 6th, 11th, and 17th level.",
+  "Sacred Oath": "Swear the oath that binds you as a paladin forever. It grants oath spells and features at 3rd, 7th, 15th, and 20th level.",
+  "Ranger Archetype": "Choose the archetype you emulate. It grants features at 3rd, 7th, 11th, and 15th level.",
+  "Roguish Archetype": "Choose the archetype your talents mirror. It grants features at 3rd, 9th, 13th, and 17th level.",
+  "Sorcerous Origin": "Choose the origin of your innate magic. It grants features at 1st, 6th, 14th, and 18th level.",
+  "Otherworldly Patron": "You have struck a bargain with an otherworldly being. Your choice of patron grants features at 1st, 6th, 10th, and 14th level, and expands your spell options.",
+  "Arcane Tradition": "Choose a school of magic to specialize in. It grants features at 2nd, 6th, 10th, and 14th level.",
+  /* Barbarian */
+  "Rage": "On your turn, enter a rage as a bonus action. While raging you have advantage on Strength checks and Strength saving throws, deal bonus damage with Strength-based melee attacks (+2, rising to +3 at 9th and +4 at 16th level), and have resistance to bludgeoning, piercing, and slashing damage. You can't cast or concentrate on spells while raging, and heavy armor blocks these benefits. The rage lasts 1 minute, ending early if you fall unconscious or your turn ends without you attacking or taking damage since your last turn. You start with 2 rages per long rest, gaining more as you level (unlimited at 20th).",
+  "Barbarian:Unarmored Defense": "While not wearing armor, your AC equals 10 + your Dexterity modifier + your Constitution modifier. You can use a shield and still gain this benefit.",
+  "Reckless Attack": "When you make your first attack on your turn, you can attack recklessly: you have advantage on melee weapon attack rolls using Strength this turn, but attack rolls against you have advantage until your next turn.",
+  "Danger Sense": "You have advantage on Dexterity saving throws against effects you can see, such as traps and spells. You can't be blinded, deafened, or incapacitated to benefit.",
+  "Fast Movement": "Your speed increases by 10 feet while you aren't wearing heavy armor.",
+  "Feral Instinct": "You have advantage on initiative rolls. Additionally, if you are surprised at the start of combat and aren't incapacitated, you can act normally on your first turn if you enter your rage first.",
+  "Brutal Critical": "You roll one additional weapon damage die (two at 13th level, three at 17th) when determining the extra damage of a critical hit with a melee attack.",
+  "Relentless Rage": "If you drop to 0 hit points while raging and don't die outright, you can make a DC 10 Constitution saving throw to drop to 1 hit point instead. The DC rises by 5 each time you use this before finishing a short or long rest.",
+  "Persistent Rage": "Your rage ends early only if you fall unconscious or choose to end it.",
+  "Indomitable Might": "If your total for a Strength check is less than your Strength score, you can use that score in place of the total.",
+  "Primal Champion": "Your Strength and Constitution scores increase by 4, and your maximum for those scores is now 24.",
+  /* Bard */
+  "Bardic Inspiration": "As a bonus action, give one creature other than yourself within 60 feet an inspiration die (d6; d8 at 5th, d10 at 10th, d12 at 15th level). Once within the next 10 minutes, that creature can add the die to one ability check, attack roll, or saving throw after rolling the d20. You have uses equal to your Charisma modifier, regained on a long rest (short rest too, once you have Font of Inspiration).",
+  "Jack of All Trades": "Add half your proficiency bonus, rounded down, to any ability check you make that doesn't already include your proficiency bonus.",
+  "Song of Rest": "If you or friendly creatures who can hear your performance regain hit points during a short rest by spending Hit Dice, each regains an extra 1d6 (d8 at 9th, d10 at 13th, d12 at 17th level).",
+  "Expertise": "Choose two of your skill proficiencies. Your proficiency bonus is doubled for any ability check that uses either of them.",
+  "Font of Inspiration": "You regain all expended uses of Bardic Inspiration when you finish a short or long rest.",
+  "Countercharm": "As an action, begin a performance lasting until the end of your next turn: you and friendly creatures within 30 feet who can hear you have advantage on saving throws against being frightened or charmed.",
+  "Magical Secrets": "Choose two spells from ANY class's spell list — cantrips or spells of a level you can cast. They count as bard spells for you and don't count against your spells known.",
+  "Superior Inspiration": "When you roll initiative and have no uses of Bardic Inspiration left, you regain one use.",
+  /* Cleric */
+  "Channel Divinity": "Channel divine energy to fuel magical effects, once per short or long rest (twice at 6th, three times at 18th level). All clerics gain Turn Undead: as an action, each undead within 30 feet that can see or hear you must make a Wisdom save or spend 1 minute fleeing you. Your domain or oath grants further options.",
+  "Destroy Undead": "When an undead of the listed challenge rating or lower fails its saving throw against your Turn Undead, it is instantly destroyed.",
+  "Divine Intervention": "As an action, implore your deity to intervene: roll percentile dice, and if the roll is equal to or lower than your cleric level, the deity acts (the GM chooses the form). On a success you can't use this again for 7 days; on a failure, after a long rest.",
+  "Divine Intervention Improvement": "Your call for divine intervention succeeds automatically — no roll required.",
+  /* Druid */
+  "Druidic": "You know Druidic, the secret language of druids, and can use it to leave hidden messages. Those who know Druidic spot them automatically; others need a DC 15 Wisdom (Perception) check and can't decipher them without magic.",
+  "Wild Shape": "As an action, magically assume the shape of a beast you have seen before, twice per short or long rest, for hours equal to half your druid level. At 2nd level: max CR 1/4, no flying or swimming speed. At 4th: CR 1/2, no flying. At 8th: CR 1. You keep your mental ability scores and personality, use the beast's physical stats, and can't cast spells while transformed.",
+  "Wild Shape improvement": "Your Wild Shape improves — at 4th level you can take forms up to CR 1/2 (swimming allowed); at 8th level, CR 1 with no movement restrictions.",
+  "Druid:Timeless Body": "The primal magic you wield slows your aging: for every 10 years that pass, your body ages only 1 year.",
+  "Beast Spells": "You can perform the somatic and verbal components of druid spells while in a beast shape (but can't provide material components).",
+  "Archdruid": "You can use Wild Shape an unlimited number of times, and you can ignore verbal and somatic components of your druid spells, as well as material components that lack a cost and aren't consumed.",
+  /* Fighter */
+  "Fighting Style": "Adopt a particular style of fighting as your specialty. Choose one option — you can't take the same Fighting Style more than once.",
+  "Second Wind": "On your turn, use a bonus action to regain hit points equal to 1d10 + your fighter level. Once per short or long rest.",
+  "Action Surge": "On your turn, take one additional action on top of your regular action and possible bonus action. Once per short or long rest (twice per rest at 17th level, but only once per turn).",
+  "Indomitable": "Reroll a saving throw that you fail; you must use the new roll. Once per long rest (twice at 13th, three times at 17th level).",
+  /* Monk */
+  "Monk:Unarmored Defense": "While wearing no armor and not wielding a shield, your AC equals 10 + your Dexterity modifier + your Wisdom modifier.",
+  "Unarmored Defense": "Barbarian: while not wearing armor, AC = 10 + Dex modifier + Con modifier (a shield is allowed). Monk: while wearing no armor and no shield, AC = 10 + Dex modifier + Wis modifier.",
+  "Martial Arts": "While unarmed or wielding only monk weapons and wearing no armor or shield: you can use Dexterity for attack and damage rolls, roll a d4 in place of normal damage (rising with level to d10), and make one unarmed strike as a bonus action when you take the Attack action.",
+  "Ki": "You have ki points equal to your monk level, regained on a short or long rest. Spend them on: Flurry of Blows (1 ki — two unarmed strikes as a bonus action after Attacking), Patient Defense (1 ki — Dodge as a bonus action), and Step of the Wind (1 ki — Disengage or Dash as a bonus action, jump distance doubled). Your ki save DC = 8 + proficiency bonus + Wisdom modifier.",
+  "Unarmored Movement": "Your speed increases by 10 feet while you wear no armor and wield no shield. The bonus rises with level, up to +30 feet at 18th.",
+  "Unarmored Movement improvement": "You can move along vertical surfaces and across liquids on your turn without falling during the move.",
+  "Deflect Missiles": "Use your reaction when hit by a ranged weapon attack to reduce the damage by 1d10 + your Dexterity modifier + your monk level. If you reduce it to 0, you can catch the missile and spend 1 ki to throw it back as a monk weapon attack.",
+  "Slow Fall": "Use your reaction when you fall to reduce any falling damage you take by five times your monk level.",
+  "Stunning Strike": "When you hit another creature with a melee weapon attack, spend 1 ki to attempt a stunning strike: the target must succeed on a Constitution saving throw or be stunned until the end of your next turn.",
+  "Ki-Empowered Strikes": "Your unarmed strikes count as magical for the purpose of overcoming resistance and immunity to nonmagical attacks and damage.",
+  "Evasion": "When you make a Dexterity saving throw against an effect that deals half damage on a success, you instead take no damage on a success and only half damage on a failure.",
+  "Stillness of Mind": "Use your action to end one effect on yourself that is causing you to be charmed or frightened.",
+  "Purity of Body": "Your mastery of ki makes you immune to disease and poison.",
+  "Tongue of the Sun and Moon": "You understand all spoken languages, and any creature that can understand a language understands what you say.",
+  "Diamond Soul": "You gain proficiency in all saving throws. Additionally, when you fail a saving throw, you can spend 1 ki point to reroll it and take the second result.",
+  "Monk:Timeless Body": "Your ki sustains you: you suffer none of the frailty of old age, can't be aged magically, and need no food or water.",
+  "Timeless Body": "Monk: you suffer none of the frailty of old age, can't be aged magically, and need no food or water. Druid: for every 10 years that pass, your body ages only 1 year.",
+  "Empty Body": "Spend 4 ki as an action to become invisible for 1 minute, with resistance to all damage but force damage. Or spend 8 ki to cast the astral projection spell (yourself only).",
+  "Perfect Self": "When you roll initiative and have no ki points remaining, you regain 4 ki points.",
+  /* Paladin */
+  "Divine Sense": "As an action, until the end of your next turn you know the location of any celestial, fiend, or undead within 60 feet that isn't behind total cover, and you detect consecrated or desecrated places and objects. Uses: 1 + your Charisma modifier per long rest.",
+  "Lay on Hands": "You have a pool of healing power equal to 5 × your paladin level, restored on a long rest. As an action, touch a creature to restore any number of remaining points, or expend 5 points to cure one disease or neutralize one poison.",
+  "Divine Smite": "When you hit a creature with a melee weapon attack, you can expend one spell slot to deal an extra 2d8 radiant damage, +1d8 per slot level above 1st (max 5d8), and +1d8 against undead or fiends.",
+  "Divine Health": "The divine magic flowing through you makes you immune to disease.",
+  "Aura of Protection": "Whenever you or a friendly creature within 10 feet of you (30 feet at 18th level) must make a saving throw, the creature gains a bonus equal to your Charisma modifier (minimum +1). You must be conscious.",
+  "Aura of Courage": "You and friendly creatures within 10 feet of you (30 feet at 18th level) can't be frightened while you are conscious.",
+  "Improved Divine Smite": "Whenever you hit a creature with a melee weapon, it takes an extra 1d8 radiant damage.",
+  "Cleansing Touch": "As an action, end one spell on yourself or on one willing creature you touch. Uses equal to your Charisma modifier (minimum 1) per long rest.",
+  "Aura improvements": "Your Aura of Protection and Aura of Courage now extend 30 feet from you.",
+  /* Ranger */
+  "Favored Enemy": "Choose a type of favored enemy. You have advantage on Wisdom (Survival) checks to track your favored enemies and on Intelligence checks to recall information about them, and you learn one language spoken by them.",
+  "Favored Enemy improvement": "Choose an additional favored enemy type (and an associated language).",
+  "Natural Explorer": "Choose a favored terrain. There, doubled proficiency on related Intelligence and Wisdom checks, difficult terrain doesn't slow your group, you can't become lost except by magic, you stay alert while doing other activities, you can stealth alone at a normal pace, you find twice as much food foraging, and tracking reveals exact numbers, sizes, and how long ago they passed.",
+  "Natural Explorer improvement": "Choose an additional favored terrain.",
+  "Favored Enemy & Natural Explorer improvements": "Choose one additional favored enemy (with a language) and one additional favored terrain.",
+  "Primeval Awareness": "As an action, expend a spell slot to sense for 1 minute per slot level whether any aberrations, celestials, dragons, elementals, fey, fiends, or undead are present within 1 mile (6 miles in favored terrain) — but not their number or location.",
+  "Land's Stride": "Moving through nonmagical difficult terrain costs you no extra movement, and you can pass through nonmagical plants without being slowed or harmed by them. You also have advantage on saving throws against magically created or manipulated plants that impede movement.",
+  "Hide in Plain Sight": "Spend 1 minute creating camouflage and press yourself against a solid surface: while you remain there without moving or acting, you gain +10 to Dexterity (Stealth) checks.",
+  "Vanish": "You can use the Hide action as a bonus action, and you can't be tracked by nonmagical means unless you choose to leave a trail.",
+  "Feral Senses": "You can attack creatures you can't see without disadvantage, and you are aware of the location of any invisible creature within 30 feet (if it isn't hidden and you aren't blinded or deafened).",
+  "Foe Slayer": "Once on each of your turns, add your Wisdom modifier to the attack roll or the damage roll of an attack you make against one of your favored enemies.",
+  /* Rogue */
+  "Sneak Attack": "Once per turn, deal extra damage (1d6, +1d6 every two rogue levels) to one creature you hit with a finesse or ranged weapon attack if you have advantage on the roll — or if another enemy of the target is within 5 feet of it and you don't have disadvantage.",
+  "Thieves' Cant": "A secret mix of dialect, jargon, and code that hides messages in seemingly normal conversation (conveying one takes four times longer). You also understand secret thieves' signs and symbols.",
+  "Cunning Action": "Take a bonus action on each of your turns to Dash, Disengage, or Hide.",
+  "Uncanny Dodge": "When an attacker you can see hits you with an attack, use your reaction to halve the attack's damage against you.",
+  "Reliable Talent": "Whenever you make an ability check that lets you add your proficiency bonus, treat a d20 roll of 9 or lower as a 10.",
+  "Blindsense": "If you are able to hear, you are aware of the location of any hidden or invisible creature within 10 feet of you.",
+  "Slippery Mind": "Your mental strength grants you proficiency in Wisdom saving throws.",
+  "Elusive": "No attack roll has advantage against you while you aren't incapacitated.",
+  "Stroke of Luck": "Turn a missed attack into a hit, or treat a failed ability check as a natural 20. Once per short or long rest.",
+  /* Sorcerer */
+  "Font of Magic": "You gain sorcery points equal to your sorcerer level, regained on a long rest. As a bonus action, convert points into a spell slot (2 → 1st, 3 → 2nd, 5 → 3rd, 6 → 4th, 7 → 5th) or break down a spell slot into points equal to its level.",
+  "Metamagic": "Twist your spells with Metamagic options, fueled by sorcery points. You learn two options at 3rd level and one more at 10th and 17th. Only one option can apply to a spell (Empowered Spell excepted).",
+  "Sorcerous Restoration": "You regain 4 expended sorcery points whenever you finish a short rest.",
+  /* Warlock */
+  "Eldritch Master": "Spend 1 minute entreating your patron to regain all your expended Pact Magic spell slots. Once per long rest.",
+  /* Wizard */
+  "Arcane Recovery": "Once per day when you finish a short rest, recover expended spell slots with a combined level up to half your wizard level (rounded up), none of them 6th level or higher.",
+  "Spell Mastery": "Choose a 1st-level and a 2nd-level wizard spell from your spellbook: while you have them prepared, cast them at their lowest level without expending a slot. You may swap them after 8 hours of study.",
+  "Signature Spells": "Choose two 3rd-level spells from your spellbook: they are always prepared (not counting against your total), and you can cast each once at 3rd level without a slot per short or long rest.",
+};
+
+/* Subclass flavor and full feature text, keyed by base subclass name. cls binds it to its class. */
+const SUB_LORE = {
+  "Path of the Berserker": { cls: "Barbarian",
+    flavor: "For some barbarians, rage is a means to an end — that end being violence. The Path of the Berserker is a path of untrammeled fury, slick with blood. As you enter the berserker's rage, you thrill in the chaos of battle, heedless of your own health or well-being.",
+    features: {
+      3: [{ n: "Frenzy", t: "You can go into a frenzy when you rage: for its duration, you can make a single melee weapon attack as a bonus action on each of your turns. When the rage ends, you suffer one level of exhaustion." }],
+      6: [{ n: "Mindless Rage", t: "You can't be charmed or frightened while raging. If you are charmed or frightened when you enter your rage, the effect is suspended for the duration." }],
+      10: [{ n: "Intimidating Presence", t: "As an action, frighten one creature within 30 feet that can see or hear you: it must succeed on a Wisdom saving throw (DC 8 + your proficiency bonus + your Charisma modifier) or be frightened of you until the end of your next turn. You can extend the effect on later turns by using your action." }],
+      14: [{ n: "Retaliation", t: "When you take damage from a creature within 5 feet of you, use your reaction to make a melee weapon attack against that creature." }],
+    } },
+  "College of Lore": { cls: "Bard",
+    flavor: "Bards of the College of Lore know something about most things, collecting bits of knowledge from scholarly tomes to peasant tales. Their loyalty lies in the pursuit of beauty and truth, and their cutting wit can deflate the pretensions of the powerful.",
+    features: {
+      3: [
+        { n: "Bonus Proficiencies", t: "You gain proficiency with three skills of your choice." },
+        { n: "Cutting Words", t: "When a creature you can see within 60 feet makes an attack roll, ability check, or damage roll, use your reaction to expend one Bardic Inspiration die and subtract its roll from the creature's (after it rolls, before the outcome is known). No effect if the creature can't hear you or is immune to being charmed." },
+      ],
+      6: [{ n: "Additional Magical Secrets", t: "Learn two spells of your choice from any class's list — cantrips or spells of a level you can cast. They count as bard spells and don't count against your spells known." }],
+      14: [{ n: "Peerless Skill", t: "When you make an ability check, you can expend one Bardic Inspiration die and add it to the roll (after rolling, before the outcome is known)." }],
+    } },
+  "Life Domain": { cls: "Cleric",
+    flavor: "The Life domain focuses on the vibrant positive energy that sustains all life. Gods of life promote vitality and health — healing the sick and wounded, caring for those in need, and driving away the forces of death and undeath.",
+    features: {
+      1: [
+        { n: "Bonus Proficiency (heavy armor)", t: "You gain proficiency with heavy armor." },
+        { n: "Disciple of Life", t: "Your healing spells are more effective: whenever you use a spell of 1st level or higher to restore hit points, the creature regains additional hit points equal to 2 + the spell's level." },
+      ],
+      2: [{ n: "Channel Divinity: Preserve Life", t: "As an action, present your holy symbol and evoke healing energy that restores hit points equal to five times your cleric level, divided as you choose among creatures within 30 feet — none above half its hit point maximum. Cannot affect undead or constructs." }],
+      6: [{ n: "Blessed Healer", t: "When you cast a spell of 1st level or higher that restores hit points to a creature other than you, you regain hit points equal to 2 + the spell's level." }],
+      8: [{ n: "Divine Strike", t: "Once on each of your turns when you hit a creature with a weapon attack, deal an extra 1d8 radiant damage (2d8 at 14th level)." }],
+      17: [{ n: "Supreme Healing", t: "When you would normally roll dice to restore hit points with a spell, instead use the highest possible number for each die." }],
+    } },
+  "Circle of the Land": { cls: "Druid",
+    flavor: "The Circle of the Land is made up of mystics and sages who safeguard ancient knowledge and rites through a vast oral tradition. Your magic is influenced by the land where you were initiated into the circle's mysteries.",
+    features: {
+      2: [
+        { n: "Bonus Cantrip", t: "You learn one additional druid cantrip of your choice." },
+        { n: "Natural Recovery", t: "Once per day during a short rest, recover expended spell slots with a combined level up to half your druid level (rounded up), none of them 6th level or higher." },
+      ],
+      3: [{ n: "Circle Spells", t: "Your mystical connection to the land grants spells tied to the terrain where you became a druid. They are always prepared and don't count against your prepared total. Choose your land: arctic, coast, desert, forest, grassland, mountain, swamp, or Underdark." }],
+      6: [{ n: "Land's Stride", t: "Moving through nonmagical difficult terrain costs you no extra movement, and you can pass through nonmagical plants without being slowed or harmed. You have advantage on saves against magically created or manipulated plants that impede movement." }],
+      10: [{ n: "Nature's Ward", t: "You can't be charmed or frightened by elementals or fey, and you are immune to poison and disease." }],
+      14: [{ n: "Nature's Sanctuary", t: "When a beast or plant creature attacks you, it must first make a Wisdom saving throw against your druid spell save DC; on a failure it must choose a different target, or the attack automatically misses." }],
+    } },
+  "Champion": { cls: "Fighter",
+    flavor: "The archetypal Champion focuses on the development of raw physical power honed to deadly perfection, combining rigorous training with physical excellence to deal devastating blows.",
+    features: {
+      3: [{ n: "Improved Critical", t: "Your weapon attacks score a critical hit on a roll of 19 or 20." }],
+      7: [{ n: "Remarkable Athlete", t: "Add half your proficiency bonus (rounded up) to any Strength, Dexterity, or Constitution check that doesn't already use your proficiency bonus. Your running long jump distance also increases by feet equal to your Strength modifier." }],
+      10: [{ n: "Additional Fighting Style", t: "You choose a second option from the Fighting Style class feature." }],
+      15: [{ n: "Superior Critical", t: "Your weapon attacks score a critical hit on a roll of 18–20." }],
+      18: [{ n: "Survivor", t: "At the start of each of your turns, you regain 5 + your Constitution modifier hit points if you have no more than half your hit points left (doesn't function at 0 hit points)." }],
+    } },
+  "Way of the Open Hand": { cls: "Monk",
+    flavor: "Monks of the Way of the Open Hand are the ultimate masters of martial arts combat, whether armed or unarmed. They learn to push and trip opponents, manipulate ki to heal themselves, and practice advanced techniques that can kill with a touch.",
+    features: {
+      3: [{ n: "Open Hand Technique", t: "Whenever you hit a creature with one of the attacks granted by Flurry of Blows, you can impose one effect: it must succeed on a Dexterity save or be knocked prone; it must succeed on a Strength save or be pushed 15 feet away; or it can't take reactions until the end of your next turn." }],
+      6: [{ n: "Wholeness of Body", t: "As an action, regain hit points equal to three times your monk level. Once per long rest." }],
+      11: [{ n: "Tranquility", t: "At the end of a long rest, you gain the effect of a sanctuary spell (save DC 8 + your proficiency bonus + your Wisdom modifier) that lasts until your next long rest, or until you attack or cast a spell affecting an enemy." }],
+      17: [{ n: "Quivering Palm", t: "When you hit a creature with an unarmed strike, spend 3 ki to start imperceptible lethal vibrations lasting days equal to your monk level. As an action, you can end them: the creature must make a Constitution saving throw — reduced to 0 hit points on a failure, 10d10 necrotic damage on a success." }],
+    } },
+  "Oath of Devotion": { cls: "Paladin",
+    flavor: "The Oath of Devotion binds a paladin to the loftiest ideals of justice, virtue, and order. These white knights hold themselves to the tenets of honesty, courage, compassion, honor, and duty — the ideal of the knight in shining armor.",
+    features: {
+      3: [
+        { n: "Oath Spells", t: "Your oath grants you spells at the listed paladin levels. They are always prepared and don't count against the number of spells you can prepare each day." },
+        { n: "Channel Divinity: Sacred Weapon / Turn the Unholy", t: "Sacred Weapon: as an action, imbue one weapon you hold — for 1 minute, add your Charisma modifier (minimum +1) to attack rolls with it, and it sheds bright light in a 20-foot radius. Turn the Unholy: as an action, each fiend or undead within 30 feet that can see or hear you must make a Wisdom save or be turned (flees, can only Dash) for 1 minute." },
+      ],
+      7: [{ n: "Aura of Devotion", t: "You and friendly creatures within 10 feet of you (30 feet at 18th level) can't be charmed while you are conscious." }],
+      15: [{ n: "Purity of Spirit", t: "You are always under the effects of a protection from evil and good spell." }],
+      20: [{ n: "Holy Nimbus", t: "As an action, emanate an aura of sunlight for 1 minute: bright light in a 30-foot radius, enemies that start their turn in it take 10 radiant damage, and you have advantage on saving throws against spells cast by fiends and undead. Once per long rest." }],
+    } },
+  "Hunter": { cls: "Ranger",
+    flavor: "Emulating the Hunter archetype means accepting your place as a bulwark between civilization and the terrors of the wilderness, honing techniques against threats from rampaging ogres and hordes of orcs to towering giants and terrifying dragons.",
+    features: {
+      3: [{ n: "Hunter's Prey", t: "Choose one: Colossus Slayer — once per turn, your weapon attack deals an extra 1d8 to a creature below its hit point maximum. Giant Killer — when a Large or larger creature within 5 feet hits or misses you, use your reaction to attack it. Horde Breaker — once per turn when you attack, make another attack with the same weapon against a different creature within 5 feet of the original target and in range." }],
+      7: [{ n: "Defensive Tactics", t: "Choose one: Escape the Horde — opportunity attacks against you have disadvantage. Multiattack Defense — after a creature hits you, its other attacks this turn take −4 (you gain +4 AC against them). Steel Will — advantage on saving throws against being frightened." }],
+      11: [{ n: "Multiattack", t: "Choose one: Volley — as an action, make a ranged attack against any number of creatures within 10 feet of a point you can see in range (ammunition and a separate roll for each). Whirlwind Attack — as an action, make a melee attack against any number of creatures within 5 feet of you (a separate roll for each)." }],
+      15: [{ n: "Superior Hunter's Defense", t: "Choose one: Evasion — a Dex save for half damage becomes no damage on a success, half on a failure. Stand Against the Tide — when a creature misses you with a melee attack, use your reaction to force it to repeat the attack against another creature of your choice. Uncanny Dodge — use your reaction to halve an attack's damage against you." }],
+    } },
+  "Thief": { cls: "Rogue",
+    flavor: "Burglars, bandits, cutpurses, and treasure seekers — thieves hone their skills in the larcenous arts, adding unmatched agility and a deep bag of tricks to the rogue's stealth and cunning.",
+    features: {
+      3: [
+        { n: "Fast Hands", t: "Your Cunning Action bonus action can also be used to make a Dexterity (Sleight of Hand) check, use thieves' tools to disarm a trap or open a lock, or take the Use an Object action." },
+        { n: "Second-Story Work", t: "Climbing no longer costs you extra movement, and your running jump distance increases by a number of feet equal to your Dexterity modifier." },
+      ],
+      9: [{ n: "Supreme Sneak", t: "You have advantage on Dexterity (Stealth) checks if you move no more than half your speed on the same turn." }],
+      13: [{ n: "Use Magic Device", t: "You ignore all class, race, and level requirements on the use of magic items." }],
+      17: [{ n: "Thief's Reflexes", t: "You can take two turns during the first round of any combat — the first at your normal initiative, the second at your initiative minus 10. (Not while surprised.)" }],
+    } },
+  "Draconic Bloodline": { cls: "Sorcerer",
+    flavor: "Your innate magic comes from draconic magic mingled with your blood — perhaps an ancient bargain, or a dragon somewhere in your ancestry whose power still echoes in you.",
+    features: {
+      1: [
+        { n: "Dragon Ancestor", t: "Choose a type of dragon as your ancestor; its associated damage type powers your later features. You can speak, read, and write Draconic, and whenever you make a Charisma check when interacting with dragons, your proficiency bonus is doubled if it applies." },
+        { n: "Draconic Resilience", t: "Your hit point maximum increases by 1 per sorcerer level. While you aren't wearing armor, dragonlike scales give you AC equal to 13 + your Dexterity modifier." },
+      ],
+      6: [{ n: "Elemental Affinity", t: "When you cast a spell that deals your ancestry's damage type, add your Charisma modifier to one damage roll of that spell. You can also spend 1 sorcery point to gain resistance to that damage type for 1 hour." }],
+      14: [{ n: "Dragon Wings", t: "As a bonus action, sprout dragon wings from your back, gaining a flying speed equal to your current speed (not while wearing armor unless it's made to accommodate them)." }],
+      18: [{ n: "Draconic Presence", t: "As an action, spend 5 sorcery points to exude an aura of awe or fear (your choice) to 60 feet for 1 minute: each hostile creature that starts its turn in the aura must succeed on a Wisdom save or be charmed (awe) or frightened (fear) until the aura ends." }],
+    } },
+  "The Fiend": { cls: "Warlock",
+    flavor: "You have made a pact with a fiend from the lower planes of existence — a being whose aims are evil, even if you strive against those aims. Such beings desire the corruption or destruction of all things, ultimately including you.",
+    features: {
+      1: [{ n: "Dark One's Blessing", t: "When you reduce a hostile creature to 0 hit points, you gain temporary hit points equal to your Charisma modifier + your warlock level (minimum of 1)." }],
+      6: [{ n: "Dark One's Own Luck", t: "When you make an ability check or a saving throw, add a d10 to the roll (after rolling, before any effects occur). Once per short or long rest." }],
+      10: [{ n: "Fiendish Resilience", t: "Choose one damage type when you finish a short or long rest: you have resistance to it until you choose another. Damage from magical or silvered weapons ignores this resistance." }],
+      14: [{ n: "Hurl Through Hell", t: "When you hit a creature with an attack, you can instantly transport it through the lower planes: it disappears and hurtles through a nightmare landscape, returning to the space it left at the end of your next turn and taking 10d10 psychic damage (unless it is a fiend). Once per long rest." }],
+    } },
+  "School of Evocation": { cls: "Wizard",
+    flavor: "You focus your study on magic that creates powerful elemental effects — bitter cold, searing flame, rolling thunder, crackling lightning, and burning acid. Evokers who serve in armies are feared as war mages.",
+    features: {
+      2: [
+        { n: "Evocation Savant", t: "The gold and time you must spend to copy an evocation spell into your spellbook is halved." },
+        { n: "Sculpt Spells", t: "When you cast an evocation spell that affects creatures you can see, choose up to 1 + the spell's level of them: they automatically succeed on their saving throws against it, and take no damage if they would normally take half on a success." },
+      ],
+      6: [{ n: "Potent Cantrip", t: "When a creature succeeds on a saving throw against your cantrip, it still takes half the cantrip's damage (but suffers no additional effect)." }],
+      10: [{ n: "Empowered Evocation", t: "Add your Intelligence modifier to one damage roll of any wizard evocation spell you cast." }],
+      14: [{ n: "Overchannel", t: "When you cast a wizard spell of 1st–5th level that deals damage, you can deal maximum damage with it. The first use is safe; each further use before a long rest deals you 2d12 necrotic damage per level of the spell (increasing by 1d12 each time), which can't be prevented or reduced in any way." }],
+    } },
+};
+/* Index subclass feature texts by stripped name so long-press works anywhere a feature is shown */
+Object.values(SUB_LORE).forEach((s) => Object.values(s.features).forEach((fx) => fx.forEach((f) => {
+  const k = baseSubName(f.n);
+  if (!FEATURE_TEXT[k]) FEATURE_TEXT[k] = f.t;
+})));
+
+/* Best-available rules text for a feature name: imported compendium text wins, then SRD text
+   (class-specific first), then the core fallbacks. */
+function featureBody(rawName, cls, customs) {
+  const name = String(rawName || "").trim();
+  const strip = baseSubName(name);
+  const ft = customs?.featureTexts || {};
+  return ft[name] || ft[strip]
+    || (cls && (FEATURE_TEXT[`${cls}:${name}`] || FEATURE_TEXT[`${cls}:${strip}`]))
+    || FEATURE_TEXT[name] || FEATURE_TEXT[strip]
+    || CORE_FEATURE_INFO[strip]
+    || (/\bfeature\b$/i.test(strip) ? "Granted by your subclass at this level — read its entry for the details." : null);
+}
+
 /* Feats available under CC-BY (SRD 5.1 + SRD 5.2 origin & fighting style feats) */
 const FEATS = [
   { name: "Grappler", desc: "Adv. on attacks vs creatures you grapple; grapple as part of Attack" },
@@ -952,6 +1230,77 @@ const CORE_FEATURE_INFO = {
   "Channel Divinity": "Channel divine energy to fuel magical effects determined by your domain or oath. Once per short or long rest (twice at higher levels).",
 };
 
+/* ============ CHOICE PREVIEWS ============ */
+/* One feature, name + full rules text — the unit of "know what you're getting". */
+function FeatureLine({ name, cls, customs }) {
+  const body = featureBody(name, cls, customs);
+  return (
+    <div style={{ marginTop: 8 }}>
+      <span {...lorePress(name)} style={{ color: T.ink, fontWeight: 700, fontSize: 13.5 }}>{name}</span>
+      {body && <div style={{ color: T.dim, fontSize: 13, lineHeight: 1.6, marginTop: 2 }}>{body}</div>}
+    </div>
+  );
+}
+
+/* Everything a subclass grants — flavor, spell lists, and every feature at every level —
+   rendered inline so the choice can be read in full before it is made. */
+function SubclassDetail({ name, cls, customs, nowLevel = 1, terrain }) {
+  const base = baseSubName(name);
+  const lore = SUB_LORE[base];
+  const custom = !lore && Object.values(customs?.subs || {}).flat().find((s) => s.name === name || s.name === base);
+  const spellName = base === "Circle of the Land" ? (terrain ? `${base} (${terrain})` : null) : name;
+  const sd = spellName ? subSpellData(spellName, cls, customs) : null;
+  const featLevels = lore
+    ? Object.entries(lore.features)
+    : custom ? Object.entries(custom.feats || {}).map(([l, names]) => [l, names.map((n) => ({ n, t: featureBody(n, cls, customs) }))]) : [];
+  if (!lore && !custom) return null;
+  return (
+    <div style={{ marginTop: 12, borderTop: `1px solid ${T.edge}`, paddingTop: 10 }}>
+      {lore?.flavor && <div style={{ color: T.ink, fontSize: 13, fontStyle: "italic", lineHeight: 1.6, opacity: 0.9 }}>{lore.flavor}</div>}
+      {base === "Circle of the Land" && !terrain && (
+        <div style={{ color: "#b48ead", fontSize: 12, marginTop: 8 }}>Each land grants its own always-prepared circle spells — choose a terrain to see them.</div>
+      )}
+      {sd && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ color: "#b48ead", fontSize: 12, fontWeight: 700 }}>{sd.label}</div>
+          {Object.entries(sd.spells).sort((a, b) => a[0] - b[0]).map(([l, arr]) => (
+            <div key={l} style={{ fontSize: 13, color: T.ink, marginTop: 3 }}>
+              <span style={{ color: T.dim }}>{cls} {l}: </span>
+              {arr.map((s, i) => <span key={s}>{i > 0 ? ", " : ""}<span {...lorePress(s)}>{s}</span></span>)}
+            </div>
+          ))}
+        </div>
+      )}
+      {featLevels.sort((a, b) => a[0] - b[0]).map(([l, fx]) => (
+        <div key={l} style={{ marginTop: 10 }}>
+          <div style={{ color: T.gold, fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase" }}>
+            {cls} level {l}{+l <= nowLevel ? <span style={{ color: T.green }}> — you gain this now</span> : ""}
+          </div>
+          {fx.map((f) => <FeatureLine key={f.n} name={f.n} cls={cls} customs={customs} />)}
+        </div>
+      ))}
+      <div style={{ color: T.dim, fontSize: 11, marginTop: 10 }}>{lore ? SRD_FOOT : "Custom content — imported feature text appears here when available."}</div>
+    </div>
+  );
+}
+
+/* What a class gives you at level 1, in full — shown under the class picker. */
+function ClassDetail({ cls, customs }) {
+  const d = CLASSES[cls];
+  return (
+    <div style={{ ...card, padding: 14, marginBottom: 14 }}>
+      <div style={{ fontFamily: "Georgia, serif", fontSize: 17 }}><ClassTag name={cls} size={16} /></div>
+      <div style={{ color: T.ink, fontSize: 13, fontStyle: "italic", marginTop: 4, opacity: 0.9 }}>{CLASS_BLURB[cls]}</div>
+      <div style={{ color: T.dim, fontSize: 12, lineHeight: 1.7, marginTop: 8 }}>
+        <span style={{ color: T.gold }}>Hit die</span> d{d.die} · <span style={{ color: T.gold }}>Saves</span> {d.saves.map((s) => s.toUpperCase()).join(" & ")} · <span style={{ color: T.gold }}>Proficiencies</span> {PROF_TEXT[cls]}
+        <br /><span style={{ color: T.gold }}>{d.subName}</span> chosen at level {d.subLvl} · <span style={{ color: T.gold }}>Skills</span> choose {d.nSkills}
+      </div>
+      <div style={{ color: T.gold, fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase", marginTop: 10 }}>At level 1 you gain</div>
+      {(d.feats[1] || []).map((f) => <FeatureLine key={f} name={f} cls={cls} customs={customs} />)}
+    </div>
+  );
+}
+
 /* Resolve a name into readable lore, searching compendium imports then built-in tables */
 function infoFor(rawName, customs) {
   const name = String(rawName || "").trim();
@@ -987,12 +1336,21 @@ function infoFor(rawName, customs) {
     const s = arr.find((x) => x.name === name || x.name === strip);
     if (s) return { title: s.name, meta: `${cls} subclass`, body: Object.entries(s.feats).map(([l, fx]) => `Level ${l}: ${fx.join(", ")}`).join("\n"), foot: "Long-press any feature name for its own entry." };
   }
+  if (SUB_LORE[strip]) {
+    const sl = SUB_LORE[strip];
+    const sd = subSpellData(strip === "Circle of the Land" ? name : strip, sl.cls, customs);
+    const lines = [sl.flavor];
+    if (sd) { lines.push(`${sd.label} — ` + Object.entries(sd.spells).sort((a, b) => a[0] - b[0]).map(([l, arr]) => `${sl.cls} ${l}: ${arr.join(", ")}`).join("; ") + "."); }
+    Object.entries(sl.features).sort((a, b) => a[0] - b[0]).forEach(([l, fx]) => fx.forEach((f) => lines.push(`Level ${l} — ${f.n}. ${f.t}`)));
+    return { title: strip, meta: `${CLASSES[sl.cls].subName} · ${sl.cls}`, body: lines.join("\n"), foot: SRD_FOOT };
+  }
   if (SUB_FEATS[strip]) return { title: strip, meta: "Subclass", body: Object.entries(SUB_FEATS[strip]).map(([l, fx]) => `Level ${l}: ${fx.join(", ")}`).join("\n") };
   const ft = customs?.featureTexts || {};
   let key = ft[name] ? name : ft[strip] ? strip : Object.keys(ft).find((k) => baseSubName(k) === strip || k.startsWith(strip + " ("));
   if (!key) { const cp = name.match(/^([^:]+):/); if (cp && ft[cp[1].trim()]) key = cp[1].trim(); }
   if (!key) key = Object.keys(ft).filter((k) => k.length > 3 && strip.startsWith(k + " ")).sort((a, b) => b.length - a.length)[0];
   if (key) return { title: strip, meta: "Feature", body: ft[key], foot: sourceOf(ft[key]) };
+  if (FEATURE_TEXT[name] || FEATURE_TEXT[strip]) return { title: strip, meta: "Feature", body: FEATURE_TEXT[name] || FEATURE_TEXT[strip], foot: SRD_FOOT };
   if (CORE_FEATURE_INFO[strip]) return { title: strip, meta: "Feature", body: CORE_FEATURE_INFO[strip] };
   return null;
 }
@@ -1454,6 +1812,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
               </div>
             ))}
           </div>
+          <ClassDetail cls={cls} customs={customs} />
           {cls === "Fighter" && (
             <div style={{ ...card, padding: 14, marginBottom: 14 }}>
               <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>Fighting Style (level 1)</div>
@@ -1470,9 +1829,14 @@ function CreateWizard({ onDone, onCancel, customs }) {
           {clsData.subLvl === 1 && (
             <div style={{ ...card, padding: 14, marginBottom: 14 }}>
               <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>{clsData.subName} (chosen at level 1)</div>
-              {allSubs(cls, customs).map((s) => (
-                <button key={s} {...lorePress(s)} style={{ ...btn(subclass === s), padding: "6px 14px" }} onClick={() => setSubclass(s)}>{s}</button>
-              ))}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {allSubs(cls, customs).map((s) => (
+                  <button key={s} {...lorePress(s)} style={{ ...btn(subclass === s), padding: "6px 14px" }} onClick={() => setSubclass(s)}>{s}</button>
+                ))}
+              </div>
+              {subclass
+                ? <SubclassDetail name={subclass} cls={cls} customs={customs} nowLevel={1} />
+                : <div style={{ color: T.dim, fontSize: 12, marginTop: 8 }}>Select one to read everything it grants — now and at every level to come.</div>}
             </div>
           )}
           <div style={{ ...card, padding: 14 }}>
@@ -1981,7 +2345,8 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
             </div>
             {pick && feats.length > 0 && (
               <div style={{ marginTop: 12, color: T.dim, fontSize: 13 }}>
-                At {pick} {newClsLevel}: <span style={{ color: T.ink }}>{feats.join(", ")}</span>
+                At {pick} {newClsLevel}: {feats.map((f, i) => <span key={f}>{i > 0 ? ", " : ""}<span {...lorePress(f)} style={{ color: T.ink }}>{f}</span></span>)}
+                <div style={{ fontSize: 11, marginTop: 4 }}>Long-press any feature to read its full rules — details follow after hit points.</div>
               </div>
             )}
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
@@ -2012,16 +2377,29 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
           <div>
             {feats.length > 0 && (
               <div style={{ ...card, background: T.panel2, borderColor: T.gold, padding: 14, marginBottom: 12 }}>
-                <div style={{ color: T.gold, fontFamily: "Georgia, serif", marginBottom: 6 }}>{pick} {newClsLevel} grants</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {feats.map((f) => <span key={f} {...lorePress(f)} style={{ background: T.panel, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "3px 10px", fontSize: 12, color: T.ink }}>{f}</span>)}
-                </div>
+                <div style={{ color: T.gold, fontFamily: "Georgia, serif", marginBottom: 2 }}>{pick} {newClsLevel} grants</div>
+                {feats.filter((f) => !(featSub && /\bfeature\b$/i.test(f))).map((f) => <FeatureLine key={f} name={f} cls={pick} customs={customs} />)}
               </div>
             )}
             {gainsSub && (
               <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
                 <div style={{ color: T.gold, marginBottom: 8 }}>{pickData.subName}</div>
-                {allSubs(pick, customs).map((s) => <button key={s} {...lorePress(s)} style={{ ...btn(newSub === s), padding: "6px 14px" }} onClick={() => setNewSub(s)}>{s}</button>)}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {allSubs(pick, customs).map((s) => <button key={s} {...lorePress(s)} style={{ ...btn(newSub === s), padding: "6px 14px" }} onClick={() => { setNewSub(s); setTerrPick(null); }}>{s}</button>)}
+                </div>
+                {gainsTerrain && (
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ color: T.gold, fontSize: 13, marginBottom: 6 }}>Choose your land — it decides your circle spells</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {Object.keys(LAND_TERRAINS).map((t) => (
+                        <button key={t} style={{ ...btn(terrPick === t), padding: "5px 10px", fontSize: 13, minHeight: 0 }} onClick={() => setTerrPick(t)}>{t}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {newSub
+                  ? <SubclassDetail name={newSub} cls={pick} customs={customs} nowLevel={newClsLevel} terrain={terrPick} />
+                  : <div style={{ color: T.dim, fontSize: 12, marginTop: 8 }}>Select one to read everything it grants — now and at every level to come.</div>}
               </div>
             )}
             {gainsASI && (
