@@ -527,7 +527,7 @@ function Die3D({ sides, final, delay, size = 68 }) {
 
 const Die = ({ sides, final, delay, size = 68 }) => <Die3D sides={sides} final={final} delay={delay} size={size} />;
 
-function DiceTray({ title, dice, dropLowest, onAccept, onReroll, acceptLabel = "Accept", note, tally, rollId = 0 }) {
+function DiceTray({ title, dice, dropLowest, onAccept, onReroll, acceptLabel = "Accept", note, tally, rollId = 0, bonus = 0, bonusLabel = "" }) {
   // dice: [{sides, value}] — values pre-rolled; tray animates the reveal
   const [revealDone, setRevealDone] = useState(false);
   useEffect(() => {
@@ -537,7 +537,7 @@ function DiceTray({ title, dice, dropLowest, onAccept, onReroll, acceptLabel = "
   }, [dice]);
   const values = dice.map((d) => d.value);
   const lowIdx = dropLowest ? values.indexOf(Math.min(...values)) : -1;
-  const total = values.reduce((s, v, i) => s + (i === lowIdx ? 0 : v), 0);
+  const total = values.reduce((s, v, i) => s + (i === lowIdx ? 0 : v), 0) + bonus;
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000000c8", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}>
       <div style={{ ...card, padding: 28, textAlign: "center", minWidth: 320, maxWidth: "92vw" }}>
@@ -558,6 +558,7 @@ function DiceTray({ title, dice, dropLowest, onAccept, onReroll, acceptLabel = "
         <div style={{ fontSize: 34, fontFamily: "Georgia, serif", color: revealDone ? T.ink : T.dim, minHeight: 44, transition: "color 300ms" }}>
           {revealDone ? total : "…"}
         </div>
+        {revealDone && bonus !== 0 && <div style={{ color: T.dim, fontSize: 13 }}>{values.join(" + ")} {fmtMod(bonus)}{bonusLabel ? ` ${bonusLabel}` : ""}</div>}
         <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 14 }}>
           {onReroll && <button style={btn(false)} onClick={onReroll}>Roll Again</button>}
           <button style={{ ...btn(true), opacity: revealDone ? 1 : 0.4 }} disabled={!revealDone} onClick={() => onAccept(total, values)}>{acceptLabel}</button>
@@ -742,6 +743,55 @@ function characterChoiceGroups(ch, customs) {
   return out;
 }
 
+/* ============ GEAR: types, sources, armor class ============ */
+const ITEM_TYPES = { LA: "Light armor", MA: "Medium armor", HA: "Heavy armor", S: "Shield", M: "Melee weapon", R: "Ranged weapon", A: "Ammunition", G: "Adventuring gear", W: "Wondrous item", P: "Potion", RG: "Ring", WD: "Wand", ST: "Staff", SC: "Scroll", RD: "Rod", "$": "Currency" };
+const DMG_TYPES = { S: "slashing", P: "piercing", B: "bludgeoning", R: "radiant", N: "necrotic", F: "fire", C: "cold", L: "lightning", T: "thunder", A: "acid", PS: "poison", PSY: "psychic", FC: "force" };
+const WEAPON_PROPS = { A: "ammunition", F: "finesse", H: "heavy", L: "light", LD: "loading", R: "reach", S: "special", T: "thrown", "2H": "two-handed", V: "versatile", M: "martial" };
+const SOURCE_ABBR = [
+  ["Player's Handbook", "PHB"], ["Xanathar's Guide", "XGtE"], ["Sword Coast Adventurer's Guide", "SCAG"], ["Tasha's Cauldron", "TCoE"],
+  ["Dungeon Master's Guide", "DMG"], ["Monster Manual", "MM"], ["Volo's Guide", "VGtM"], ["Mordenkainen's Tome", "MToF"],
+  ["Elemental Evil", "EEPC"], ["Guildmasters' Guide", "GGtR"], ["Eberron", "ERLW"], ["Explorer's Guide to Wildemount", "EGtW"],
+  ["Acquisitions Incorporated", "AI"], ["Curse of Strahd", "CoS"], ["Princes of the Apocalypse", "PotA"], ["Unearthed Arcana", "UA"], ["Wayfinder's Guide", "WGtE"],
+];
+/* Pull "Source: Player's Handbook, p. 73" out of stored rules text, abbreviated */
+function sourceOf(text) {
+  const m = (text || "").match(/Source:\s*([^\n]+)/);
+  if (!m) return null;
+  const first = m[1].split(/[;·]/)[0].trim();
+  for (const [long, abbr] of SOURCE_ABBR) if (first.includes(long)) { const p = first.match(/p\.?\s*(\d+)/); return abbr + (p ? ` p.${p[1]}` : ""); }
+  return first.length > 28 ? first.slice(0, 28) + "…" : first;
+}
+const findItem = (name, customs) => (customs?.items || []).find((x) => x.name === name);
+const isArmorType = (t) => ["LA", "MA", "HA"].includes(t);
+const isWeaponType = (t) => ["M", "R"].includes(t);
+const equippedOf = (ch) => (ch.inventory || []).filter((r) => r.equipped);
+
+/* Armor Class from equipped gear + class features, with a readable breakdown */
+function armorClass(ch, customs) {
+  const dex = mod(ch.abilities.dex);
+  const inv = equippedOf(ch).map((r) => findItem(r.name, customs)).filter(Boolean);
+  const armor = inv.find((x) => isArmorType(x.type));
+  const shield = inv.find((x) => x.type === "S");
+  const parts = [];
+  let ac;
+  if (armor) {
+    if (armor.type === "HA") { ac = armor.ac; parts.push(`${armor.name} ${armor.ac}`); }
+    else if (armor.type === "MA") { ac = armor.ac + Math.min(2, dex); parts.push(`${armor.name} ${armor.ac}`, `Dex ${fmtMod(Math.min(2, dex))} (max +2)`); }
+    else { ac = armor.ac + dex; parts.push(`${armor.name} ${armor.ac}`, `Dex ${fmtMod(dex)}`); }
+  } else {
+    const barb = ch.classes.some((c) => c.name === "Barbarian");
+    const monk = ch.classes.some((c) => c.name === "Monk");
+    const draconic = ch.classes.some((c) => baseSubName(c.subclass || "") === "Draconic Bloodline");
+    if (monk && !shield) { ac = 10 + dex + mod(ch.abilities.wis); parts.push("Unarmored Defense 10", `Dex ${fmtMod(dex)}`, `Wis ${fmtMod(mod(ch.abilities.wis))}`); }
+    else if (barb) { ac = 10 + dex + mod(ch.abilities.con); parts.push("Unarmored Defense 10", `Dex ${fmtMod(dex)}`, `Con ${fmtMod(mod(ch.abilities.con))}`); }
+    else if (draconic) { ac = 13 + dex; parts.push("Draconic Resilience 13", `Dex ${fmtMod(dex)}`); }
+    else { ac = 10 + dex; parts.push("Unarmored 10", `Dex ${fmtMod(dex)}`); }
+  }
+  if (shield) { ac += shield.ac || 2; parts.push(`${shield.name} +${shield.ac || 2}`); }
+  if (armor && (ch.styles || []).includes("Defense")) { ac += 1; parts.push("Defense style +1"); }
+  return { ac, parts, armor, shield };
+}
+
 /* ============ LORE LIBRARY (long-press anything to read it) ============ */
 const LANG_INFO = {
   Common: "The trade tongue of humans, spoken nearly everywhere. Script: Common.",
@@ -857,8 +907,17 @@ function infoFor(rawName, customs) {
   if (sp) return {
     title: sp.name,
     meta: [sp.level === 0 ? "Cantrip" : `Level ${sp.level}`, schoolName(sp.school), sp.time && `Cast: ${sp.time}`, sp.range && `Range: ${sp.range}`, sp.components && `Components: ${sp.components}`, sp.duration && `Duration: ${sp.duration}`].filter(Boolean).join(" · "),
-    body: sp.text || null, foot: sp.classes ? `Classes: ${sp.classes}` : null,
+    body: sp.text || null, foot: [sourceOf(sp.text), sp.classes ? `Classes: ${sp.classes}` : null].filter(Boolean).join(" · ") || null,
   };
+  const item = (customs?.items || []).find((x) => x.name === name || x.name === strip);
+  if (item) {
+    const props = (item.property || "").split(",").map((p) => WEAPON_PROPS[p.trim()] || p.trim()).filter(Boolean).join(", ");
+    return {
+      title: item.name,
+      meta: [ITEM_TYPES[item.type] || item.type, item.ac ? `AC ${item.type === "S" ? "+" : ""}${item.ac}` : "", item.dmg1 ? `${item.dmg1}${item.dmg2 ? ` (${item.dmg2} versatile)` : ""} ${DMG_TYPES[item.dmgType] || item.dmgType || ""}` : "", props, item.range ? `Range ${item.range}` : "", item.strReq ? `Str ${item.strReq} required` : "", item.stealthDis ? "Stealth disadvantage" : "", item.weight ? `${item.weight} lb` : "", item.value ? `${item.value} gp` : ""].filter(Boolean).join(" · "),
+      body: item.text || null, foot: sourceOf(item.text),
+    };
+  }
   const inv = INVOCATION_DATA.find(([n]) => n === name || n === strip);
   if (inv) return { title: inv[0], meta: ["Eldritch Invocation", inv[1] > 0 ? `requires warlock ${inv[1]}` : "", inv[2] ? `requires ${inv[2]}` : ""].filter(Boolean).join(" · "), body: INVOCATION_INFO[inv[0]] || null };
   if (METAMAGIC_INFO[name]) return { title: name, meta: "Metamagic", body: METAMAGIC_INFO[name] };
@@ -879,7 +938,7 @@ function infoFor(rawName, customs) {
   let key = ft[name] ? name : ft[strip] ? strip : Object.keys(ft).find((k) => baseSubName(k) === strip || k.startsWith(strip + " ("));
   if (!key) { const cp = name.match(/^([^:]+):/); if (cp && ft[cp[1].trim()]) key = cp[1].trim(); }
   if (!key) key = Object.keys(ft).filter((k) => k.length > 3 && strip.startsWith(k + " ")).sort((a, b) => b.length - a.length)[0];
-  if (key) return { title: strip, meta: "Feature", body: ft[key] };
+  if (key) return { title: strip, meta: "Feature", body: ft[key], foot: sourceOf(ft[key]) };
   if (CORE_FEATURE_INFO[strip]) return { title: strip, meta: "Feature", body: CORE_FEATURE_INFO[strip] };
   return null;
 }
@@ -941,7 +1000,7 @@ async function saveChars(chars) {
 
 /* ============ CUSTOM (HOMEBREW) CONTENT ============ */
 const CKEY = "dnd-custom-content-v1";
-const EMPTY_CUSTOM = { subs: {}, feats: [], spells: [], featureTexts: {} };
+const EMPTY_CUSTOM = { subs: {}, feats: [], spells: [], items: [], featureTexts: {} };
 async function loadCustom() {
   try { const r = await window.storage.get(CKEY); return r ? JSON.parse(r.value) : EMPTY_CUSTOM; } catch { return EMPTY_CUSTOM; }
 }
@@ -1507,13 +1566,19 @@ function CreateWizard({ onDone, onCancel, customs }) {
   );
 }
 
+/* exact match first, then prefix, then substring */
+const searchRank = (name, q) => {
+  const n = name.toLowerCase(), s = q.toLowerCase();
+  return n === s ? 0 : n.startsWith(s) ? 1 : 2;
+};
 const SCHOOL_NAMES = { A: "Abjuration", C: "Conjuration", D: "Divination", EN: "Enchantment", EV: "Evocation", I: "Illusion", N: "Necromancy", T: "Transmutation" };
 const schoolName = (s) => SCHOOL_NAMES[(s || "").toUpperCase()] || s;
 
 /* Searchable multi-pick list used by the level-up flow for cantrips, spells, and arcanum */
 function SpellPickGrid({ options, picks, cap, onChange, placeholder = "Search spells…" }) {
   const [q, setQ] = useState("");
-  const shown = options.filter((sp) => !picks.includes(sp.name) && sp.name.toLowerCase().includes(q.toLowerCase()));
+  const shown = options.filter((sp) => !picks.includes(sp.name) && sp.name.toLowerCase().includes(q.toLowerCase()))
+    .sort((a, b) => searchRank(a.name, q) - searchRank(b.name, q));
   return (
     <div>
       {picks.length > 0 && (
@@ -1534,7 +1599,7 @@ function SpellPickGrid({ options, picks, cap, onChange, placeholder = "Search sp
               <div key={sp.name} {...lorePress(sp.name)} onClick={() => onChange([...picks, sp.name])}
                 style={{ padding: "8px 10px", borderBottom: `1px solid ${T.edge}`, cursor: "pointer" }}>
                 <span style={{ color: T.ink }}>{sp.name}</span>
-                <span style={{ color: T.dim, fontSize: 12 }}> · {sp.level === 0 ? "cantrip" : `level ${sp.level}`}{sp.school ? ` · ${schoolName(sp.school)}` : ""}</span>
+                <span style={{ color: T.dim, fontSize: 12 }}> · {sp.level === 0 ? "cantrip" : `level ${sp.level}`}{sp.school ? ` · ${schoolName(sp.school)}` : ""}{sourceOf(sp.text) ? ` · ${sourceOf(sp.text)}` : ""}</span>
               </div>
             ))}
             {shown.length === 0 && <div style={{ padding: "8px 10px", color: T.dim, fontSize: 13 }}>Nothing matches.</div>}
@@ -2191,6 +2256,92 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
 }
 
 /* ============ GRIMOIRE (SPELL MANAGEMENT) ============ */
+/* ============ INVENTORY & EQUIPMENT ============ */
+function InventoryCard({ ch, customs, onUpdate }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [freeText, setFreeText] = useState("");
+  const inv = ch.inventory || [];
+  const pool = customs?.items || [];
+  const save = (rows) => onUpdate({ inventory: rows });
+  const totalWeight = inv.reduce((s, r) => s + ((findItem(r.name, customs)?.weight || 0) * (r.qty || 1)), 0);
+  const capacity = ch.abilities.str * 15;
+  const equip = (row) => {
+    const it = findItem(row.name, customs);
+    save(inv.map((r) => {
+      if (r.name === row.name) return { ...r, equipped: !r.equipped };
+      if (!it || !r.equipped) return r;
+      const other = findItem(r.name, customs);
+      // one suit of armor, one shield at a time
+      if (other && ((isArmorType(it.type) && isArmorType(other.type)) || (it.type === "S" && other.type === "S"))) return { ...r, equipped: false };
+      return r;
+    }));
+  };
+  const shown = pool.filter((x) => x.name.toLowerCase().includes(q.toLowerCase()))
+    .sort((a, b) => searchRank(a.name, q) - searchRank(b.name, q) || a.name.localeCompare(b.name)).slice(0, 60);
+  return (
+    <div style={{ ...card, padding: 16, marginTop: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
+        <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17 }}>Inventory</div>
+        <div style={{ color: totalWeight > capacity ? T.blood : T.dim, fontSize: 12 }}>{totalWeight.toFixed(0)} / {capacity} lb{totalWeight > capacity ? " — over capacity!" : ""}</div>
+      </div>
+      {inv.length === 0 && <div style={{ color: T.dim, fontSize: 13, margin: "8px 0" }}>Empty packs win no battles. Add gear below — equip armor, shields, and weapons to power your AC and attack buttons.</div>}
+      {inv.map((row) => {
+        const it = findItem(row.name, customs);
+        const equippable = it && (isArmorType(it.type) || it.type === "S" || isWeaponType(it.type));
+        return (
+          <div key={row.name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${T.edge}`, flexWrap: "wrap" }}>
+            <span {...lorePress(row.name)} style={{ color: row.equipped ? T.gold : T.ink, fontWeight: row.equipped ? 700 : 400, flex: 1, minWidth: 120 }}>
+              {row.name}
+              <span style={{ color: T.dim, fontWeight: 400, fontSize: 11 }}> {it ? `· ${ITEM_TYPES[it.type] || it.type}${it.ac ? ` · AC ${it.type === "S" ? "+" : ""}${it.ac}` : ""}${it.dmg1 ? ` · ${it.dmg1}` : ""}${it.weight ? ` · ${it.weight} lb` : ""}` : ""}</span>
+            </span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: T.dim, fontSize: 13 }}>
+              <button style={{ ...btn(false), padding: "1px 8px", minHeight: 0, fontSize: 13 }} onClick={() => save(inv.map((r) => (r.name === row.name ? { ...r, qty: Math.max(1, (r.qty || 1) - 1) } : r)))}>−</button>
+              {row.qty || 1}
+              <button style={{ ...btn(false), padding: "1px 8px", minHeight: 0, fontSize: 13 }} onClick={() => save(inv.map((r) => (r.name === row.name ? { ...r, qty: (r.qty || 1) + 1 } : r)))}>＋</button>
+            </span>
+            {equippable && (
+              <button style={{ ...btn(!!row.equipped), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => equip(row)}>
+                {row.equipped ? "✓ Equipped" : "Equip"}
+              </button>
+            )}
+            <span style={{ color: T.blood, cursor: "pointer", fontWeight: 700, padding: "0 4px" }} onClick={() => save(inv.filter((r) => r.name !== row.name))}>✕</span>
+          </div>
+        );
+      })}
+      <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {pool.length > 0 && <button style={{ ...btn(true), padding: "6px 14px" }} onClick={() => { setOpen(true); setQ(""); }}>＋ Add from compendium</button>}
+        <input value={freeText} onChange={(e) => setFreeText(e.target.value)} placeholder="or type any item + Enter"
+          onKeyDown={(e) => { if (e.key === "Enter" && freeText.trim() && !inv.some((r) => r.name === freeText.trim())) { save([...inv, { name: freeText.trim(), qty: 1 }]); setFreeText(""); } }}
+          style={{ background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "6px 10px", fontSize: 13, flex: 1, minWidth: 160 }} />
+      </div>
+      {open && (
+        <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={() => setOpen(false)}>
+          <div style={{ ...card, width: "min(560px, 100%)", maxHeight: "75vh", display: "flex", flexDirection: "column", borderRadius: "16px 16px 0 0", padding: 16, paddingBottom: "calc(16px + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ color: T.gold, fontFamily: "Georgia, serif", marginBottom: 8 }}>Add gear <span style={{ color: T.dim, fontSize: 12 }}>· long-press to inspect first</span></div>
+            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search items…"
+              style={{ background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 16, marginBottom: 10 }} />
+            <div style={{ overflowY: "auto" }}>
+              {shown.map((it) => (
+                <div key={it.name} {...lorePress(it.name)} onClick={() => {
+                  const has = inv.find((r) => r.name === it.name);
+                  save(has ? inv.map((r) => (r.name === it.name ? { ...r, qty: (r.qty || 1) + 1 } : r)) : [...inv, { name: it.name, qty: 1 }]);
+                  setOpen(false);
+                }} style={{ padding: "10px 8px", borderBottom: `1px solid ${T.edge}`, cursor: "pointer" }}>
+                  <span style={{ color: T.ink }}>{it.name}</span>
+                  <span style={{ color: T.dim, fontSize: 12 }}> · {ITEM_TYPES[it.type] || it.type}{it.ac ? ` · AC ${it.type === "S" ? "+" : ""}${it.ac}` : ""}{it.dmg1 ? ` · ${it.dmg1} ${DMG_TYPES[it.dmgType] || ""}` : ""}{it.value ? ` · ${it.value} gp` : ""}{sourceOf(it.text) ? ` · ${sourceOf(it.text)}` : ""}</span>
+                </div>
+              ))}
+              {shown.length === 0 && <div style={{ color: T.dim, fontSize: 13, padding: 8 }}>Nothing matches.</div>}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============ INVOCATIONS (sheet management) ============ */
 function InvocationManager({ ch, onInvocations }) {
   const wl = ch.classes.find((c) => c.name === "Warlock");
   const [open, setOpen] = useState(false);
@@ -2278,7 +2429,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate }) {
       .filter((sp) => (kind === "cantrips" ? sp.level === 0 : kind === "arcanum" ? sp.level === arcLvl : sp.level >= 1 && sp.level <= maxLvl))
       .filter((sp) => !taken.includes(sp.name))
       .filter((sp) => sp.name.toLowerCase().includes(q.toLowerCase()))
-      .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+      .sort((a, b) => (q ? searchRank(a.name, q) - searchRank(b.name, q) : 0) || a.level - b.level || a.name.localeCompare(b.name));
   };
   const setList = (clsName, kind, arr) =>
     onSpells({ ...book, [clsName]: { cantrips: [], spells: [], ...(book[clsName] || {}), [kind]: arr } });
@@ -2542,6 +2693,29 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     ];
   };
   const rollIt = (title, parts, kind, abil, proficient) => setRollSpec({ title, parts, kind, abil, proficient });
+  const acInfo = armorClass(ch, customs);
+  const [dmgRoll, setDmgRoll] = useState(null); // { title, dice, bonus, bonusLabel, note }
+  const weaponAbility = (it) => {
+    const props = (it.property || "").split(",").map((x) => x.trim());
+    if (it.type === "R") return "dex";
+    if (props.includes("F")) return mod(ch.abilities.dex) > mod(ch.abilities.str) ? "dex" : "str";
+    return "str";
+  };
+  const rollWeaponDamage = (it) => {
+    const m = (it.dmg1 || "1d4").match(/(\d+)d(\d+)/);
+    if (!m) return;
+    const abil = weaponAbility(it);
+    const props = (it.property || "").split(",").map((x) => x.trim());
+    const dueling = (ch.styles || []).includes("Dueling") && it.type === "M" && !props.includes("2H") ? 2 : 0;
+    const bonus = mod(ch.abilities[abil]) + dueling;
+    setDmgRoll({
+      title: `${it.name} damage`,
+      dice: Array.from({ length: +m[1] }, () => ({ sides: +m[2], value: roll(+m[2]) })),
+      bonus, bonusLabel: `${ABIL_NAMES[abil]}${dueling ? " + Dueling" : ""}`,
+      note: `${DMG_TYPES[it.dmgType] || "damage"}${it.dmg2 ? ` · versatile: ${it.dmg2} two-handed` : ""}${(ch.styles || []).includes("Great Weapon Fighting") && props.includes("2H") ? " · GWF: you may reroll 1s and 2s" : ""}`,
+    });
+  };
+  const equippedWeapons = equippedOf(ch).map((r) => findItem(r.name, customs)).filter((x) => x && isWeaponType(x.type));
   const casterClasses = ch.classes.filter((c) => CLASSES[c.name].caster);
   const attackRolls = [
     { icon: "sword", label: "Melee", abil: "str", parts: [{ label: "Strength", value: mod(ch.abilities.str) }, { label: "proficiency", value: pb }] },
@@ -2593,6 +2767,11 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
 
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginTop: 14 }}>
+        <div style={{ ...card, padding: 12, textAlign: "center", borderColor: "#4a5568" }} title={acInfo.parts.join(" + ")}>
+          <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Armor Class</div>
+          <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: T.ink }}><Icon name="shield" size={16} style={{ marginRight: 4 }} />{acInfo.ac}</div>
+          <div style={{ color: T.dim, fontSize: 10, lineHeight: 1.4 }}>{acInfo.parts.join(" + ")}</div>
+        </div>
         <div style={{ ...card, padding: 12, textAlign: "center" }}>
           <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Hit Points</div>
           <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: hpColor }}>{curHp}<span style={{ fontSize: 15, color: T.dim }}> / {ch.maxHp}</span></div>
@@ -2659,10 +2838,35 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
             </button>
           ))}
         </div>
+        {equippedWeapons.length > 0 && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+            {equippedWeapons.map((it) => {
+              const abil = weaponAbility(it);
+              const atkParts = [{ label: ABIL_NAMES[abil], value: mod(ch.abilities[abil]) }, { label: "proficiency", value: pb }, ...(it.type === "R" && feats.archery ? [{ label: "Archery", value: feats.archery }] : [])];
+              const atkMod = atkParts.reduce((s, p) => s + p.value, 0);
+              const props = (it.property || "").split(",").map((x) => x.trim());
+              const dmgBonus = mod(ch.abilities[abil]) + ((ch.styles || []).includes("Dueling") && it.type === "M" && !props.includes("2H") ? 2 : 0);
+              return (
+                <span key={it.name} style={{ display: "inline-flex", border: `1px solid ${T.edge}`, borderRadius: 10, overflow: "hidden" }}>
+                  <button {...lorePress(it.name)} style={{ ...btn(false), border: "none", borderRadius: 0, padding: "8px 12px" }}
+                    onClick={() => rollIt(`${it.name} attack`, atkParts, "attack", abil)}>
+                    <Icon name={it.type === "R" ? "bow" : "sword"} /> {it.name} {fmtMod(atkMod)}
+                  </button>
+                  <button style={{ ...btn(false), border: "none", borderLeft: `1px solid ${T.edge}`, borderRadius: 0, padding: "8px 12px", color: T.blood }}
+                    onClick={() => rollWeaponDamage(it)}>
+                    {it.dmg1 || "—"}{dmgBonus ? fmtMod(dmgBonus) : ""}
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
         <div style={{ color: T.dim, fontSize: 11, marginTop: 8 }}>
-          {feats.critRange < 20 ? `Champion: attacks crit on ${feats.critRange}–20 · ` : ""}{feats.archery ? "Archery: +2 to ranged attacks · " : ""}{feats.lucky ? "Lucky: natural 1s reroll themselves · " : ""}the toggle applies to every roll — attacks, saves, checks, and skills
+          {feats.critRange < 20 ? `Champion: attacks crit on ${feats.critRange}–20 · ` : ""}{feats.archery ? "Archery: +2 to ranged attacks · " : ""}{feats.lucky ? "Lucky: natural 1s reroll themselves · " : ""}the toggle applies to every roll — attacks, saves, checks, and skills{equippedWeapons.length ? " · weapon buttons: left rolls to-hit, right rolls damage" : " · equip weapons in your Inventory for attack & damage buttons"}
         </div>
       </div>
+
+      <InventoryCard ch={ch} customs={customs} onUpdate={onUpdate} />
 
       {(slots || pact) && (
         <div style={{ ...card, padding: 16, marginTop: 14 }}>
@@ -2734,14 +2938,20 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         {ch.classes.map((c) => (
           <div key={c.name} style={{ marginBottom: 10 }}>
             <div style={{ color: T.ink, fontWeight: 700 }}><ClassTag name={c.name} /> {c.level}{c.subclass ? <> — <span {...lorePress(c.subclass)}>{c.subclass}</span></> : ""}</div>
-            <div style={{ color: T.dim, fontSize: 13, lineHeight: 1.7 }}>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6 }}>
               {(() => {
+                const themed = (CLASS_THEMES[c.name] || {}).color || T.gold;
                 const items = Array.from({ length: c.level }, (_, i) => i + 1)
                   .flatMap((l) => (CLASSES[c.name].feats[l] || [])
                     .filter((f) => !(c.subclass && /\bfeature\b$/i.test(f)))
                     .concat(allSubFeats(c.subclass, l, customs))
-                    .concat(CLASSES[c.name].asi.includes(l) ? [ASI] : []));
-                return items.length ? items.map((f, i) => <span key={i} {...lorePress(f)}>{i > 0 ? " · " : ""}{f}</span>) : "—";
+                    .concat(CLASSES[c.name].asi.includes(l) ? [ASI] : [])
+                    .map((f) => ({ l, f })));
+                return items.length ? items.map(({ l, f }, i) => (
+                  <span key={i} {...lorePress(f)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel2, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "3px 9px", fontSize: 12.5, color: T.ink }}>
+                    <span style={{ color: themed, fontSize: 10.5, fontWeight: 700, opacity: 0.9 }}>{l}</span>{f}
+                  </span>
+                )) : <span style={{ color: T.dim }}>—</span>;
               })()}
               {c.name === "Rogue" && <span style={{ color: T.gold }}> · Sneak Attack {Math.ceil(c.level / 2)}d6</span>}
               {c.name === "Warlock" && INVOCATIONS(c.level) > 0 && <span style={{ color: "#b48ead" }}> · Invocations known: {INVOCATIONS(c.level)}</span>}
@@ -2806,6 +3016,10 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         <RollTray key={JSON.stringify(rollSpec) + advMode} title={rollSpec.title} mode={advMode} parts={rollSpec.parts}
           kind={rollSpec.kind} abil={rollSpec.abil} proficient={rollSpec.proficient} ch={ch} onClose={() => setRollSpec(null)} />
       )}
+      {dmgRoll && (
+        <DiceTray title={dmgRoll.title} dice={dmgRoll.dice} note={dmgRoll.note} bonus={dmgRoll.bonus} bonusLabel={dmgRoll.bonusLabel}
+          acceptLabel="Done" onAccept={() => setDmgRoll(null)} />
+      )}
     </div>
   );
 }
@@ -2816,7 +3030,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
 function parseCompendiumXML(text) {
   const doc = new DOMParser().parseFromString(text, "text/xml");
   if (doc.querySelector("parsererror")) throw new Error("Not valid XML");
-  const out = { subs: {}, feats: [], spells: [], skippedClasses: [], featureTexts: {} };
+  const out = { subs: {}, feats: [], spells: [], skippedClasses: [], featureTexts: {}, items: [] };
   const splitColon = (x) => { const m = x.match(/^([^:]+):\s*(.+)$/); return m ? [m[1].trim(), m[2].trim()] : null; };
   const splitParen = (x) => { const m = x.match(/^(.+?)\s*\(([^()]+)\)$/); return m ? [m[1].trim(), m[2].trim()] : null; };
 
@@ -2886,6 +3100,18 @@ function parseCompendiumXML(text) {
     out.spells.push({ name, level, school: grab("school"), classes: grab("classes"), time: grab("time"), range: grab("range"), components: grab("components"), duration: grab("duration"), ritual: /^y/i.test(grab("ritual")), text });
   });
 
+  doc.querySelectorAll("compendium > item").forEach((it) => {
+    const name = it.querySelector(":scope > name")?.textContent?.trim();
+    if (!name) return;
+    const grab = (tag) => it.querySelector(`:scope > ${tag}`)?.textContent?.trim() || "";
+    const text = [...it.querySelectorAll(":scope > text")].map((t) => t.textContent).join("\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, 1500);
+    out.items.push({
+      name, type: grab("type"), weight: +grab("weight") || 0, value: grab("value"),
+      ac: +grab("ac") || 0, strReq: +grab("strength") || 0, stealthDis: grab("stealth") === "1",
+      dmg1: grab("dmg1"), dmg2: grab("dmg2"), dmgType: grab("dmgType"), property: grab("property"), range: grab("range"), text,
+    });
+  });
+
   doc.querySelectorAll("compendium > feat").forEach((fe) => {
     const name = fe.querySelector(":scope > name")?.textContent?.trim();
     if (!name) return;
@@ -2925,6 +3151,8 @@ function HomebrewForge({ customs, onSave, onBack }) {
         res.feats = res.feats.filter((f) => !oldFeats.has(f.name) || (f.text && !oldFeats.get(f.name).text));
         const oldSpells = new Map((customs.spells || []).map((x) => [x.name, x]));
         res.spells = res.spells.filter((x) => !oldSpells.has(x.name) || (x.text && !oldSpells.get(x.name).text) || oldSpells.get(x.name).ritual === undefined);
+        const oldItems = new Set((customs.items || []).map((x) => x.name));
+        res.items = res.items.filter((x) => !oldItems.has(x.name));
         setParsed(res);
       } catch (err) { setImportErr(err.message || "Could not parse this file"); }
     };
@@ -2940,7 +3168,7 @@ function HomebrewForge({ customs, onSave, onBack }) {
     const feats = [...customs.feats.map((f) => inFeats.get(f.name) || f), ...parsed.feats.filter((f) => !customs.feats.some((o) => o.name === f.name))];
     const inSpells = new Map(parsed.spells.map((x) => [x.name, x]));
     const spells = [...(customs.spells || []).map((s) => inSpells.get(s.name) || s), ...parsed.spells.filter((x) => !(customs.spells || []).some((o) => o.name === x.name))];
-    onSave({ subs, feats, spells, featureTexts: { ...(customs.featureTexts || {}), ...parsed.featureTexts } });
+    onSave({ subs, feats, spells, items: [...(customs.items || []), ...parsed.items], featureTexts: { ...(customs.featureTexts || {}), ...parsed.featureTexts } });
     setParsed(null);
   };
   const [importText, setImportText] = useState("");
@@ -3026,10 +3254,10 @@ function HomebrewForge({ customs, onSave, onBack }) {
                 {Object.entries(parsed.subs).map(([c, arr]) => (
                   <div key={c} style={{ color: T.ink, fontSize: 13 }}>{c}: {arr.map((x) => x.name).join(", ")}</div>
                 ))}
-                <div style={{ color: T.ink, fontSize: 13, marginTop: 4 }}>{parsed.feats.length} new feats · {parsed.spells.length} new spells</div>
+                <div style={{ color: T.ink, fontSize: 13, marginTop: 4 }}>{parsed.feats.length} new feats · {parsed.spells.length} new spells · {(parsed.items || []).length} new items</div>
                 {parsed.skippedClasses?.length > 0 && <div style={{ color: T.dim, fontSize: 12, marginTop: 4 }}>Skipped unknown base classes (not yet supported): {parsed.skippedClasses.join(", ")}</div>}
-                {Object.keys(parsed.subs).length === 0 && parsed.feats.length === 0 && parsed.spells.length === 0 && <div style={{ color: T.dim, fontSize: 13 }}>Nothing new found — everything in this file already exists here, or no recognizable classes/feats were present.</div>}
-                {(Object.keys(parsed.subs).length > 0 || parsed.feats.length > 0 || parsed.spells.length > 0) && (
+                {Object.keys(parsed.subs).length === 0 && parsed.feats.length === 0 && parsed.spells.length === 0 && (parsed.items || []).length === 0 && <div style={{ color: T.dim, fontSize: 13 }}>Nothing new found — everything in this file already exists here, or no recognizable classes/feats were present.</div>}
+                {(Object.keys(parsed.subs).length > 0 || parsed.feats.length > 0 || parsed.spells.length > 0 || (parsed.items || []).length > 0) && (
                   <button style={{ ...btn(true), marginTop: 10 }} onClick={doImport}>Import All</button>
                 )}
               </div>
