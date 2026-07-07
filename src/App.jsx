@@ -796,6 +796,15 @@ const BOON_INFO = {
   "Pact of the Tome": "Your patron grants a Book of Shadows containing three cantrips from any class's list — you can cast them at will.",
 };
 
+const CORE_FEATURE_INFO = {
+  "Pact Magic": "Your patron grants you spell slots unlike anyone else's. You have a small number of slots (shown as the purple Pact diamonds), and every one of them is cast at the same level — the highest you can manage. You regain ALL expended pact slots on a SHORT rest, not just a long one. Any leveled warlock spell you know is cast using a pact slot; your cantrips cost nothing and are cast at will.",
+  "Spellcasting": "You can cast spells of this class using its spell slots. Cantrips are cast at will without slots. See your Grimoire below for known/prepared spells and the Spell Slots card to track expenditure.",
+  "Eldritch Invocations": "Fragments of forbidden knowledge that grant a permanent magical ability. You learn two at 2nd level and more as you level (shown on your sheet under Eldritch Invocations), and may swap one out whenever you gain a warlock level.",
+  "Mystic Arcanum": "Your patron grants a single spell of 6th level (then 7th, 8th, and 9th at higher levels) that you can cast once per long rest without a spell slot.",
+  "Pact Boon": "At 3rd level your patron grants a gift: Pact of the Blade (a summonable weapon), Pact of the Chain (an improved familiar), or Pact of the Tome (a Book of Shadows with three any-class cantrips).",
+  "Channel Divinity": "Channel divine energy to fuel magical effects determined by your domain or oath. Once per short or long rest (twice at higher levels).",
+};
+
 /* Resolve a name into readable lore, searching compendium imports then built-in tables */
 function infoFor(rawName, customs) {
   const name = String(rawName || "").trim();
@@ -826,6 +835,7 @@ function infoFor(rawName, customs) {
   let key = ft[name] ? name : ft[strip] ? strip : Object.keys(ft).find((k) => baseSubName(k) === strip || k.startsWith(strip + " ("));
   if (!key) { const cp = name.match(/^([^:]+):/); if (cp && ft[cp[1].trim()]) key = cp[1].trim(); }
   if (key) return { title: strip, meta: "Feature", body: ft[key] };
+  if (CORE_FEATURE_INFO[strip]) return { title: strip, meta: "Feature", body: CORE_FEATURE_INFO[strip] };
   return null;
 }
 
@@ -2850,7 +2860,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           )}
           {pact && (
             <div style={{ marginTop: slots ? 12 : 0, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <div style={{ textAlign: "center", padding: "8px 12px", background: T.panel2, borderRadius: 8, border: `1px solid #b48ead55` }}>
+              <div {...lorePress("Pact Magic")} style={{ textAlign: "center", padding: "8px 12px", background: T.panel2, borderRadius: 8, border: `1px solid #b48ead55` }}>
                 <div style={{ color: "#b48ead", fontSize: 11 }}>Pact · level {pact.lvl}</div>
                 <div>
                   {Array.from({ length: pact.n }, (_, j) => (
@@ -2861,7 +2871,15 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
                   ))}
                 </div>
               </div>
-              <div style={{ color: "#b48ead", fontSize: 13 }}>Pact Magic is separate from spell slots · recharges on short rest</div>
+              <div style={{ color: "#b48ead", fontSize: 13 }}>
+                <span {...lorePress("Pact Magic")} style={{ textDecoration: "underline dotted", cursor: "help" }}>Pact Magic</span> is separate from spell slots · all pact slots recharge on a short rest
+                <div style={{ color: T.dim, fontSize: 12, marginTop: 4 }}>
+                  {(ch.spells?.Warlock?.spells || []).length > 0
+                    ? <>Cast with pact slots (always at level {pact.lvl}): {(ch.spells?.Warlock?.spells || []).map((n, i) => <span key={n} {...lorePress(n)} style={{ color: T.ink }}>{i > 0 ? ", " : ""}{n}</span>)}</>
+                    : "No warlock spells known yet — add them in the Grimoire below to have something to cast with these slots."}
+                  {(ch.spells?.Warlock?.cantrips || []).length > 0 && <> · cantrips are cast at will: {(ch.spells?.Warlock?.cantrips || []).map((n, i) => <span key={n} {...lorePress(n)} style={{ color: T.ink }}>{i > 0 ? ", " : ""}{n}</span>)}</>}
+                </div>
+              </div>
               {arcLevels.map((aLvl) => (
                 <div key={aLvl} style={{ textAlign: "center", padding: "8px 12px", background: T.panel2, borderRadius: 8, border: `1px solid #b48ead55` }}>
                   <div style={{ color: "#b48ead", fontSize: 11 }}>Arcanum {aLvl}th · {arcanum[aLvl]}</div>
