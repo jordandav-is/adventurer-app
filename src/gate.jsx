@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { GATE_SALT, GATE_HASH } from "./gate-config.js";
+import { GATE_SALT, GATE_HASH, GATE_ITERATIONS } from "./gate-config.js";
 
 /* A client-side passphrase gate in the ledger's livery. Unlocking is
    remembered per device in localStorage, so the home-screen app only asks
@@ -10,9 +10,25 @@ import { GATE_SALT, GATE_HASH } from "./gate-config.js";
 const UNLOCK_KEY = "ledger-gate-unlock";
 
 async function hashPhrase(phrase) {
-  const data = new TextEncoder().encode(`${GATE_SALT}:${phrase.trim()}`);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest))
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(phrase.trim()),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      hash: "SHA-256",
+      salt: enc.encode(GATE_SALT),
+      iterations: GATE_ITERATIONS,
+    },
+    key,
+    256
+  );
+  return Array.from(new Uint8Array(bits))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }

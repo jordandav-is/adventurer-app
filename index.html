@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+    <!-- Lock the app to its own origin: no external scripts, no exfiltration
+         targets. Inline styles allowed (React style attributes and the boot
+         <style> below). -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'" />
     <title>The Adventurer's Ledger</title>
     <meta name="description" content="5e SRD character forge — full multiclass rules, live play tracking" />
     <meta name="theme-color" content="#141210" />
