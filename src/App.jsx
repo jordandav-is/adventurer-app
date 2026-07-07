@@ -323,77 +323,143 @@ const btn = (primary) => ({
   border: primary ? `1px solid ${T.blood}` : `1px solid ${T.gold}`, fontFamily: "Georgia, serif",
 });
 
-/* ============ ANIMATED DICE ============ */
-const CUBE_LAND = { 1: [0, 0], 2: [-90, 0], 3: [0, -90], 4: [0, 90], 5: [90, 0], 6: [0, 180] };
+/* ============ ANIMATED 3D DICE ============ */
+/* Real polyhedra — tetrahedron, cube, octahedron, pentagonal trapezohedron,
+   dodecahedron, icosahedron — built from vertex hulls and rendered as CSS
+   matrix3d faces. The inner wrapper statically orients the rolled face toward
+   the viewer with its number upright; the outer wrapper's tumble animation
+   ends at identity, so the die spins wildly and lands exactly on the roll. */
+const V3 = {
+  sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
+  scale: (a, k) => [a[0] * k, a[1] * k, a[2] * k],
+  dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+  cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+  norm: (a) => { const l = Math.hypot(a[0], a[1], a[2]); return [a[0] / l, a[1] / l, a[2] / l]; },
+};
 
-function CubeDie({ final, delay, size = 68 }) {
-  const [t, setT] = useState(null);
-  useEffect(() => {
-    const [rx, ry] = CUBE_LAND[final];
-    const id = setTimeout(() => setT(`rotateX(${rx + 1080}deg) rotateY(${ry + 720}deg)`), 60 + delay);
-    return () => clearTimeout(id);
-  }, [final, delay]);
-  const face = (v, tf) => (
-    <div key={v} style={{
-      position: "absolute", width: size, height: size, display: "flex", alignItems: "center", justifyContent: "center",
-      background: "linear-gradient(145deg, #d9b45e, #b8933f)", color: "#241a10", borderRadius: 10,
-      border: "2px solid #8a6c2c", fontSize: size * 0.46, fontWeight: 800, fontFamily: "Georgia, serif",
-      transform: tf + ` translateZ(${size / 2}px)`, backfaceVisibility: "hidden",
-    }}>{v}</div>
-  );
+function dieVertices(sides) {
+  const PHI = (1 + Math.sqrt(5)) / 2;
+  const v = [];
+  if (sides === 4) return [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]];
+  if (sides === 6) { for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) v.push([x, y, z]); return v; }
+  if (sides === 8) return [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+  if (sides === 10) {
+    // Pentagonal trapezohedron: two interleaved rings of 5, apexes set by kite planarity
+    const h = 0.15, rad = (d) => (d * Math.PI) / 180;
+    for (let k = 0; k < 5; k++) {
+      v.push([Math.cos(rad(k * 72)), Math.sin(rad(k * 72)), h]);
+      v.push([Math.cos(rad(k * 72 + 36)), Math.sin(rad(k * 72 + 36)), -h]);
+    }
+    const [a, b, c] = [v[0], v[2], v[1]]; // ring neighbors A0, A1 and B0 between them
+    const n = V3.cross(V3.sub(b, a), V3.sub(c, a));
+    const za = Math.abs(V3.dot(n, a) / n[2]); // where the kite's plane crosses the z-axis
+    v.push([0, 0, za], [0, 0, -za]);
+    return v;
+  }
+  if (sides === 12) {
+    for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) v.push([x, y, z]);
+    for (const a of [-1, 1]) for (const b of [-1, 1]) { v.push([0, a / PHI, b * PHI], [a / PHI, b * PHI, 0], [a * PHI, 0, b / PHI]); }
+    return v;
+  }
+  for (const a of [-1, 1]) for (const b of [-1, 1]) { v.push([0, a, b * PHI], [a, b * PHI, 0], [a * PHI, 0, b]); } // icosahedron
+  return v;
+}
+
+/* Convex hull by supporting planes: every triplet whose plane has all other
+   vertices on one side is a face plane; coplanar vertices are merged. */
+function hullFaces(verts) {
+  const faces = [];
+  for (let i = 0; i < verts.length; i++) for (let j = i + 1; j < verts.length; j++) for (let k = j + 1; k < verts.length; k++) {
+    let n = V3.cross(V3.sub(verts[j], verts[i]), V3.sub(verts[k], verts[i]));
+    const l = Math.hypot(n[0], n[1], n[2]);
+    if (l < 1e-9) continue;
+    n = V3.scale(n, 1 / l);
+    let d = V3.dot(n, verts[i]);
+    if (d < 0) { n = V3.scale(n, -1); d = -d; }
+    const dots = verts.map((p) => V3.dot(n, p));
+    if (dots.some((x) => x > d + 1e-4)) continue;
+    if (faces.some((f) => V3.dot(f.n, n) > 1 - 1e-4)) continue;
+    faces.push({ n, idx: dots.map((x, m) => [x, m]).filter(([x]) => x > d - 1e-4).map(([, m]) => m) });
+  }
+  return faces.sort((a, b) => b.n[2] - a.n[2] || Math.atan2(a.n[1], a.n[0]) - Math.atan2(b.n[1], b.n[0]));
+}
+
+const DIE_CACHE = {};
+function buildDie(sides, size) {
+  const key = sides + ":" + size;
+  if (DIE_CACHE[key]) return DIE_CACHE[key];
+  const raw = dieVertices(sides);
+  const R = Math.max(...raw.map((p) => Math.hypot(p[0], p[1], p[2])));
+  const verts = raw.map((p) => V3.scale(p, (size * 0.5) / R));
+  const fmt = (a) => a.map((x) => x.toFixed(4)).join(",");
+  const faces = hullFaces(verts).map(({ n, idx }) => {
+    let c = [0, 0, 0];
+    idx.forEach((m) => { c = [c[0] + verts[m][0], c[1] + verts[m][1], c[2] + verts[m][2]]; });
+    c = V3.scale(c, 1 / idx.length);
+    const w0 = V3.norm(V3.sub(verts[idx[0]], c));
+    const u0 = V3.norm(V3.cross(n, w0));
+    const pts = idx.map((m) => verts[m])
+      .sort((p, q) => Math.atan2(V3.dot(V3.sub(p, c), w0), V3.dot(V3.sub(p, c), u0)) - Math.atan2(V3.dot(V3.sub(q, c), w0), V3.dot(V3.sub(q, c), u0)));
+    // face-local "up": a vertex for triangles/pentagons (classic dice look), the kite's apex
+    // for the d10, and an edge midpoint for the cube so squares land flat, not diamond
+    let up = pts[0];
+    if (sides === 6) up = [(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2, (pts[0][2] + pts[1][2]) / 2];
+    if (sides === 10) up = pts.reduce((best, p) => (Math.hypot(...V3.sub(p, c)) > Math.hypot(...V3.sub(best, c)) ? p : best), pts[0]);
+    const w = V3.norm(V3.sub(up, c));
+    const u = V3.norm(V3.cross(n, w));
+    const flat = pts.map((p) => [V3.dot(V3.sub(p, c), u), -V3.dot(V3.sub(p, c), w)]);
+    const rmax = Math.max(...flat.map(([x, y]) => Math.hypot(x, y)));
+    const clip = "polygon(" + flat.map(([x, y]) => `${(50 + (x / rmax) * 49).toFixed(2)}% ${(50 + (y / rmax) * 49).toFixed(2)}%`).join(", ") + ")";
+    const k = rmax / (size * 0.49); // model px per element px, so the outline spans the element
+    const place = `matrix3d(${fmt([u[0] * k, u[1] * k, u[2] * k, 0, -w[0] * k, -w[1] * k, -w[2] * k, 0, n[0], n[1], n[2], 0, c[0], c[1], c[2], 1])})`;
+    const land = `matrix3d(${fmt([u[0], -w[0], n[0], 0, u[1], -w[1], n[1], 0, u[2], -w[2], n[2], 0, 0, 0, 0, 1])})`;
+    return { clip, place, land, n };
+  });
+  DIE_CACHE[key] = faces;
+  return faces;
+}
+
+function Die3D({ sides, final, delay, size = 68 }) {
+  const faces = buildDie(sides, size);
+  const target = faces[(final - 1) % faces.length];
+  const fontK = { 4: 0.26, 6: 0.4, 8: 0.3, 10: 0.26, 12: 0.3, 20: 0.22 }[sides] || 0.3;
+  const dur = (1.15 + delay / 1000).toFixed(2);
+  const tumble = (final + sides) % 2 ? "diceTumbleA" : "diceTumbleB";
   return (
-    <div style={{ width: size, height: size, perspective: 700, animation: `diceDrop 1.3s cubic-bezier(.22,1.6,.36,1) ${delay}ms both` }}>
-      <div style={{
-        width: size, height: size, position: "relative", transformStyle: "preserve-3d",
-        transform: t || `rotateX(${-45 - Math.random() * 90}deg) rotateY(${45 + Math.random() * 90}deg)`,
-        transition: t ? `transform ${1.15 + delay / 1000}s cubic-bezier(.18,.9,.26,1.04)` : "none",
-      }}>
-        {face(1, "rotateY(0deg)")}{face(6, "rotateY(180deg)")}{face(3, "rotateY(90deg)")}
-        {face(4, "rotateY(-90deg)")}{face(5, "rotateX(-90deg)")}{face(2, "rotateX(90deg)")}
+    // the drop-shadow lives outside the 3D chain: `filter` is a grouping property that
+    // would force transform-style back to flat and crush the polyhedron
+    <div style={{ filter: "drop-shadow(0 10px 12px #00000073)", animation: `diceDrop 1.3s cubic-bezier(.22,1.6,.36,1) ${delay}ms both` }}>
+      <div style={{ width: size, height: size, perspective: 700 }}>
+        <div style={{ width: size, height: size, transformStyle: "preserve-3d", animation: `${tumble} ${dur}s cubic-bezier(.18,.8,.24,1.02) ${delay}ms both` }}>
+          <div style={{ width: size, height: size, position: "relative", transformStyle: "preserve-3d", transform: target.land }}>
+          {faces.map((f, i) => {
+            // numbers on faces tilted away from the landing face fade out, so grazing
+            // faces read as metal edges instead of ink smears
+            const tilt = Math.max(0, V3.dot(target.n, f.n));
+            return (
+              // clip-path lives on a child, not the 3D-transformed element itself —
+              // Chromium misculls clipped faces at steep angles (black wedge artifacts)
+              <div key={i} style={{ position: "absolute", inset: 0, transform: f.place, backfaceVisibility: "hidden" }}>
+                <div style={{
+                  position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                  clipPath: f.clip, background: `linear-gradient(${135 + (i % 5) * 22}deg, #e0bd66, #a8842f)`,
+                  color: "#241a10", fontWeight: 800, fontFamily: "Georgia, serif", fontSize: size * fontK,
+                }}>
+                  <span style={{ opacity: 0.15 + 0.85 * tilt * tilt, ...(sides === 4 ? { marginTop: size * 0.14 } : {}) }}>
+                    {i + 1}{sides >= 10 && (i + 1 === 6 || i + 1 === 9) ? "." : ""}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function PolyDie({ sides, final, delay, size = 72 }) {
-  const [face, setFace] = useState(1);
-  const [done, setDone] = useState(false);
-  const [spin, setSpin] = useState(0);
-  useEffect(() => {
-    let alive = true;
-    const start = Date.now();
-    const dur = 1150 + delay;
-    const tick = () => {
-      if (!alive) return;
-      const t = Date.now() - start;
-      if (t >= dur) { setFace(final); setSpin(0); setDone(true); return; }
-      setFace(1 + Math.floor(Math.random() * sides));
-      setSpin((s) => s + 47 + Math.random() * 40);
-      setTimeout(tick, 45 + Math.pow(t / dur, 2) * 220);
-    };
-    tick();
-    return () => { alive = false; };
-  }, [final, sides, delay]);
-  const shape = sides === 20 ? "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)"
-    : sides === 12 ? "polygon(50% 0%, 93% 31%, 77% 100%, 23% 100%, 7% 31%)"
-    : sides === 10 ? "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)"
-    : sides === 4 ? "polygon(50% 0%, 100% 100%, 0% 100%)" : "none";
-  return (
-    <div style={{ animation: `diceDrop 1.2s cubic-bezier(.22,1.6,.36,1) ${delay}ms both` }}>
-      <div style={{
-        width: size, height: size, display: "flex", alignItems: "center", justifyContent: "center",
-        background: done ? "linear-gradient(145deg, #d9b45e, #b8933f)" : T.panel2, color: done ? "#241a10" : T.gold,
-        clipPath: shape, fontSize: size * 0.36, fontWeight: 800, fontFamily: "Georgia, serif",
-        transform: done ? "rotate(0deg) scale(1)" : `rotate(${spin}deg) scale(0.9)`,
-        transition: done ? "transform 260ms cubic-bezier(.2,1.8,.4,1), background 200ms" : "transform 60ms linear",
-        filter: done ? "drop-shadow(0 0 14px #c9a44c66)" : "none",
-      }}>{sides === 4 ? <span style={{ marginTop: size * 0.28 }}>{face}</span> : face}</div>
-    </div>
-  );
-}
-
-const Die = ({ sides, final, delay, size = 72 }) =>
-  sides === 6 ? <CubeDie final={final} delay={delay} size={size} /> : <PolyDie sides={sides} final={final} delay={delay} size={size} />;
+const Die = ({ sides, final, delay, size = 68 }) => <Die3D sides={sides} final={final} delay={delay} size={size} />;
 
 function DiceTray({ title, dice, dropLowest, onAccept, onReroll, acceptLabel = "Accept", note }) {
   // dice: [{sides, value}] — values pre-rolled; tray animates the reveal
@@ -1215,6 +1281,44 @@ function CreateWizard({ onDone, onCancel, customs }) {
   );
 }
 
+const SCHOOL_NAMES = { A: "Abjuration", C: "Conjuration", D: "Divination", EN: "Enchantment", EV: "Evocation", I: "Illusion", N: "Necromancy", T: "Transmutation" };
+const schoolName = (s) => SCHOOL_NAMES[(s || "").toUpperCase()] || s;
+
+/* Searchable multi-pick list used by the level-up flow for cantrips, spells, and arcanum */
+function SpellPickGrid({ options, picks, cap, onChange, placeholder = "Search spells…" }) {
+  const [q, setQ] = useState("");
+  const shown = options.filter((sp) => !picks.includes(sp.name) && sp.name.toLowerCase().includes(q.toLowerCase()));
+  return (
+    <div>
+      {picks.length > 0 && (
+        <div style={{ marginBottom: 6 }}>
+          {picks.map((n) => (
+            <span key={n} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel, border: `1px solid ${T.gold}`, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13, color: T.gold }}>
+              {n}<span style={{ color: T.blood, cursor: "pointer", fontWeight: 700 }} onClick={() => onChange(picks.filter((x) => x !== n))}>✕</span>
+            </span>
+          ))}
+        </div>
+      )}
+      {picks.length < cap && (
+        <>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder}
+            style={{ width: "100%", boxSizing: "border-box", background: T.panel, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 10px", fontSize: 14 }} />
+          <div style={{ maxHeight: 200, overflowY: "auto", marginTop: 6, border: `1px solid ${T.edge}`, borderRadius: 8 }}>
+            {shown.map((sp) => (
+              <div key={sp.name} onClick={() => onChange([...picks, sp.name])}
+                style={{ padding: "8px 10px", borderBottom: `1px solid ${T.edge}`, cursor: "pointer" }}>
+                <span style={{ color: T.ink }}>{sp.name}</span>
+                <span style={{ color: T.dim, fontSize: 12 }}> · {sp.level === 0 ? "cantrip" : `level ${sp.level}`}{sp.school ? ` · ${schoolName(sp.school)}` : ""}</span>
+              </div>
+            ))}
+            {shown.length === 0 && <div style={{ padding: "8px 10px", color: T.dim, fontSize: 13 }}>Nothing matches.</div>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ============ LEVEL UP (with full multiclassing) ============ */
 function LevelUp({ ch, onDone, onCancel, customs }) {
   const lvl = totalLevel(ch);
@@ -1233,6 +1337,14 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const [boonPick, setBoonPick] = useState(null);
   const [newSub, setNewSub] = useState(null);
   const [mcSkill, setMcSkill] = useState(null);
+  const [invPicks, setInvPicks] = useState([]);
+  const [invSwapOut, setInvSwapOut] = useState(null);
+  const [invSwapIn, setInvSwapIn] = useState(null);
+  const [cantripPicks, setCantripPicks] = useState([]);
+  const [spellPicks, setSpellPicks] = useState([]);
+  const [spellSwapOut, setSpellSwapOut] = useState(null);
+  const [spellSwapIn, setSpellSwapIn] = useState(null);
+  const [arcanumPick, setArcanumPick] = useState(null);
 
   if (lvl >= 20) return (
     <div style={{ ...card, padding: 24, textAlign: "center" }}>
@@ -1289,9 +1401,22 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     if (expPicks.length) logBits.push(`Expertise: ${expPicks.join(", ")}`);
     if (metaPicks.length) logBits.push(`Metamagic: ${metaPicks.join(", ")}`);
     if (boonPick) logBits.push(boonPick);
+    let invocations = ch.invocations || [];
+    if (invSwapOut && invSwapIn) { invocations = [...invocations.filter((n) => n !== invSwapOut), invSwapIn]; logBits.push(`Invocation swap: ${invSwapOut} → ${invSwapIn}`); }
+    if (invPicks.length) { invocations = [...invocations, ...invPicks]; logBits.push(`Invocations: ${invPicks.join(", ")}`); }
+    const spellsBook = { ...(ch.spells || {}) };
+    if (cantripPicks.length || spellPicks.length || (spellSwapOut && spellSwapIn) || arcanumPick) {
+      const mine = { cantrips: [], spells: [], ...(spellsBook[pick] || {}) };
+      const learned = [...mine.spells.filter((n) => n !== spellSwapOut), ...(spellSwapOut && spellSwapIn ? [spellSwapIn] : []), ...spellPicks];
+      spellsBook[pick] = { ...mine, cantrips: [...mine.cantrips, ...cantripPicks], spells: learned, ...(arcanumPick ? { arcanum: { ...(mine.arcanum || {}), [arcLvlGained]: arcanumPick } } : {}) };
+      if (cantripPicks.length) logBits.push(`Cantrips: ${cantripPicks.join(", ")}`);
+      if (spellSwapOut && spellSwapIn) logBits.push(`Spell swap: ${spellSwapOut} → ${spellSwapIn}`);
+      if (spellPicks.length) logBits.push(`Spells: ${spellPicks.join(", ")}`);
+      if (arcanumPick) logBits.push(`Mystic Arcanum: ${arcanumPick}`);
+    }
     const skills = mcSkill ? [...ch.skills, mcSkill] : ch.skills;
     onDone({
-      ...ch, classes, abilities, skills,
+      ...ch, classes, abilities, skills, invocations, spells: spellsBook,
       maxHp: ch.maxHp + hpGain + conM + dwarfBonus,
       hpLog: [...ch.hpLog, { cls: pick, gained: hpGain + conM + dwarfBonus, how: hpGain === avg ? "average" : `rolled ${hpGain}` }],
       log: [...ch.log, `Level ${lvl + 1}: ${logBits.join(" · ")}`],
@@ -1313,11 +1438,61 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const metaNeed = newClsLevel === 3 ? 2 : 1;
   const metaPool = METAMAGIC.filter((m) => !(ch.metamagic || []).includes(m));
   const gainsBoon = feats.some((f) => f === "Pact Boon");
-  const extrasNeeded = gainsASI || gainsSub || gainsMcSkill || gainsStyle || gainsExpertise || gainsMeta || gainsBoon;
+
+  /* ---- BG3-style gained choices: invocations, cantrips, spells, arcanum ---- */
+  const effSub = gainsSub ? (gainsTerrain && terrPick ? `${newSub} (${terrPick})` : newSub) : entry?.subclass;
+  const book = ch.spells?.[pick] || { cantrips: [], spells: [] };
+  const pool = customs?.spells || [];
+  const fits = (sp) => spellFitsClass(sp, pick, effSub);
+
+  // Eldritch invocations — pick new ones when the known cap rises, swap one freely
+  const curInv = ch.invocations || [];
+  const invCap = pick === "Warlock" ? INVOCATIONS(newClsLevel) : 0;
+  const invNeed = Math.max(0, invCap - curInv.length);
+  const canSwapInv = pick === "Warlock" && invCap > 0 && curInv.length > 0;
+  const futureCantrips = [...(book.cantrips || []), ...cantripPicks];
+  const hasEB = futureCantrips.some((n) => /eldritch blast/i.test(n));
+  const boonHeld = boonPick || ch.pactBoon;
+  const invReqMet = (req) => !req || (req === "eldritch blast cantrip" ? hasEB : boonHeld === req);
+  const invTaken = [...curInv.filter((n) => n !== invSwapOut), ...invPicks, ...(invSwapIn ? [invSwapIn] : [])];
+  const invOptions = INVOCATION_DATA.filter(([n, lvl]) => newClsLevel >= lvl && !invTaken.includes(n));
+
+  // Cantrips and spells known — required picks are what this level grants; deficits may be filled too
+  const sortSp = (a, b) => a.level - b.level || a.name.localeCompare(b.name);
+  const cantripTarget = CANTRIPS_KNOWN[pick] ? CANTRIPS_KNOWN[pick](newClsLevel) : 0;
+  const cantripPrev = entry && CANTRIPS_KNOWN[pick] ? CANTRIPS_KNOWN[pick](newClsLevel - 1) : 0;
+  const cantripAllow = Math.max(0, cantripTarget - (book.cantrips || []).length);
+  const cantripPool = pick ? pool.filter((sp) => sp.level === 0 && fits(sp) && !(book.cantrips || []).includes(sp.name)).sort(sortSp) : [];
+  const cantripReq = Math.min(Math.max(0, cantripTarget - cantripPrev), cantripAllow, cantripPool.length);
+  const gainsCantrips = cantripAllow > 0 && cantripPool.length > 0;
+
+  const knownCaster = !!SPELLS_KNOWN[pick];
+  const spellTarget = knownCaster ? SPELLS_KNOWN[pick][newClsLevel - 1] : pick === "Wizard" ? 6 + 2 * (newClsLevel - 1) : 0;
+  const spellPrev = entry ? (knownCaster ? SPELLS_KNOWN[pick][newClsLevel - 2] || 0 : pick === "Wizard" ? 6 + 2 * (newClsLevel - 2) : 0) : 0;
+  const maxLvlNew = pick ? maxSpellLevel(pick, newClsLevel) : 0;
+  const spellAllow = Math.max(0, spellTarget - (book.spells || []).length);
+  const spellPool = pick ? pool.filter((sp) => sp.level >= 1 && sp.level <= maxLvlNew && fits(sp) && !(book.spells || []).includes(sp.name)).sort(sortSp) : [];
+  const spellReq = Math.min(Math.max(0, spellTarget - spellPrev), spellAllow, spellPool.length);
+  const gainsSpells = spellAllow > 0 && spellPool.length > 0;
+  const canSwapSpell = knownCaster && (book.spells || []).length > 0 && spellPool.length > 0;
+
+  // Mystic Arcanum — one spell of the unlocked level at Warlock 11/13/15/17
+  const arcLvlGained = pick === "Warlock" ? { 11: 6, 13: 7, 15: 8, 17: 9 }[newClsLevel] : null;
+  const arcPool = arcLvlGained && !ch.spells?.Warlock?.arcanum?.[arcLvlGained]
+    ? pool.filter((sp) => sp.level === arcLvlGained && fits(sp)).sort(sortSp) : [];
+  const gainsArcanum = arcPool.length > 0;
+
+  const preparedCaster = ["Cleric", "Druid", "Paladin"].includes(pick);
+
+  const extrasNeeded = gainsASI || gainsSub || gainsMcSkill || gainsStyle || gainsExpertise || gainsMeta || gainsBoon ||
+    invNeed > 0 || canSwapInv || gainsCantrips || gainsSpells || canSwapSpell || gainsArcanum;
   const extrasDone =
     (!gainsASI || (asiMode === "feat" && featPick && (!(allFeats(customs).find((f) => f.name === featPick)?.bump?.length) || featBump)) || (asiMode === "asi" && asiPicks.length === 2)) &&
     (!gainsSub || newSub) && (!gainsMcSkill || mcSkill) && (!gainsStyle || stylePick) && (!gainsTerrain || terrPick) &&
-    (!gainsExpertise || expPicks.length === 2) && (!gainsMeta || metaPicks.length === metaNeed) && (!gainsBoon || boonPick);
+    (!gainsExpertise || expPicks.length === 2) && (!gainsMeta || metaPicks.length === metaNeed) && (!gainsBoon || boonPick) &&
+    invPicks.length >= invNeed && !!invSwapOut === !!invSwapIn &&
+    cantripPicks.length >= cantripReq && spellPicks.length >= spellReq && !!spellSwapOut === !!spellSwapIn &&
+    (!gainsArcanum || arcanumPick);
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 50, overflowY: "auto", padding: "calc(30px + env(safe-area-inset-top)) 14px calc(30px + env(safe-area-inset-bottom))" }}>
@@ -1374,6 +1549,14 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
 
         {stage === "extras" && (
           <div>
+            {feats.length > 0 && (
+              <div style={{ ...card, background: T.panel2, borderColor: T.gold, padding: 14, marginBottom: 12 }}>
+                <div style={{ color: T.gold, fontFamily: "Georgia, serif", marginBottom: 6 }}>{pick} {newClsLevel} grants</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {feats.map((f) => <span key={f} style={{ background: T.panel, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "3px 10px", fontSize: 12, color: T.ink }}>{f}</span>)}
+                </div>
+              </div>
+            )}
             {gainsSub && (
               <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
                 <div style={{ color: T.gold, marginBottom: 8 }}>{pickData.subName}</div>
@@ -1456,6 +1639,91 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                 </div>
               </div>
             )}
+            {invNeed > 0 && (
+              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
+                <div style={{ color: T.gold, marginBottom: 8 }}>Eldritch Invocations — choose {invNeed} ({invPicks.length}/{invNeed})</div>
+                <div style={{ maxHeight: 240, overflowY: "auto", border: `1px solid ${T.edge}`, borderRadius: 8 }}>
+                  {invOptions.concat(invPicks.map((n) => INVOCATION_DATA.find(([x]) => x === n))).sort((a, b) => a[0].localeCompare(b[0])).map(([n, lvl, req]) => {
+                    const on = invPicks.includes(n);
+                    const ok = on || (invReqMet(req) && invPicks.length < invNeed);
+                    return (
+                      <div key={n} onClick={() => ok && setInvPicks(on ? invPicks.filter((x) => x !== n) : [...invPicks, n])}
+                        style={{ padding: "8px 10px", borderBottom: `1px solid ${T.edge}`, cursor: ok ? "pointer" : "not-allowed", opacity: ok ? 1 : 0.45, background: on ? T.panel : "transparent" }}>
+                        <span style={{ color: on ? T.gold : T.ink, fontWeight: on ? 700 : 400 }}>{on ? "✓ " : ""}{n}</span>
+                        {(lvl > 0 || req) && <span style={{ color: T.dim, fontSize: 12 }}> · requires {[lvl > 0 ? `warlock ${lvl}` : "", req].filter(Boolean).join(", ")}</span>}
+                        {!on && !invReqMet(req) && <span style={{ color: T.blood, fontSize: 11 }}> ({req === "eldritch blast cantrip" ? "learn Eldritch Blast first" : "boon not held"})</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {canSwapInv && (
+              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
+                <div style={{ color: T.gold, marginBottom: 4 }}>Swap an invocation <span style={{ color: T.dim, fontSize: 12 }}>(optional — one per level-up)</span></div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: invSwapOut ? 8 : 0 }}>
+                  {curInv.map((n) => (
+                    <button key={n} style={{ ...btn(invSwapOut === n), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
+                      onClick={() => { setInvSwapOut(invSwapOut === n ? null : n); setInvSwapIn(null); }}>{invSwapOut === n ? `✕ ${n}` : n}</button>
+                  ))}
+                </div>
+                {invSwapOut && (
+                  <div style={{ maxHeight: 180, overflowY: "auto", border: `1px solid ${T.edge}`, borderRadius: 8 }}>
+                    {invOptions.map(([n, lvl, req]) => {
+                      const ok = invReqMet(req);
+                      return (
+                        <div key={n} onClick={() => ok && setInvSwapIn(invSwapIn === n ? null : n)}
+                          style={{ padding: "8px 10px", borderBottom: `1px solid ${T.edge}`, cursor: ok ? "pointer" : "not-allowed", opacity: ok ? 1 : 0.45, background: invSwapIn === n ? T.panel : "transparent" }}>
+                          <span style={{ color: invSwapIn === n ? T.gold : T.ink }}>{invSwapIn === n ? "✓ " : ""}{n}</span>
+                          {(lvl > 0 || req) && <span style={{ color: T.dim, fontSize: 12 }}> · requires {[lvl > 0 ? `warlock ${lvl}` : "", req].filter(Boolean).join(", ")}</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+            {gainsCantrips && (
+              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
+                <div style={{ color: T.gold, marginBottom: 8 }}>New cantrips — choose {cantripReq}{cantripAllow > cantripReq ? ` (up to ${cantripAllow})` : ""} ({cantripPicks.length}/{cantripReq})</div>
+                <SpellPickGrid options={cantripPool} picks={cantripPicks} cap={cantripAllow} onChange={setCantripPicks} placeholder="Search cantrips…" />
+              </div>
+            )}
+            {gainsSpells && (
+              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
+                <div style={{ color: T.gold, marginBottom: 8 }}>
+                  {pick === "Wizard" ? "Scribe spells into your spellbook" : "New spells known"} — choose {spellReq}{spellAllow > spellReq ? ` (up to ${spellAllow})` : ""} ({spellPicks.length}/{spellReq})
+                </div>
+                <SpellPickGrid options={spellPool.filter((sp) => sp.name !== spellSwapIn)} picks={spellPicks} cap={spellAllow} onChange={setSpellPicks} />
+              </div>
+            )}
+            {canSwapSpell && (
+              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
+                <div style={{ color: T.gold, marginBottom: 4 }}>Replace a known spell <span style={{ color: T.dim, fontSize: 12 }}>(optional — one per level-up)</span></div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: spellSwapOut ? 8 : 0 }}>
+                  {(book.spells || []).map((n) => (
+                    <button key={n} style={{ ...btn(spellSwapOut === n), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
+                      onClick={() => { setSpellSwapOut(spellSwapOut === n ? null : n); setSpellSwapIn(null); }}>{spellSwapOut === n ? `✕ ${n}` : n}</button>
+                  ))}
+                </div>
+                {spellSwapOut && (
+                  <SpellPickGrid options={spellPool.filter((sp) => !spellPicks.includes(sp.name))} picks={spellSwapIn ? [spellSwapIn] : []} cap={1}
+                    onChange={(arr) => setSpellSwapIn(arr[arr.length - 1] || null)} placeholder="Search a replacement…" />
+                )}
+              </div>
+            )}
+            {gainsArcanum && (
+              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
+                <div style={{ color: T.gold, marginBottom: 8 }}>Mystic Arcanum — choose one {arcLvlGained}th-level spell</div>
+                <SpellPickGrid options={arcPool} picks={arcanumPick ? [arcanumPick] : []} cap={1}
+                  onChange={(arr) => setArcanumPick(arr[arr.length - 1] || null)} placeholder="Search arcanum…" />
+              </div>
+            )}
+            {preparedCaster && (
+              <div style={{ color: T.dim, fontSize: 12, marginBottom: 12 }}>
+                {pick} prepares spells daily — your prepared count rises with this level. Adjust anytime in the Grimoire.
+              </div>
+            )}
             {gainsMcSkill && (
               <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
                 <div style={{ color: T.gold, marginBottom: 8 }}>Multiclass skill ({pick} grants one)</div>
@@ -1480,6 +1748,12 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
               {asiMode === "asi" && <>ASI: {asiPicks.map((a) => a.toUpperCase() + " +1").join(", ")}<br /></>}
               {asiMode === "feat" && <>Feat: {featPick}<br /></>}
               {mcSkill && <>New skill: {mcSkill}<br /></>}
+              {invPicks.length > 0 && <>Invocations: <b style={{ color: T.gold }}>{invPicks.join(", ")}</b><br /></>}
+              {invSwapOut && invSwapIn && <>Invocation swap: {invSwapOut} → <b style={{ color: T.gold }}>{invSwapIn}</b><br /></>}
+              {cantripPicks.length > 0 && <>Cantrips: <b style={{ color: T.gold }}>{cantripPicks.join(", ")}</b><br /></>}
+              {spellPicks.length > 0 && <>Spells: <b style={{ color: T.gold }}>{spellPicks.join(", ")}</b><br /></>}
+              {spellSwapOut && spellSwapIn && <>Spell swap: {spellSwapOut} → <b style={{ color: T.gold }}>{spellSwapIn}</b><br /></>}
+              {arcanumPick && <>Mystic Arcanum: <b style={{ color: T.gold }}>{arcanumPick}</b><br /></>}
               {feats.length > 0 && <>Features: {feats.join(", ")}</>}
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
@@ -1669,7 +1943,7 @@ function SpellManager({ ch, customs, onSpells }) {
                   setAdding(null);
                 }} style={{ padding: "10px 8px", borderBottom: `1px solid ${T.edge}`, cursor: "pointer" }}>
                   <span style={{ color: T.ink }}>{sp.name}</span>
-                  <span style={{ color: T.dim, fontSize: 12 }}> · {sp.level === 0 ? "cantrip" : `level ${sp.level}`}{sp.school ? ` · ${sp.school}` : ""}</span>
+                  <span style={{ color: T.dim, fontSize: 12 }}> · {sp.level === 0 ? "cantrip" : `level ${sp.level}`}{sp.school ? ` · ${schoolName(sp.school)}` : ""}</span>
                 </div>
               ))}
               {listFor(adding.cls, adding.kind, adding.lvl).length === 0 && <div style={{ color: T.dim, fontSize: 13, padding: 8 }}>No matching spells in your imported list.</div>}
@@ -2248,6 +2522,8 @@ export default function App() {
           86% { transform: translateY(0) scale(1.02); }
           100% { transform: translateY(0) scale(1); }
         }
+        @keyframes diceTumbleA { from { transform: rotate3d(1, 0.7, 0.35, -1620deg); } to { transform: rotate3d(1, 0.7, 0.35, 0deg); } }
+        @keyframes diceTumbleB { from { transform: rotate3d(0.6, 1, 0.45, 1440deg); } to { transform: rotate3d(0.6, 1, 0.45, 0deg); } }
       `}</style>
       <div style={{ textAlign: "center", padding: "26px 14px 6px" }}>
         <div style={{ fontFamily: "Georgia, serif", fontSize: 30, color: T.gold, letterSpacing: 1 }}>The Adventurer's Ledger</div>
