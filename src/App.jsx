@@ -498,6 +498,112 @@ function DiceTray({ title, dice, dropLowest, onAccept, onReroll, acceptLabel = "
 }
 const roll = (sides) => 1 + Math.floor(Math.random() * sides);
 
+/* ============ D20 ROLL ENGINE ============ */
+/* Static features that bend d20 rolls, computed from the character */
+function rollFeatures(ch) {
+  const lvl = totalLevel(ch);
+  const pb = profBonus(lvl);
+  const clsLv = (name) => ch.classes.find((c) => c.name === name)?.level || 0;
+  const champLvl = ch.classes.find((c) => baseSubName(c.subclass || "") === "Champion")?.level || 0;
+  return {
+    pb,
+    lucky: ch.race === "Lightfoot Halfling",
+    jack: clsLv("Bard") >= 2 ? Math.floor(pb / 2) : 0,                       // Jack of All Trades
+    athlete: champLvl >= 7 ? Math.ceil(pb / 2) : 0,                          // Remarkable Athlete (Str/Dex/Con)
+    reliable: clsLv("Rogue") >= 11,                                          // Reliable Talent
+    aura: clsLv("Paladin") >= 6 ? Math.max(1, mod(ch.abilities.cha)) : 0,    // Aura of Protection
+    diamondSoul: clsLv("Monk") >= 14,                                        // proficiency in all saves
+    slipperyMind: clsLv("Rogue") >= 15,                                      // WIS save proficiency
+    critRange: champLvl >= 15 ? 18 : champLvl >= 3 ? 19 : 20,                // Improved/Superior Critical
+    archery: (ch.styles || []).includes("Archery") ? 2 : 0,
+    barbarian: clsLv("Barbarian"),
+    savageAttacks: ch.race === "Half-Orc",
+  };
+}
+
+/* Situational reminders the dice can't decide for you */
+function rollNotes(ch, kind, abil) {
+  const f = rollFeatures(ch);
+  const n = [];
+  if (kind === "save") {
+    if (ch.race === "Hill Dwarf" && abil === "con") n.push("Dwarven Resilience: advantage vs. poison");
+    if (ch.race === "Lightfoot Halfling" && abil === "wis") n.push("Brave: advantage vs. being frightened");
+    if (ch.race === "Rock Gnome" && ["int", "wis", "cha"].includes(abil)) n.push("Gnome Cunning: advantage vs. magic");
+    if (f.barbarian >= 1 && abil === "str") n.push("Rage: advantage on Strength saves while raging");
+    if (f.barbarian >= 2 && abil === "dex") n.push("Danger Sense: advantage vs. effects you can see");
+  }
+  if (kind === "check" || kind === "skill") {
+    if (f.barbarian >= 1 && abil === "str") n.push("Rage: advantage on Strength checks while raging");
+  }
+  if (kind === "attack") {
+    if (f.barbarian >= 2 && abil === "str") n.push("Reckless Attack: take advantage now, grant it until your next turn");
+    if (f.savageAttacks) n.push("Savage Attacks: one extra damage die on a melee crit");
+  }
+  return n;
+}
+
+function RollTray({ title, mode, parts, kind, abil, proficient, ch, onClose }) {
+  const f = rollFeatures(ch);
+  // roll once, in the state initializer — re-renders must not re-throw the bones
+  const [res] = useState(() => {
+    const dice = [{ v: roll(20) }];
+    if (mode !== "normal") dice.push({ v: roll(20) });
+    const notes = [];
+    if (f.lucky) dice.forEach((d) => { if (d.v === 1) { const nv = roll(20); notes.push(`Lucky: rerolled the natural 1 → ${nv}`); d.v = nv; } });
+    let kept = 0;
+    if (dice.length === 2) kept = mode === "adv" ? (dice[0].v >= dice[1].v ? 0 : 1) : (dice[0].v <= dice[1].v ? 0 : 1);
+    let die = dice[kept].v, floored = false;
+    if (kind === "skill" && proficient && f.reliable && die < 10) { floored = true; notes.push(`Reliable Talent: treated the ${die} as a 10`); die = 10; }
+    return { dice, kept, die, floored, notes };
+  });
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setDone(true), 1350 + res.dice.length * 150);
+    return () => clearTimeout(t);
+  }, [res]);
+  const modTotal = parts.reduce((s, p) => s + p.value, 0);
+  const total = res.die + modTotal;
+  const nat = res.dice[res.kept].v;
+  const crit = kind === "attack" && nat >= f.critRange;
+  const fumble = nat === 1 && !res.floored;
+  const notes = [...res.notes, ...rollNotes(ch, kind, abil)];
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000c8", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }} onClick={onClose}>
+      <div style={{ ...card, padding: 28, textAlign: "center", minWidth: 320, maxWidth: "92vw" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold }}>{title}</div>
+        {mode !== "normal" && <div style={{ color: mode === "adv" ? T.green : T.blood, fontSize: 13, marginTop: 2 }}>{mode === "adv" ? "Advantage — keep the higher" : "Disadvantage — keep the lower"}</div>}
+        <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap", padding: "18px 0" }}>
+          {res.dice.map((d, i) => (
+            <div key={i} style={{ opacity: done && i !== res.kept ? 0.3 : 1, transition: "opacity 400ms", position: "relative" }}>
+              <Die sides={20} final={d.v} delay={i * 150} />
+              {done && i !== res.kept && <div style={{ position: "absolute", top: -10, right: -6, color: T.blood, fontSize: 11, fontWeight: 700 }}>dropped</div>}
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: 34, fontFamily: "Georgia, serif", color: done ? (crit ? T.gold : fumble ? T.blood : T.ink) : T.dim, minHeight: 44, transition: "color 300ms" }}>
+          {done ? total : "…"}
+        </div>
+        {done && (
+          <div style={{ color: T.dim, fontSize: 13, marginTop: 4 }}>
+            d20 {res.floored ? `${nat}→10` : nat}{parts.filter((p) => p.value).map((p) => ` ${fmtMod(p.value)} ${p.label}`).join("")}
+          </div>
+        )}
+        {done && crit && <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginTop: 6 }}>⚔ CRITICAL HIT{f.critRange < 20 ? ` (crits on ${f.critRange}–20)` : ""}!</div>}
+        {done && !crit && nat === 20 && <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 15, marginTop: 6 }}>Natural 20</div>}
+        {done && fumble && <div style={{ color: T.blood, fontFamily: "Georgia, serif", fontSize: 15, marginTop: 6 }}>Natural 1 — the bones are cruel</div>}
+        {done && notes.length > 0 && (
+          <div style={{ color: "#b48ead", fontSize: 12, marginTop: 8, lineHeight: 1.7 }}>
+            {notes.map((x, i) => <div key={i}>{x}</div>)}
+          </div>
+        )}
+        <div style={{ marginTop: 14 }}>
+          <button style={{ ...btn(true), opacity: done ? 1 : 0.4 }} disabled={!done} onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ============ STORAGE ============ */
 const KEY = "dnd-srd-characters-v1";
 async function loadChars() {
@@ -1987,6 +2093,46 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   const longRest = () => onUpdate({ dmg: 0, usedSlots: [], usedPact: 0, usedArcanum: [] });
   const pip = (filled, color) => ({ cursor: "pointer", fontSize: 18, fontFamily: "Georgia, serif", color: filled ? color : T.dim, opacity: filled ? 1 : 0.45, userSelect: "none", padding: "0 1px" });
 
+  /* ---- the bones: d20 rolls with every modifier the sheet knows about ---- */
+  const [rollSpec, setRollSpec] = useState(null);
+  const [advMode, setAdvMode] = useState("normal");
+  const feats = rollFeatures(ch);
+  const saveProfFor = (a) => CLASSES[ch.classes[0].name].saves.includes(a) || feats.diamondSoul || (feats.slipperyMind && a === "wis");
+  const saveProfLabel = (a) => (CLASSES[ch.classes[0].name].saves.includes(a) ? "proficiency" : feats.diamondSoul ? "Diamond Soul" : "Slippery Mind");
+  const halfProf = (a) => {
+    const athlete = ["str", "dex", "con"].includes(a) ? feats.athlete : 0;
+    if (!athlete && !feats.jack) return null;
+    return athlete >= feats.jack ? { label: "Remarkable Athlete", value: athlete } : { label: "Jack of All Trades", value: feats.jack };
+  };
+  const savePartsFor = (a) => [
+    { label: ABIL_NAMES[a], value: mod(ch.abilities[a]) },
+    ...(saveProfFor(a) ? [{ label: saveProfLabel(a), value: pb }] : []),
+    ...(feats.aura ? [{ label: "Aura of Protection", value: feats.aura }] : []),
+  ];
+  const saveMod = (a) => savePartsFor(a).reduce((s, p) => s + p.value, 0);
+  const checkPartsFor = (a) => {
+    const hp2 = halfProf(a);
+    return [{ label: ABIL_NAMES[a], value: mod(ch.abilities[a]) }, ...(hp2 ? [hp2] : [])];
+  };
+  const skillPartsFor = (sk) => {
+    const a = SKILL_ABIL[sk];
+    const prof = ch.skills.includes(sk);
+    const exp = (ch.expertise || []).includes(sk);
+    const hp2 = !prof ? halfProf(a) : null;
+    return [
+      { label: ABIL_NAMES[a], value: mod(ch.abilities[a]) },
+      ...(prof ? [{ label: exp ? "expertise" : "proficiency", value: pb * (exp ? 2 : 1) }] : []),
+      ...(hp2 ? [hp2] : []),
+    ];
+  };
+  const rollIt = (title, parts, kind, abil, proficient) => setRollSpec({ title, parts, kind, abil, proficient });
+  const casterClasses = ch.classes.filter((c) => CLASSES[c.name].caster);
+  const attackRolls = [
+    { label: "⚔ Melee", abil: "str", parts: [{ label: "Strength", value: mod(ch.abilities.str) }, { label: "proficiency", value: pb }] },
+    { label: "🏹 Ranged / Finesse", abil: "dex", parts: [{ label: "Dexterity", value: mod(ch.abilities.dex) }, { label: "proficiency", value: pb }, ...(feats.archery ? [{ label: "Archery", value: feats.archery }] : [])] },
+    ...casterClasses.map((c) => ({ label: `✨ Spell (${c.name})`, abil: SPELL_ABILITY[c.name], parts: [{ label: ABIL_NAMES[SPELL_ABILITY[c.name]], value: mod(ch.abilities[SPELL_ABILITY[c.name]]) }, { label: "proficiency", value: pb }] })),
+  ];
+
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", padding: 20 }}>
       <button style={{ ...btn(false), marginBottom: 16 }} onClick={onBack}>← Roster</button>
@@ -2011,18 +2157,22 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 10, marginTop: 14 }}>
         {ABILITIES.map((a) => {
-          const saveProf = ch.classes[0] && CLASSES[ch.classes[0].name].saves.includes(a);
+          const saveProf = saveProfFor(a);
           return (
-            <div key={a} style={{ ...card, padding: 12, textAlign: "center" }}>
+            <div key={a} style={{ ...card, padding: 12, textAlign: "center", cursor: "pointer" }} title={`Roll a ${ABIL_NAMES[a]} check`}
+              onClick={() => rollIt(`${ABIL_NAMES[a]} check`, checkPartsFor(a), "check", a)}>
               <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>{ABIL_NAMES[a]}</div>
               <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: T.ink }}>{ch.abilities[a]}</div>
               <div style={{ color: T.gold }}>{fmtMod(mod(ch.abilities[a]))}</div>
-              <div style={{ color: saveProf ? T.green : T.dim, fontSize: 11, marginTop: 4 }}>save {fmtMod(mod(ch.abilities[a]) + (saveProf ? pb : 0))}{saveProf ? " ●" : ""}</div>
+              <div style={{ color: saveProf ? T.green : T.dim, fontSize: 11, marginTop: 4, padding: "2px 0", borderRadius: 6 }} title={`Roll a ${ABIL_NAMES[a]} save`}
+                onClick={(e) => { e.stopPropagation(); rollIt(`${ABIL_NAMES[a]} saving throw`, savePartsFor(a), "save", a); }}>
+                save {fmtMod(saveMod(a))}{saveProf ? " ●" : ""}
+              </div>
             </div>
           );
         })}
       </div>
-      <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>● save proficiencies from first class only, per multiclass rules ({ch.classes[0].name}: {CLASSES[ch.classes[0].name].saves.map(s=>s.toUpperCase()).join(", ")})</div>
+      <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>● save proficiencies from first class only, per multiclass rules ({ch.classes[0].name}: {CLASSES[ch.classes[0].name].saves.map(s=>s.toUpperCase()).join(", ")}){feats.aura ? " · Aura of Protection adds +" + feats.aura + " to all saves" : ""} · tap an ability to roll a check, its save line to roll a save</div>
 
       {(() => {
         const lead = dominantClass(ch);
@@ -2039,9 +2189,10 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
             <div style={{ height: "100%", width: `${hpRatio * 100}%`, background: hpColor, transition: "width 240ms ease" }} />
           </div>
         </div>
-        <div style={{ ...card, padding: 12, textAlign: "center" }}>
-          <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Initiative</div>
-          <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: T.ink }}>{fmtMod(mod(ch.abilities.dex))}</div>
+        <div style={{ ...card, padding: 12, textAlign: "center", cursor: "pointer" }} title="Roll initiative"
+          onClick={() => rollIt("Initiative", checkPartsFor("dex"), "check", "dex")}>
+          <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Initiative 🎲</div>
+          <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: T.ink }}>{fmtMod(checkPartsFor("dex").reduce((s, p) => s + p.value, 0))}</div>
         </div>
         <div style={{ ...card, padding: 12, textAlign: "center" }}>
           <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Speed</div>
@@ -2073,6 +2224,33 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         <div style={{ flex: 1 }} />
         {pact && <button style={btn(false)} onClick={shortRest} disabled={usedPact === 0} title="Recover pact slots">☾ Short Rest</button>}
         <button style={btn(false)} onClick={longRest} disabled={dmg === 0 && usedSlots.every((n) => !n) && usedPact === 0 && usedArc.length === 0} title="Full HP, all slots recovered">☀ Long Rest</button>
+      </div>
+
+      <div style={{ ...card, padding: 14, marginTop: 14 }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17 }}>Roll the Bones</div>
+          <div style={{ display: "flex", gap: 4, background: T.panel2, borderRadius: 10, padding: 3 }}>
+            {[["normal", "Normal"], ["adv", "Advantage"], ["dis", "Disadvantage"]].map(([m, label]) => (
+              <button key={m} onClick={() => setAdvMode(m)}
+                style={{ border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 13, cursor: "pointer", fontWeight: advMode === m ? 700 : 400,
+                  background: advMode === m ? (m === "adv" ? "#3c5a41" : m === "dis" ? "#5a3038" : T.panel) : "transparent",
+                  color: advMode === m ? (m === "adv" ? "#9ed3a8" : m === "dis" ? "#d76a76" : T.gold) : T.dim }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+          {attackRolls.map((atk) => (
+            <button key={atk.label} style={{ ...btn(false), padding: "8px 14px" }}
+              onClick={() => rollIt(`${atk.label.replace(/^\S+ /, "")} attack`, atk.parts, "attack", atk.abil)}>
+              {atk.label} {fmtMod(atk.parts.reduce((s, p) => s + p.value, 0))}
+            </button>
+          ))}
+        </div>
+        <div style={{ color: T.dim, fontSize: 11, marginTop: 8 }}>
+          {feats.critRange < 20 ? `Champion: attacks crit on ${feats.critRange}–20 · ` : ""}{feats.archery ? "Archery: +2 to ranged attacks · " : ""}{feats.lucky ? "Lucky: natural 1s reroll themselves · " : ""}the toggle applies to every roll — attacks, saves, checks, and skills
+        </div>
       </div>
 
       {(slots || pact) && (
@@ -2157,16 +2335,17 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
             {ALL_SKILLS.map((sk) => {
               const prof = ch.skills.includes(sk);
               const exp = (ch.expertise || []).includes(sk);
-              const m = mod(ch.abilities[SKILL_ABIL[sk]]) + (prof ? pb : 0) + (exp ? pb : 0);
+              const m = skillPartsFor(sk).reduce((s, p) => s + p.value, 0);
               return (
-                <div key={sk} style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", borderRadius: 6, background: prof ? T.panel2 : "transparent", fontSize: 13 }}>
+                <div key={sk} title={`Roll ${sk}`} onClick={() => rollIt(`${sk} check`, skillPartsFor(sk), "skill", SKILL_ABIL[sk], prof)}
+                  style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", borderRadius: 6, background: prof ? T.panel2 : "transparent", fontSize: 13, cursor: "pointer" }}>
                   <span style={{ color: prof ? T.ink : T.dim }}>{exp ? "★ " : prof ? "● " : ""}{sk}</span>
                   <span style={{ color: exp ? T.gold : prof ? T.ink : T.dim, fontWeight: prof ? 700 : 400 }}>{fmtMod(m)}</span>
                 </div>
               );
             })}
           </div>
-          <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>● proficient · ★ expertise (double proficiency)</div>
+          <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>● proficient · ★ expertise (double proficiency) · tap any skill to roll it{feats.jack ? " · Jack of All Trades adds +" + feats.jack + " to the rest" : ""}{feats.reliable ? " · Reliable Talent floors proficient checks at 10" : ""}</div>
           {ch.feats?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Feats: {ch.feats.join(", ")}</div>}
           {ch.metamagic?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Metamagic: {ch.metamagic.join(", ")}</div>}
           {ch.rangerChoices && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Favored Enemy: {ch.rangerChoices.favEnemy} · Natural Explorer: {ch.rangerChoices.natTerrain}</div>}
@@ -2196,6 +2375,11 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           </div>
         </div>
       </div>
+
+      {rollSpec && (
+        <RollTray key={JSON.stringify(rollSpec) + advMode} title={rollSpec.title} mode={advMode} parts={rollSpec.parts}
+          kind={rollSpec.kind} abil={rollSpec.abil} proficient={rollSpec.proficient} ch={ch} onClose={() => setRollSpec(null)} />
+      )}
     </div>
   );
 }
