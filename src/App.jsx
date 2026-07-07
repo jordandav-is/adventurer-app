@@ -323,6 +323,25 @@ const btn = (primary) => ({
   border: primary ? `1px solid ${T.blood}` : `1px solid ${T.gold}`, fontFamily: "Georgia, serif",
 });
 
+/* ============ ICONS (inline SVG, stroke = currentColor) ============ */
+const ICON_PATHS = {
+  d20: <><path d="M12 2 3.34 7v10L12 22l8.66-5V7L12 2Z" /><path d="M12 22v-8.5" /><path d="M3.34 7 12 13.5 20.66 7" /><path d="m7.5 4.6 4.5 8.9 4.5-8.9" /></>,
+  sword: <><path d="M14.5 17.5 3 6V3h3l11.5 11.5" /><path d="M13 19l6-6" /><path d="M16 16l4 4" /><path d="M19 21l2-2" /></>,
+  bow: <><path d="M17 3h4v4" /><path d="M21 3 8.5 15.5" /><path d="M5 8c-1.5 2.5-2 5.5-1 9 3.5 1 6.5.5 9-1" /><path d="M4 20l3.5-3.5" /></>,
+  sparkles: <><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z" /><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z" /></>,
+  hammer: <><path d="m15 12-8.5 8.5a2.12 2.12 0 1 1-3-3L12 9" /><path d="M17.64 15 22 10.64" /><path d="m20.91 11.7-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h2.47l2.26 1.91" /></>,
+  up: <><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></>,
+  down: <><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></>,
+  moon: <><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" /></>,
+  sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" /></>,
+};
+const Icon = ({ name, size = 15, style }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: "-2px", marginRight: 6, ...style }}>
+    {ICON_PATHS[name]}
+  </svg>
+);
+
 /* ============ ANIMATED 3D DICE ============ */
 /* Real polyhedra — tetrahedron, cube, octahedron, pentagonal trapezohedron,
    dodecahedron, icosahedron — built from vertex hulls and rendered as CSS
@@ -595,7 +614,7 @@ function RollTray({ title, mode, parts, kind, abil, proficient, ch, onClose }) {
             d20 {res.floored ? `${nat}→10` : nat}{parts.filter((p) => p.value).map((p) => ` ${fmtMod(p.value)} ${p.label}`).join("")}
           </div>
         )}
-        {done && crit && <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginTop: 6 }}>⚔ CRITICAL HIT{f.critRange < 20 ? ` (crits on ${f.critRange}–20)` : ""}!</div>}
+        {done && crit && <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginTop: 6 }}><Icon name="sword" /> CRITICAL HIT{f.critRange < 20 ? ` (crits on ${f.critRange}–20)` : ""}!</div>}
         {done && !crit && nat === 20 && <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 15, marginTop: 6 }}>Natural 20</div>}
         {done && fumble && <div style={{ color: T.blood, fontFamily: "Georgia, serif", fontSize: 15, marginTop: 6 }}>Natural 1 — the bones are cruel</div>}
         {done && notes.length > 0 && (
@@ -609,6 +628,74 @@ function RollTray({ title, mode, parts, kind, abil, proficient, ch, onClose }) {
       </div>
     </div>
   );
+}
+
+/* ============ FEATURE CHOICE GROUPS ============ */
+/* Some subclass options ride in the compendium as pseudo-spells (maneuvers, elemental
+   disciplines, arcane shots, trick shots) — tagged for a non-casting class, they're
+   techniques, not spells, and must stay out of real spell pickers. */
+const CASTING_CLASSES = new Set(["Bard", "Cleric", "Druid", "Paladin", "Ranger", "Sorcerer", "Warlock", "Wizard", "Artificer"]);
+const isTechnique = (sp) => !(sp.classes || "").split(",").some((e) => {
+  const m = e.trim().match(/^(.+?)(?:\s*\(([^)]*)\))?$/);
+  return m && CASTING_CLASSES.has(m[1].trim()) && (m[2] || "").trim().toLowerCase() !== "no spells";
+});
+
+const KENSEI_WEAPONS = ["Battleaxe", "Club", "Dagger", "Flail", "Glaive", "Greataxe", "Greatclub", "Greatsword", "Halberd", "Handaxe", "Javelin", "Light Hammer", "Longbow", "Longsword", "Mace", "Maul", "Morningstar", "Pike", "Quarterstaff", "Rapier", "Scimitar", "Shortbow", "Shortsword", "Sickle", "Spear", "Trident", "War Pick", "Warhammer", "Whip"];
+
+/* Choice-granting features: what you pick, where the options live, and how many you
+   hold at each class level (cumulative — missed picks are offered as catch-up). */
+const CHOICE_GROUPS = [
+  { key: "Maneuvers", cls: "Fighter", sub: "Battle Master", source: { spellTag: true }, counts: { 3: 3, 7: 2, 10: 2, 15: 2 } },
+  { key: "Arcane Shot Options", cls: "Fighter", sub: "Arcane Archer", source: { spellTag: true }, counts: { 3: 2, 7: 1, 10: 1, 15: 1, 18: 1 } },
+  { key: "Trick Shots", cls: "Fighter", sub: "Gunslinger", source: { spellTag: true }, counts: { 3: 2, 7: 1, 10: 1, 15: 1, 18: 1 } },
+  { key: "Runes", cls: "Fighter", sub: "Rune Knight", source: { featurePrefix: "Rune" }, counts: { 3: 2, 7: 1, 10: 1, 15: 1 } },
+  { key: "Elemental Disciplines", cls: "Monk", sub: "Way of the Four Elements", source: { spellTag: true }, counts: { 3: 1, 6: 1, 11: 1, 17: 1 }, grant: { 3: ["Elemental Attunement"] } },
+  { key: "Kensei Weapons", cls: "Monk", sub: "Way of the Kensei", source: { list: KENSEI_WEAPONS }, counts: { 3: 2, 6: 1, 11: 1, 17: 1 } },
+  { key: "Totem Spirit", cls: "Barbarian", sub: "Path of the Totem Warrior", source: { featurePrefix: "Totem Spirit" }, counts: { 3: 1 } },
+  { key: "Aspect of the Beast", cls: "Barbarian", sub: "Path of the Totem Warrior", source: { featurePrefix: "Aspect of the Beast" }, counts: { 6: 1 } },
+  { key: "Totemic Attunement", cls: "Barbarian", sub: "Path of the Totem Warrior", source: { featurePrefix: "Totemic Attunement" }, counts: { 14: 1 } },
+  { key: "Storm Aura", cls: "Barbarian", sub: "Path of the Storm Herald", source: { list: ["Storm Aura: Desert", "Storm Aura: Sea", "Storm Aura: Tundra"] }, counts: { 3: 1 } },
+  { key: "Hunter's Prey", cls: "Ranger", sub: "Hunter", source: { featurePrefix: "Hunter's Prey" }, counts: { 3: 1 } },
+  { key: "Defensive Tactics", cls: "Ranger", sub: "Hunter", source: { featurePrefix: "Defensive Tactics" }, counts: { 7: 1 } },
+  { key: "Multiattack Option", cls: "Ranger", sub: "Hunter", source: { featurePrefix: "Multiattack" }, counts: { 11: 1 } },
+  { key: "Superior Hunter's Defense", cls: "Ranger", sub: "Hunter", source: { featurePrefix: "Superior Hunter's Defense" }, counts: { 15: 1 } },
+  { key: "Dragon Ancestor", cls: "Sorcerer", sub: "Draconic Bloodline", source: { featureSuffix: "Dragon Ancestor" }, counts: { 1: 1 } },
+];
+const CHOICE_KEYS = new Set(CHOICE_GROUPS.map((g) => g.key));
+
+const choiceCum = (g, level) => Object.entries(g.counts).reduce((s, [l, n]) => s + (level >= +l ? n : 0), 0);
+const groupMatches = (g, clsName, subclass) => g.cls === clsName && (!g.sub || (subclass && subTokens(subclass).includes(normSub(g.sub))));
+function choiceOptionsFor(g, customs) {
+  if (g.source.list) return g.source.list.map((n) => ({ name: n }));
+  if (g.source.spellTag) {
+    return (customs?.spells || []).filter((sp) => isTechnique(sp) && spellFitsClass(sp, g.cls, g.sub))
+      .map((sp) => ({ name: sp.name, minLvl: +((sp.text || "").match(/Prerequisite:\s*(\d+)\w*\s*level/i)?.[1] || 0) }))
+      .sort((a, b) => (a.minLvl || 0) - (b.minLvl || 0) || a.name.localeCompare(b.name));
+  }
+  const ft = customs?.featureTexts || {};
+  if (g.source.featurePrefix) {
+    const pre = g.source.featurePrefix + ": ";
+    return Object.keys(ft).filter((k) => k.startsWith(pre)).map((k) => ({ name: k })).sort((a, b) => a.name.localeCompare(b.name));
+  }
+  if (g.source.featureSuffix) {
+    return Object.keys(ft).filter((k) => k.endsWith(g.source.featureSuffix) && k !== g.source.featureSuffix && !k.includes(":"))
+      .map((k) => ({ name: k })).sort((a, b) => a.name.localeCompare(b.name));
+  }
+  return [];
+}
+/* All groups relevant to a character, with current holdings and caps */
+function characterChoiceGroups(ch, customs) {
+  const out = [];
+  for (const g of CHOICE_GROUPS) {
+    const entry = ch.classes.find((c) => groupMatches(g, c.name, c.subclass));
+    if (!entry) continue;
+    const options = choiceOptionsFor(g, customs);
+    if (!options.length) continue;
+    const grants = Object.entries(g.grant || {}).flatMap(([l, arr]) => (entry.level >= +l ? arr : []));
+    const held = ch.choices?.[g.key] || [];
+    out.push({ g, entry, options, grants, held, cap: choiceCum(g, entry.level) + grants.length });
+  }
+  return out;
 }
 
 /* ============ LORE LIBRARY (long-press anything to read it) ============ */
@@ -727,7 +814,8 @@ function infoFor(rawName, customs) {
   }
   if (SUB_FEATS[strip]) return { title: strip, meta: "Subclass", body: Object.entries(SUB_FEATS[strip]).map(([l, fx]) => `Level ${l}: ${fx.join(", ")}`).join("\n") };
   const ft = customs?.featureTexts || {};
-  const key = ft[name] ? name : ft[strip] ? strip : Object.keys(ft).find((k) => baseSubName(k) === strip || k.startsWith(strip + " ("));
+  let key = ft[name] ? name : ft[strip] ? strip : Object.keys(ft).find((k) => baseSubName(k) === strip || k.startsWith(strip + " ("));
+  if (!key) { const cp = name.match(/^([^:]+):/); if (cp && ft[cp[1].trim()]) key = cp[1].trim(); }
   if (key) return { title: strip, meta: "Feature", body: ft[key] };
   return null;
 }
@@ -1116,7 +1204,7 @@ function AbilityStep({ scores, setScores, method, setMethod }) {
       {method === "Roll 4d6" && (
         <div style={{ marginBottom: 12 }}>
           <button style={btn(true)} onClick={startRoll} disabled={rolled.length >= 6}>
-            🎲 Roll {rolled.length < 6 ? `score ${rolled.length + 1} of 6` : "complete"}
+            <Icon name="d20" /> Roll {rolled.length < 6 ? `score ${rolled.length + 1} of 6` : "complete"}
           </button>
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
             {rolled.map((v, i) => (
@@ -1544,7 +1632,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
               <button style={btn(false)} onClick={() => {
                 const [n] = START_GOLD[cls];
                 setGoldRoll({ dice: Array.from({ length: n }, () => ({ sides: 4, value: roll(4) })) });
-              }}>🎲 Roll starting gold ({START_GOLD[cls][0]}d4{START_GOLD[cls][1] > 1 ? " × 10" : ""} gp)</button>
+              }}><Icon name="d20" /> Roll starting gold ({START_GOLD[cls][0]}d4{START_GOLD[cls][1] > 1 ? " × 10" : ""} gp)</button>
             ) : (
               <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 18 }}>Starting gold: {gold} gp</div>
             )}
@@ -1638,6 +1726,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const [terrainPick2, setTerrainPick2] = useState(null);
   const [masteryPicks, setMasteryPicks] = useState({}); // { 1: spell, 2: spell }
   const [signaturePicks, setSignaturePicks] = useState([]);
+  const [groupPicks, setGroupPicks] = useState({});     // maneuvers, disciplines, totems, …
 
   if (lvl >= 20) return (
     <div style={{ ...card, padding: 24, textAlign: "center" }}>
@@ -1720,6 +1809,12 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     let choices = ch.choices;
     if (gainsMastery && (masteryPicks[1] || masteryPicks[2])) { choices = { ...choices, "Spell Mastery": [masteryPicks[1], masteryPicks[2]].filter(Boolean) }; logBits.push(`Spell Mastery: ${choices["Spell Mastery"].join(", ")}`); }
     if (gainsSignature && signaturePicks.length) { choices = { ...choices, "Signature Spell": signaturePicks }; logBits.push(`Signature Spells: ${signaturePicks.join(", ")}`); }
+    for (const d of choiceGroupsDue) {
+      const picksArr = groupPicks[d.g.key] || [];
+      const grants = Object.entries(d.g.grant || {}).flatMap(([l, arr]) => (newClsLevel >= +l ? arr : [])).filter((n) => !d.held.includes(n) && !picksArr.includes(n));
+      choices = { ...choices, [d.g.key]: [...d.held, ...grants, ...picksArr] };
+      if (picksArr.length) logBits.push(`${d.g.key}: ${picksArr.join(", ")}`);
+    }
     const skills = mcSkill ? [...ch.skills, mcSkill] : ch.skills;
     onDone({
       ...ch, classes, abilities, skills, invocations, spells: spellsBook,
@@ -1803,7 +1898,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const secretsN = pick === "Bard"
     ? ([10, 14, 18].includes(newClsLevel) ? 2 : 0) + (baseSubName(effSub || "") === "College of Lore" && newClsLevel === 6 ? 2 : 0) : 0;
   const secretsPool = secretsN > 0
-    ? pool.filter((sp) => sp.level >= 1 && sp.level <= maxLvlNew && !(book.spells || []).includes(sp.name) && !spellPicks.includes(sp.name)).sort(sortSp) : [];
+    ? pool.filter((sp) => !isTechnique(sp) && sp.level >= 1 && sp.level <= maxLvlNew && !(book.spells || []).includes(sp.name) && !spellPicks.includes(sp.name)).sort(sortSp) : [];
   const gainsSecrets = secretsPool.length > 0 || secretsPicks.length > 0;
   const secretsReq = Math.min(secretsN, secretsPool.length + secretsPicks.length);
   const countedSecrets = pick === "Bard" && [10, 14, 18].includes(newClsLevel) ? 2 : 0;
@@ -1825,11 +1920,23 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     ? (book.spells || []).filter((n) => spLevel(n) === 3) : [];
   const gainsSignature = signaturePool.length > 0;
 
+  // Subclass option groups (maneuvers, disciplines, totems, shots, runes…) with catch-up for missed levels
+  const choiceGroupsDue = CHOICE_GROUPS.map((g) => {
+    if (!pick || !groupMatches(g, pick, effSub)) return null;
+    const options = choiceOptionsFor(g, customs);
+    if (!options.length) return null;
+    const held = ch.choices?.[g.key] || [];
+    const avail = options.filter((o) => !held.includes(o.name) && (!o.minLvl || o.minLvl <= newClsLevel));
+    const need = Math.min(Math.max(0, choiceCum(g, newClsLevel) - held.filter((n) => !(g.grant && Object.values(g.grant).flat().includes(n))).length), avail.length);
+    return need > 0 ? { g, avail, need, held } : null;
+  }).filter(Boolean);
+
   const preparedCaster = ["Cleric", "Druid", "Paladin"].includes(pick);
 
   const extrasNeeded = gainsASI || gainsSub || gainsMcSkill || gainsStyle || gainsExpertise || gainsMeta || gainsBoon ||
     invNeed > 0 || canSwapInv || gainsCantrips || gainsSpells || canSwapSpell || gainsArcanum ||
-    gainsBoAS || gainsTome || gainsSecrets || gainsFavEnemy || gainsNatTerrain || gainsMastery || gainsSignature;
+    gainsBoAS || gainsTome || gainsSecrets || gainsFavEnemy || gainsNatTerrain || gainsMastery || gainsSignature ||
+    choiceGroupsDue.length > 0;
   const extrasDone =
     (!gainsASI || (asiMode === "feat" && featPick && (!(allFeats(customs).find((f) => f.name === featPick)?.bump?.length) || featBump)) || (asiMode === "asi" && asiPicks.length === 2)) &&
     (!gainsSub || newSub) && (!gainsMcSkill || mcSkill) && (!gainsStyle || stylePick) && (!gainsTerrain || terrPick) &&
@@ -1842,7 +1949,8 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     secretsPicks.length >= secretsReq &&
     (!gainsFavEnemy || favEnemyPick) && (!gainsNatTerrain || terrainPick2) &&
     (!gainsMastery || ((masteryPools[1].length === 0 || masteryPicks[1]) && (masteryPools[2].length === 0 || masteryPicks[2]))) &&
-    (!gainsSignature || signaturePicks.length >= Math.min(2, signaturePool.length));
+    (!gainsSignature || signaturePicks.length >= Math.min(2, signaturePool.length)) &&
+    choiceGroupsDue.every((d) => (groupPicks[d.g.key] || []).length >= d.need);
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 50, overflowY: "auto", padding: "calc(30px + env(safe-area-inset-top)) 14px calc(30px + env(safe-area-inset-bottom))" }}>
@@ -1887,7 +1995,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
               <button style={btn(false)} onClick={() => { setHpGain(avg); setStage(extrasNeeded ? "extras" : "confirm"); }}>
                 Take average ({avg})
               </button>
-              <button style={btn(true)} onClick={() => setRollingHp(true)}>🎲 Roll the d{pickData.die}</button>
+              <button style={btn(true)} onClick={() => setRollingHp(true)}><Icon name="d20" /> Roll the d{pickData.die}</button>
             </div>
             {rollingHp && (
               <DiceTray title={`Rolling 1d${pickData.die} for hit points`} dice={[{ sides: pickData.die, value: roll(pickData.die) }]}
@@ -2151,6 +2259,23 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                 </div>
               </div>
             )}
+            {choiceGroupsDue.map((d) => (
+              <div key={d.g.key} style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
+                <div style={{ color: T.gold, marginBottom: 8 }}>{d.g.key} — choose {d.need} ({(groupPicks[d.g.key] || []).length}/{d.need})</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {d.avail.map((o) => {
+                    const on = (groupPicks[d.g.key] || []).includes(o.name);
+                    return (
+                      <button key={o.name} {...lorePress(o.name)} style={{ ...btn(on), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
+                        onClick={() => { const cur = groupPicks[d.g.key] || []; setGroupPicks({ ...groupPicks, [d.g.key]: on ? cur.filter((x) => x !== o.name) : cur.length < d.need ? [...cur, o.name] : cur }); }}>
+                        {baseSubName(o.name.replace(/^[^:]+:\s*/, ""))}{o.minLvl ? ` (lvl ${o.minLvl}+)` : ""}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>Long-press any option to read its full text.</div>
+              </div>
+            ))}
             {preparedCaster && (
               <div style={{ color: T.dim, fontSize: 12, marginBottom: 12 }}>
                 {pick} prepares spells daily — your prepared count rises with this level. Adjust anytime in the Grimoire.
@@ -2193,6 +2318,9 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
               {terrainPick2 && <>Natural Explorer: <b style={{ color: T.gold }}>{terrainPick2}</b><br /></>}
               {(masteryPicks[1] || masteryPicks[2]) && <>Spell Mastery: <b style={{ color: T.gold }}>{[masteryPicks[1], masteryPicks[2]].filter(Boolean).join(", ")}</b><br /></>}
               {signaturePicks.length > 0 && <>Signature Spells: <b style={{ color: T.gold }}>{signaturePicks.join(", ")}</b><br /></>}
+              {choiceGroupsDue.filter((d) => (groupPicks[d.g.key] || []).length).map((d) => (
+                <span key={d.g.key}>{d.g.key}: <b style={{ color: T.gold }}>{groupPicks[d.g.key].map((n) => baseSubName(n.replace(/^[^:]+:\s*/, ""))).join(", ")}</b><br /></span>
+              ))}
               {feats.length > 0 && <>Features: {feats.join(", ")}</>}
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
@@ -2439,6 +2567,60 @@ function SpellManager({ ch, customs, onSpells, onUpdate }) {
   );
 }
 
+
+/* ============ FEATURE CHOICE MANAGER (sheet-side) ============ */
+function ChoiceManager({ ch, customs, onUpdate }) {
+  const groups = characterChoiceGroups(ch, customs);
+  const [open, setOpen] = useState(null); // group key
+  if (!groups.length) return null;
+  const shortName = (n) => baseSubName(n.replace(/^[^:]+:\s*/, ""));
+  const save = (key, arr) => onUpdate({ choices: { ...(ch.choices || {}), [key]: arr } });
+  const openGroup = groups.find((x) => x.g.key === open);
+  return (
+    <div style={{ ...card, padding: 16, marginTop: 14 }}>
+      <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 4 }}>Feature Choices</div>
+      <div style={{ color: T.dim, fontSize: 12, marginBottom: 8 }}>Maneuvers, disciplines, totems, and other subclass options. Long-press anything to read it; swap by removing and re-adding.</div>
+      {groups.map(({ g, entry, grants, held, cap }) => {
+        const all = [...new Set([...grants, ...held])];
+        return (
+          <div key={g.key} style={{ marginBottom: 10 }}>
+            <div style={{ color: T.ink, fontWeight: 700, fontSize: 14 }}>{g.key} <span style={{ color: all.length > cap ? T.blood : T.dim, fontWeight: 400, fontSize: 12 }}>· {all.length}/{cap}</span></div>
+            <div>
+              {all.map((n) => (
+                <span key={n} {...lorePress(n)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel2, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13 }}>
+                  {shortName(n)}
+                  {!(grants.includes(n) && !held.includes(n)) && (
+                    <span style={{ color: T.blood, cursor: "pointer", fontWeight: 700 }} onClick={() => save(g.key, held.filter((x) => x !== n))}>✕</span>
+                  )}
+                </span>
+              ))}
+              {all.length < cap && <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => setOpen(g.key)}>＋ add</button>}
+            </div>
+          </div>
+        );
+      })}
+      {openGroup && (
+        <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={() => setOpen(null)}>
+          <div style={{ ...card, width: "min(560px, 100%)", maxHeight: "75vh", overflowY: "auto", borderRadius: "16px 16px 0 0", padding: 16, paddingBottom: "calc(16px + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ color: T.gold, fontFamily: "Georgia, serif", marginBottom: 8 }}>Choose — {openGroup.g.key}</div>
+            {openGroup.options.filter((o) => !openGroup.held.includes(o.name) && !openGroup.grants.includes(o.name)).map((o) => {
+              const ok = !o.minLvl || o.minLvl <= openGroup.entry.level;
+              return (
+                <div key={o.name} {...lorePress(o.name)} onClick={() => { if (!ok) return; save(openGroup.g.key, [...openGroup.held, o.name]); setOpen(null); }}
+                  style={{ padding: "10px 8px", borderBottom: `1px solid ${T.edge}`, cursor: ok ? "pointer" : "not-allowed", opacity: ok ? 1 : 0.45 }}>
+                  <span style={{ color: T.ink }}>{shortName(o.name)}</span>
+                  {o.minLvl > 0 && <span style={{ color: T.dim, fontSize: 12 }}> · requires level {o.minLvl}</span>}
+                </div>
+              );
+            })}
+            <div style={{ color: T.dim, fontSize: 11, marginTop: 8 }}>Long-press an option to read it before choosing.</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ============ CHARACTER SHEET ============ */
 function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, onInvocations, onUpdate, customs }) {
   const lvl = totalLevel(ch);
@@ -2506,9 +2688,9 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   const rollIt = (title, parts, kind, abil, proficient) => setRollSpec({ title, parts, kind, abil, proficient });
   const casterClasses = ch.classes.filter((c) => CLASSES[c.name].caster);
   const attackRolls = [
-    { label: "⚔ Melee", abil: "str", parts: [{ label: "Strength", value: mod(ch.abilities.str) }, { label: "proficiency", value: pb }] },
-    { label: "🏹 Ranged / Finesse", abil: "dex", parts: [{ label: "Dexterity", value: mod(ch.abilities.dex) }, { label: "proficiency", value: pb }, ...(feats.archery ? [{ label: "Archery", value: feats.archery }] : [])] },
-    ...casterClasses.map((c) => ({ label: `✨ Spell (${c.name})`, abil: SPELL_ABILITY[c.name], parts: [{ label: ABIL_NAMES[SPELL_ABILITY[c.name]], value: mod(ch.abilities[SPELL_ABILITY[c.name]]) }, { label: "proficiency", value: pb }] })),
+    { icon: "sword", label: "Melee", abil: "str", parts: [{ label: "Strength", value: mod(ch.abilities.str) }, { label: "proficiency", value: pb }] },
+    { icon: "bow", label: "Ranged / Finesse", abil: "dex", parts: [{ label: "Dexterity", value: mod(ch.abilities.dex) }, { label: "proficiency", value: pb }, ...(feats.archery ? [{ label: "Archery", value: feats.archery }] : [])] },
+    ...casterClasses.map((c) => ({ icon: "sparkles", label: `Spell (${c.name})`, abil: SPELL_ABILITY[c.name], parts: [{ label: ABIL_NAMES[SPELL_ABILITY[c.name]], value: mod(ch.abilities[SPELL_ABILITY[c.name]]) }, { label: "proficiency", value: pb }] })),
   ];
 
   return (
@@ -2526,7 +2708,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           <div style={{ color: T.dim, fontSize: 13 }}>Character level {lvl} · Proficiency +{pb} · {ch.background}{ch.alignment ? ` · ${ch.alignment}` : ""}</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexDirection: "column" }}>
-          <button style={{ ...btn(true), opacity: lvl >= 20 ? 0.4 : 1 }} disabled={lvl >= 20} onClick={onLevelUp}>⬆ Level Up</button>
+          <button style={{ ...btn(true), opacity: lvl >= 20 ? 0.4 : 1 }} disabled={lvl >= 20} onClick={onLevelUp}><Icon name="up" /> Level Up</button>
           {!confirmDel
             ? <button style={{ ...btn(false), borderColor: T.blood, color: T.blood }} onClick={() => setConfirmDel(true)}>Delete</button>
             : <button style={{ ...btn(false), background: T.blood, color: T.ink, borderColor: T.blood }} onClick={onDelete}>Confirm delete?</button>}
@@ -2569,7 +2751,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         </div>
         <div style={{ ...card, padding: 12, textAlign: "center", cursor: "pointer" }} title="Roll initiative"
           onClick={() => rollIt("Initiative", checkPartsFor("dex"), "check", "dex")}>
-          <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Initiative 🎲</div>
+          <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Initiative <Icon name="d20" size={11} style={{ marginRight: 0 }} /></div>
           <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: T.ink }}>{fmtMod(checkPartsFor("dex").reduce((s, p) => s + p.value, 0))}</div>
         </div>
         <div style={{ ...card, padding: 12, textAlign: "center" }}>
@@ -2600,8 +2782,8 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           style={{ width: 58, textAlign: "center", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 4px", fontSize: 16 }} />
         <button style={{ ...btn(false), borderColor: T.green, color: T.green }} onClick={() => applyHp(hpAmt)} disabled={dmg === 0}>+ Heal</button>
         <div style={{ flex: 1 }} />
-        {pact && <button style={btn(false)} onClick={shortRest} disabled={usedPact === 0} title="Recover pact slots">☾ Short Rest</button>}
-        <button style={btn(false)} onClick={longRest} disabled={dmg === 0 && usedSlots.every((n) => !n) && usedPact === 0 && usedArc.length === 0} title="Full HP, all slots recovered">☀ Long Rest</button>
+        {pact && <button style={btn(false)} onClick={shortRest} disabled={usedPact === 0} title="Recover pact slots"><Icon name="moon" /> Short Rest</button>}
+        <button style={btn(false)} onClick={longRest} disabled={dmg === 0 && usedSlots.every((n) => !n) && usedPact === 0 && usedArc.length === 0} title="Full HP, all slots recovered"><Icon name="sun" /> Long Rest</button>
       </div>
 
       <div style={{ ...card, padding: 14, marginTop: 14 }}>
@@ -2621,8 +2803,8 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
           {attackRolls.map((atk) => (
             <button key={atk.label} style={{ ...btn(false), padding: "8px 14px" }}
-              onClick={() => rollIt(`${atk.label.replace(/^\S+ /, "")} attack`, atk.parts, "attack", atk.abil)}>
-              {atk.label} {fmtMod(atk.parts.reduce((s, p) => s + p.value, 0))}
+              onClick={() => rollIt(`${atk.label} attack`, atk.parts, "attack", atk.abil)}>
+              <Icon name={atk.icon} /> {atk.label} {fmtMod(atk.parts.reduce((s, p) => s + p.value, 0))}
             </button>
           ))}
         </div>
@@ -2685,6 +2867,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
       )}
 
       <SpellManager ch={ch} customs={customs} onSpells={onSpells} onUpdate={onUpdate} />
+      <ChoiceManager ch={ch} customs={customs} onUpdate={onUpdate} />
       <InvocationManager ch={ch} onInvocations={onInvocations} />
 
       <div style={{ ...card, padding: 16, marginTop: 14 }}>
@@ -2729,7 +2912,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           {ch.feats?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Feats: {ch.feats.map((f, i) => <span key={f} {...lorePress(f)}>{i > 0 ? ", " : ""}{f}</span>)}</div>}
           {ch.metamagic?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Metamagic: {ch.metamagic.map((m, i) => <span key={m} {...lorePress(m)}>{i > 0 ? ", " : ""}{m}</span>)}</div>}
           {ch.rangerChoices && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Favored Enemy: {[ch.rangerChoices.favEnemy, ...(ch.rangerChoices.extraEnemies || [])].filter(Boolean).join(", ")} · Natural Explorer: {[ch.rangerChoices.natTerrain, ...(ch.rangerChoices.extraTerrains || [])].filter(Boolean).join(", ")}</div>}
-          {ch.choices && Object.entries(ch.choices).map(([k, v]) => (
+          {ch.choices && Object.entries(ch.choices).filter(([k]) => !CHOICE_KEYS.has(k)).map(([k, v]) => (
             <div key={k} style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>{k}: {v.map((n, i) => <span key={n} {...lorePress(n)}>{i > 0 ? ", " : ""}{n}</span>)}</div>
           ))}
           {ch.styles?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Fighting Styles: {ch.styles.map((f) => `${f} (${STYLE_DESC[f]})`).join(" · ")}</div>}
@@ -3120,12 +3303,12 @@ export default function App() {
         <div style={{ maxWidth: 760, margin: "0 auto", padding: 20 }}>
           <div style={{ display: "flex", gap: 10 }}>
             <button style={{ ...btn(true), flex: 2, padding: 14, fontSize: 16 }} onClick={() => setView("create")}>＋ Forge a New Character</button>
-            <button style={{ ...btn(false), flex: 1, padding: 14 }} onClick={() => setView("forge")}>🔨 Homebrew Forge</button>
+            <button style={{ ...btn(false), flex: 1, padding: 14 }} onClick={() => setView("forge")}><Icon name="hammer" /> Homebrew Forge</button>
           </div>
           <div style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "center" }}>
-            <button style={{ ...btn(false), fontSize: 13 }} onClick={() => exportLedger(chars, customs)} disabled={chars.length === 0 && customs.feats.length === 0 && customs.spells.length === 0}>⬇ Export ledger</button>
+            <button style={{ ...btn(false), fontSize: 13 }} onClick={() => exportLedger(chars, customs)} disabled={chars.length === 0 && customs.feats.length === 0 && customs.spells.length === 0}><Icon name="down" size={13} /> Export ledger</button>
             <label style={{ ...btn(false), fontSize: 13, display: "inline-block" }}>
-              ⬆ Import ledger
+              <Icon name="up" size={13} /> Import ledger
               <input type="file" accept="application/json,.json" style={{ display: "none" }}
                 onChange={(e) => {
                   const f = e.target.files?.[0];
