@@ -1165,7 +1165,7 @@ function AbilityStep({ scores, setScores, method, setMethod }) {
 
       {rolling && (
         <DiceTray title={`Rolling 4d6 — score ${rolled.length + 1} of 6`} dice={rolling.dice} dropLowest
-          note="The bones tumble; the weakest is discarded. No re-rolls — the next throw is the next score."
+          note="The bones tumble; the weakest is discarded."
           tally={rolled} rollId={rolled.length}
           acceptLabel={rolled.length < 5 ? "Keep · Next Roll →" : "Keep · Finish"}
           onAccept={(total) => {
