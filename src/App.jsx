@@ -461,7 +461,7 @@ function Die3D({ sides, final, delay, size = 68 }) {
 
 const Die = ({ sides, final, delay, size = 68 }) => <Die3D sides={sides} final={final} delay={delay} size={size} />;
 
-function DiceTray({ title, dice, dropLowest, onAccept, onReroll, acceptLabel = "Accept", note }) {
+function DiceTray({ title, dice, dropLowest, onAccept, onReroll, acceptLabel = "Accept", note, tally, rollId = 0 }) {
   // dice: [{sides, value}] — values pre-rolled; tray animates the reveal
   const [revealDone, setRevealDone] = useState(false);
   useEffect(() => {
@@ -477,9 +477,13 @@ function DiceTray({ title, dice, dropLowest, onAccept, onReroll, acceptLabel = "
       <div style={{ ...card, padding: 28, textAlign: "center", minWidth: 320, maxWidth: "92vw" }}>
         <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold, marginBottom: 6 }}>{title}</div>
         {note && <div style={{ color: T.dim, fontSize: 13, marginBottom: 10 }}>{note}</div>}
+        {tally && tally.length > 0 && (
+          <div style={{ color: T.dim, fontSize: 13 }}>Kept so far: <span style={{ color: T.gold, fontWeight: 700 }}>{tally.join(" · ")}</span></div>
+        )}
         <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap", padding: "18px 0" }}>
           {dice.map((d, i) => (
-            <div key={i} style={{ opacity: revealDone && i === lowIdx ? 0.3 : 1, transition: "opacity 400ms", position: "relative" }}>
+            // key includes rollId so a fresh batch remounts the dice and re-tumbles
+            <div key={`${rollId}-${i}`} style={{ opacity: revealDone && i === lowIdx ? 0.3 : 1, transition: "opacity 400ms", position: "relative" }}>
               <Die sides={d.sides} final={d.value} delay={i * 150} />
               {revealDone && i === lowIdx && <div style={{ position: "absolute", top: -10, right: -6, color: T.blood, fontSize: 11, fontWeight: 700 }}>dropped</div>}
             </div>
@@ -604,6 +608,173 @@ function RollTray({ title, mode, parts, kind, abil, proficient, ch, onClose }) {
   );
 }
 
+/* ============ LORE LIBRARY (long-press anything to read it) ============ */
+const LANG_INFO = {
+  Common: "The trade tongue of humans, spoken nearly everywhere. Script: Common.",
+  Dwarvish: "Full of hard consonants and guttural sounds. Typical speakers: dwarves. Script: Dwarvish.",
+  Elvish: "Fluid, with subtle intonations and intricate grammar. Typical speakers: elves. Script: Elvish.",
+  Giant: "The slow, booming tongue of ogres and giants. Script: Dwarvish.",
+  Gnomish: "Renowned for technical treatises and catalogs of knowledge. Typical speakers: gnomes. Script: Dwarvish.",
+  Goblin: "The language of goblinoids — goblins, hobgoblins, and bugbears. Script: Dwarvish.",
+  Halfling: "Quiet and homey; halflings rarely share it with outsiders. Script: Common.",
+  Orc: "Harsh and grating. Typical speakers: orcs. Script: Dwarvish.",
+  Abyssal: "The twisting language of demons. Script: Infernal.",
+  Celestial: "The language of celestials, brought by angels. Script: Celestial.",
+  "Deep Speech": "The alien tongue of aboleths and mind flayers. It has no script.",
+  Draconic: "The ancient language of dragons and dragonborn, common in arcane writings. Script: Draconic.",
+  Infernal: "The rigid, hierarchical language of devils. Script: Infernal.",
+  Primordial: "The elemental tongue; its dialects (Aquan, Auran, Ignan, Terran) are mutually intelligible. Script: Dwarvish.",
+  Sylvan: "The flowing language of the fey. Script: Elvish.",
+  Undercommon: "The trade language of the Underdark. Script: Elvish.",
+};
+const SKILL_INFO = {
+  Acrobatics: "Stay on your feet in tricky situations — balancing on ice, deck of a pitching ship, or tumbling through a fall.",
+  "Animal Handling": "Calm a spooked animal, intuit a beast's intentions, or control your mount in a risky maneuver.",
+  Arcana: "Recall lore about spells, magic items, eldritch symbols, magical traditions, and the planes.",
+  Athletics: "Climb a cliff, leap a chasm, swim rough waters, or win a grapple.",
+  Deception: "Convincingly hide the truth — mislead, con, fast-talk, or keep a straight face.",
+  History: "Recall lore about historical events, legendary people, ancient kingdoms, wars, and lost civilizations.",
+  Insight: "Read intentions and body language — detect lies, predict someone's next move.",
+  Intimidation: "Influence through threats, hostile posture, and raw menace.",
+  Investigation: "Look for clues and make deductions — find the hidden mechanism, appraise the forgery, locate the weak point.",
+  Medicine: "Stabilize the dying or diagnose an illness.",
+  Nature: "Recall lore about terrain, plants and animals, weather, and natural cycles.",
+  Perception: "Spot, hear, or otherwise notice something — the ambush in the trees, the eavesdropper at the door.",
+  Performance: "Delight an audience with music, dance, acting, or storytelling.",
+  Persuasion: "Influence with tact, social grace, and good faith — negotiate, mediate, inspire.",
+  Religion: "Recall lore about deities, rites, holy symbols, and the practices of cults.",
+  "Sleight of Hand": "Palm a coin, plant evidence, lift a purse, or perform legerdemain unseen.",
+  Stealth: "Conceal yourself, move silently, slip past guards unnoticed.",
+  Survival: "Follow tracks, hunt game, navigate wilderness, predict weather, avoid natural hazards.",
+};
+const INVOCATION_INFO = {
+  "Agonizing Blast": "When you cast eldritch blast, add your Charisma modifier to the damage it deals on a hit.",
+  "Armor of Shadows": "You can cast mage armor on yourself at will, without expending a spell slot or material components.",
+  "Ascendant Step": "You can cast levitate on yourself at will, without expending a spell slot or material components.",
+  "Beast Speech": "You can cast speak with animals at will, without expending a spell slot.",
+  "Beguiling Influence": "You gain proficiency in the Deception and Persuasion skills.",
+  "Bewitching Whispers": "You can cast compulsion once using a warlock spell slot. You can't do so again until you finish a long rest.",
+  "Book of Ancient Secrets": "Inscribe two 1st-level ritual spells in your Book of Shadows and cast them as rituals; you can add further ritual spells you find to the book.",
+  "Chains of Carceri": "You can cast hold monster at will — targeting a celestial, fiend, or elemental — without expending a spell slot. Long rest before reusing on the same creature.",
+  "Devil's Sight": "You can see normally in darkness, both magical and nonmagical, to a distance of 120 feet.",
+  "Dreadful Word": "You can cast confusion once using a warlock spell slot. You can't do so again until you finish a long rest.",
+  "Eldritch Sight": "You can cast detect magic at will, without expending a spell slot.",
+  "Eldritch Spear": "When you cast eldritch blast, its range is 300 feet.",
+  "Eyes of the Rune Keeper": "You can read all writing.",
+  "Fiendish Vigor": "You can cast false life on yourself at will as a 1st-level spell, without expending a spell slot or material components.",
+  "Gaze of Two Minds": "Touch a willing humanoid to perceive through its senses until the end of your next turn; keep concentrating to extend it.",
+  "Lifedrinker": "When you hit a creature with your pact weapon, it takes extra necrotic damage equal to your Charisma modifier (minimum 1).",
+  "Mask of Many Faces": "You can cast disguise self at will, without expending a spell slot.",
+  "Master of Myriad Forms": "You can cast alter self at will, without expending a spell slot.",
+  "Minions of Chaos": "You can cast conjure elemental once using a warlock spell slot. You can't do so again until you finish a long rest.",
+  "Mire the Mind": "You can cast slow once using a warlock spell slot. You can't do so again until you finish a long rest.",
+  "Misty Visions": "You can cast silent image at will, without expending a spell slot or material components.",
+  "One with Shadows": "When you are in dim light or darkness, you can become invisible as an action until you move, act, or react.",
+  "Otherworldly Leap": "You can cast jump on yourself at will, without expending a spell slot or material components.",
+  "Repelling Blast": "When you hit a creature with eldritch blast, you can push it up to 10 feet away from you in a straight line.",
+  "Sculptor of Flesh": "You can cast polymorph once using a warlock spell slot. You can't do so again until you finish a long rest.",
+  "Sign of Ill Omen": "You can cast bestow curse once using a warlock spell slot. You can't do so again until you finish a long rest.",
+  "Thief of Five Fates": "You can cast bane once using a warlock spell slot. You can't do so again until you finish a long rest.",
+  "Thirsting Blade": "You can attack with your pact weapon twice, instead of once, whenever you take the Attack action on your turn.",
+  "Visions of Distant Realms": "You can cast arcane eye at will, without expending a spell slot.",
+  "Voice of the Chain Master": "Communicate telepathically with your familiar and perceive through its senses anywhere on the same plane; you can also speak through it.",
+  "Whispers of the Grave": "You can cast speak with dead at will, without expending a spell slot.",
+  "Witch Sight": "You can see the true form of any shapechanger or creature concealed by illusion or transmutation magic within 30 feet.",
+};
+const METAMAGIC_INFO = {
+  "Careful Spell": "Spend 1 sorcery point: choose up to Charisma-modifier creatures who automatically succeed on their saving throw against your spell.",
+  "Distant Spell": "Spend 1 sorcery point to double a spell's range, or give a touch spell a range of 30 feet.",
+  "Empowered Spell": "Spend 1 sorcery point to reroll up to Charisma-modifier damage dice. Usable alongside another Metamagic option.",
+  "Extended Spell": "Spend 1 sorcery point to double the duration of a spell (max 24 hours).",
+  "Heightened Spell": "Spend 3 sorcery points to give one target disadvantage on its first saving throw against the spell.",
+  "Quickened Spell": "Spend 2 sorcery points to cast a spell with a casting time of 1 action as a bonus action.",
+  "Subtle Spell": "Spend 1 sorcery point to cast without somatic or verbal components.",
+  "Twinned Spell": "Spend sorcery points equal to the spell's level (1 for cantrips) to target a second creature with a single-target spell.",
+};
+const BOON_INFO = {
+  "Pact of the Blade": "Create a pact weapon in your empty hand as an action — any melee weapon form, counts as magical, vanishes if dismissed or far away. You can bind a magic weapon as your pact weapon.",
+  "Pact of the Chain": "Learn find familiar and cast it as a ritual; your familiar can take special forms (imp, pseudodragon, quasit, sprite), and you can forgo an attack to let it attack with its reaction.",
+  "Pact of the Tome": "Your patron grants a Book of Shadows containing three cantrips from any class's list — you can cast them at will.",
+};
+
+/* Resolve a name into readable lore, searching compendium imports then built-in tables */
+function infoFor(rawName, customs) {
+  const name = String(rawName || "").trim();
+  if (!name) return null;
+  const strip = baseSubName(name);
+  const sp = (customs?.spells || []).find((s) => s.name === name || s.name === strip);
+  if (sp) return {
+    title: sp.name,
+    meta: [sp.level === 0 ? "Cantrip" : `Level ${sp.level}`, schoolName(sp.school), sp.time && `Cast: ${sp.time}`, sp.range && `Range: ${sp.range}`, sp.components && `Components: ${sp.components}`, sp.duration && `Duration: ${sp.duration}`].filter(Boolean).join(" · "),
+    body: sp.text || null, foot: sp.classes ? `Classes: ${sp.classes}` : null,
+  };
+  const inv = INVOCATION_DATA.find(([n]) => n === name || n === strip);
+  if (inv) return { title: inv[0], meta: ["Eldritch Invocation", inv[1] > 0 ? `requires warlock ${inv[1]}` : "", inv[2] ? `requires ${inv[2]}` : ""].filter(Boolean).join(" · "), body: INVOCATION_INFO[inv[0]] || null };
+  if (METAMAGIC_INFO[name]) return { title: name, meta: "Metamagic", body: METAMAGIC_INFO[name] };
+  if (BOON_INFO[name]) return { title: name, meta: "Pact Boon", body: BOON_INFO[name] };
+  const fs = strip.replace(/^Fighting Style:\s*/, "");
+  if (STYLE_DESC[fs]) return { title: `Fighting Style: ${fs}`, meta: "Fighting Style", body: STYLE_DESC[fs] };
+  if (LANG_INFO[name]) return { title: name, meta: "Language", body: LANG_INFO[name] };
+  if (SKILL_ABIL[name]) return { title: name, meta: `Skill · ${ABIL_NAMES[SKILL_ABIL[name]]}`, body: SKILL_INFO[name] };
+  const feat = allFeats(customs || EMPTY_CUSTOM).find((f) => f.name === name || f.name === strip);
+  if (feat) return { title: feat.name, meta: ["Feat", feat.prereq && `Prerequisite: ${feat.prereq}`].filter(Boolean).join(" · "), body: feat.text || feat.desc || null };
+  for (const [cls, arr] of Object.entries(customs?.subs || {})) {
+    const s = arr.find((x) => x.name === name || x.name === strip);
+    if (s) return { title: s.name, meta: `${cls} subclass`, body: Object.entries(s.feats).map(([l, fx]) => `Level ${l}: ${fx.join(", ")}`).join("\n"), foot: "Long-press any feature name for its own entry." };
+  }
+  if (SUB_FEATS[strip]) return { title: strip, meta: "Subclass", body: Object.entries(SUB_FEATS[strip]).map(([l, fx]) => `Level ${l}: ${fx.join(", ")}`).join("\n") };
+  const ft = customs?.featureTexts || {};
+  const key = ft[name] ? name : ft[strip] ? strip : Object.keys(ft).find((k) => baseSubName(k) === strip || k.startsWith(strip + " ("));
+  if (key) return { title: strip, meta: "Feature", body: ft[key] };
+  return null;
+}
+
+/* Long-press (or right-click) to open the lore sheet. data-lore also kills text selection via CSS. */
+let __showLore = null;
+function lorePress(name) {
+  return {
+    "data-lore": "",
+    onContextMenu: (e) => { e.preventDefault(); e.stopPropagation(); __showLore && __showLore(name); },
+    onPointerDown: (e) => {
+      const el = e.currentTarget;
+      const sx = e.clientX, sy = e.clientY;
+      const t = setTimeout(() => { el.dataset.loreFired = "1"; __showLore && __showLore(name); }, 480);
+      const move = (ev) => { if (Math.hypot(ev.clientX - sx, ev.clientY - sy) > 12) end(); };
+      const end = () => { clearTimeout(t); el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", end); el.removeEventListener("pointercancel", end); el.removeEventListener("pointerleave", end); };
+      el.addEventListener("pointermove", move); el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end); el.addEventListener("pointerleave", end);
+    },
+    onClickCapture: (e) => {
+      if (e.currentTarget.dataset.loreFired) { delete e.currentTarget.dataset.loreFired; e.preventDefault(); e.stopPropagation(); }
+    },
+  };
+}
+
+function LoreSheet({ customs }) {
+  const [item, setItem] = useState(null);
+  const openedAt = useRef(0);
+  __showLore = (name) => { openedAt.current = Date.now(); setItem(infoFor(name, customs) || { title: String(name), meta: "", body: null }); };
+  if (!item) return null;
+  // the release of the long-press lands on this backdrop — a short grace period keeps it open
+  const dismiss = () => { if (Date.now() - openedAt.current > 400) setItem(null); };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 80, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={dismiss}>
+      <div style={{ ...card, width: "min(620px, 100%)", maxHeight: "72vh", overflowY: "auto", borderRadius: "16px 16px 0 0", padding: 20, paddingBottom: "calc(20px + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+          <div style={{ fontFamily: "Georgia, serif", fontSize: 21, color: T.gold }}>{item.title}</div>
+          <span style={{ color: T.dim, cursor: "pointer", fontSize: 20, lineHeight: 1 }} onClick={() => setItem(null)}>✕</span>
+        </div>
+        {item.meta && <div style={{ color: "#b48ead", fontSize: 13, marginTop: 4 }}>{item.meta}</div>}
+        <div style={{ color: T.ink, fontSize: 14, lineHeight: 1.7, marginTop: 12 }}>
+          {item.body
+            ? item.body.split(/\n+/).map((p, i) => <p key={i} style={{ margin: "0 0 10px" }}>{p}</p>)
+            : <span style={{ color: T.dim }}>No lore recorded for this yet. Import a compendium XML in the Homebrew Forge to fill the library — or consult your books.</span>}
+        </div>
+        {item.foot && <div style={{ color: T.dim, fontSize: 12, marginTop: 6 }}>{item.foot}</div>}
+      </div>
+    </div>
+  );
+}
+
 /* ============ STORAGE ============ */
 const KEY = "dnd-srd-characters-v1";
 async function loadChars() {
@@ -615,7 +786,7 @@ async function saveChars(chars) {
 
 /* ============ CUSTOM (HOMEBREW) CONTENT ============ */
 const CKEY = "dnd-custom-content-v1";
-const EMPTY_CUSTOM = { subs: {}, feats: [], spells: [] };
+const EMPTY_CUSTOM = { subs: {}, feats: [], spells: [], featureTexts: {} };
 async function loadCustom() {
   try { const r = await window.storage.get(CKEY); return r ? JSON.parse(r.value) : EMPTY_CUSTOM; } catch { return EMPTY_CUSTOM; }
 }
@@ -993,10 +1164,16 @@ function AbilityStep({ scores, setScores, method, setMethod }) {
       )}
 
       {rolling && (
-        <DiceTray title={`Rolling 4d6 — drop lowest`} dice={rolling.dice} dropLowest
-          note="The bones tumble; the weakest is discarded."
-          onReroll={startRoll}
-          onAccept={(total) => { setRolled([...rolled, total]); setRolling(null); }} />
+        <DiceTray title={`Rolling 4d6 — score ${rolled.length + 1} of 6`} dice={rolling.dice} dropLowest
+          note="The bones tumble; the weakest is discarded. No re-rolls — the next throw is the next score."
+          tally={rolled} rollId={rolled.length}
+          acceptLabel={rolled.length < 5 ? "Keep · Next Roll →" : "Keep · Finish"}
+          onAccept={(total) => {
+            const next = [...rolled, total];
+            setRolled(next);
+            if (next.length >= 6) setRolling(null);
+            else startRoll();
+          }} />
       )}
     </div>
   );
@@ -1159,7 +1336,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {LANGS.filter((l) => !RACE_LANGS[race].fixed.includes(l)).map((l) => (
-                <button key={l} style={{ ...btn(langPicks.includes(l)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
+                <button key={l} {...lorePress(l)} style={{ ...btn(langPicks.includes(l)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
                   onClick={() => setLangPicks(langPicks.includes(l) ? langPicks.filter((x) => x !== l) : langPicks.length < langNeed ? [...langPicks, l] : langPicks)}>{l}</button>
               ))}
             </div>
@@ -1219,7 +1396,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
               <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>Fighting Style (level 1)</div>
               <div style={{ display: "grid", gap: 6 }}>
                 {FIGHTING_STYLES.Fighter.map((f) => (
-                  <div key={f} onClick={() => setStyle(f)} style={{ ...card, background: style === f ? T.panel : T.panel2, borderColor: style === f ? T.gold : T.edge, padding: "8px 12px", cursor: "pointer" }}>
+                  <div key={f} {...lorePress("Fighting Style: " + f)} onClick={() => setStyle(f)} style={{ ...card, background: style === f ? T.panel : T.panel2, borderColor: style === f ? T.gold : T.edge, padding: "8px 12px", cursor: "pointer" }}>
                     <span style={{ color: style === f ? T.gold : T.ink, fontWeight: 700 }}>{f}</span>
                     <span style={{ color: T.dim, fontSize: 12 }}> — {STYLE_DESC[f]}</span>
                   </div>
@@ -1231,7 +1408,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
             <div style={{ ...card, padding: 14, marginBottom: 14 }}>
               <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>{clsData.subName} (chosen at level 1)</div>
               {allSubs(cls, customs).map((s) => (
-                <button key={s} style={{ ...btn(subclass === s), padding: "6px 14px" }} onClick={() => setSubclass(s)}>{s}</button>
+                <button key={s} {...lorePress(s)} style={{ ...btn(subclass === s), padding: "6px 14px" }} onClick={() => setSubclass(s)}>{s}</button>
               ))}
             </div>
           )}
@@ -1239,7 +1416,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
             <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>Choose {clsData.nSkills} skills ({skills.length}/{clsData.nSkills})</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {clsData.skills.map((s) => (
-                <button key={s} style={{ ...btn(skills.includes(s)), padding: "5px 10px", fontSize: 13 }}
+                <button key={s} {...lorePress(s)} style={{ ...btn(skills.includes(s)), padding: "5px 10px", fontSize: 13 }}
                   onClick={() => setSkills(skills.includes(s) ? skills.filter((x) => x !== s) : skills.length < clsData.nSkills ? [...skills, s] : skills)}>{s}</button>
               ))}
             </div>
@@ -1308,7 +1485,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
                   <div style={{ color: T.gold, fontSize: 14, marginBottom: 6 }}>Cantrips ({spellPicks.cantrips.length}/{canCap1})</div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxHeight: 180, overflowY: "auto" }}>
                     {pool1.filter((x) => x.level === 0).sort((a, b) => a.name.localeCompare(b.name)).map((x) => (
-                      <button key={x.name} style={{ ...btn(spellPicks.cantrips.includes(x.name)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
+                      <button key={x.name} {...lorePress(x.name)} style={{ ...btn(spellPicks.cantrips.includes(x.name)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
                         onClick={() => setSpellPicks(spellPicks.cantrips.includes(x.name)
                           ? { ...spellPicks, cantrips: spellPicks.cantrips.filter((n) => n !== x.name) }
                           : spellPicks.cantrips.length < canCap1 ? { ...spellPicks, cantrips: [...spellPicks.cantrips, x.name] } : spellPicks)}>{x.name}</button>
@@ -1321,7 +1498,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
                   <div style={{ color: T.gold, fontSize: 14, marginBottom: 6 }}>1st-level spells ({spellPicks.spells.length}/{spellCap1})</div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxHeight: 220, overflowY: "auto" }}>
                     {pool1.filter((x) => x.level === 1).sort((a, b) => a.name.localeCompare(b.name)).map((x) => (
-                      <button key={x.name} style={{ ...btn(spellPicks.spells.includes(x.name)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
+                      <button key={x.name} {...lorePress(x.name)} style={{ ...btn(spellPicks.spells.includes(x.name)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
                         onClick={() => setSpellPicks(spellPicks.spells.includes(x.name)
                           ? { ...spellPicks, spells: spellPicks.spells.filter((n) => n !== x.name) }
                           : spellPicks.spells.length < spellCap1 ? { ...spellPicks, spells: [...spellPicks.spells, x.name] } : spellPicks)}>{x.name}</button>
@@ -1399,7 +1576,7 @@ function SpellPickGrid({ options, picks, cap, onChange, placeholder = "Search sp
       {picks.length > 0 && (
         <div style={{ marginBottom: 6 }}>
           {picks.map((n) => (
-            <span key={n} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel, border: `1px solid ${T.gold}`, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13, color: T.gold }}>
+            <span key={n} {...lorePress(n)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel, border: `1px solid ${T.gold}`, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13, color: T.gold }}>
               {n}<span style={{ color: T.blood, cursor: "pointer", fontWeight: 700 }} onClick={() => onChange(picks.filter((x) => x !== n))}>✕</span>
             </span>
           ))}
@@ -1411,7 +1588,7 @@ function SpellPickGrid({ options, picks, cap, onChange, placeholder = "Search sp
             style={{ width: "100%", boxSizing: "border-box", background: T.panel, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 10px", fontSize: 14 }} />
           <div style={{ maxHeight: 200, overflowY: "auto", marginTop: 6, border: `1px solid ${T.edge}`, borderRadius: 8 }}>
             {shown.map((sp) => (
-              <div key={sp.name} onClick={() => onChange([...picks, sp.name])}
+              <div key={sp.name} {...lorePress(sp.name)} onClick={() => onChange([...picks, sp.name])}
                 style={{ padding: "8px 10px", borderBottom: `1px solid ${T.edge}`, cursor: "pointer" }}>
                 <span style={{ color: T.ink }}>{sp.name}</span>
                 <span style={{ color: T.dim, fontSize: 12 }}> · {sp.level === 0 ? "cantrip" : `level ${sp.level}`}{sp.school ? ` · ${schoolName(sp.school)}` : ""}</span>
@@ -1659,14 +1836,14 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
               <div style={{ ...card, background: T.panel2, borderColor: T.gold, padding: 14, marginBottom: 12 }}>
                 <div style={{ color: T.gold, fontFamily: "Georgia, serif", marginBottom: 6 }}>{pick} {newClsLevel} grants</div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {feats.map((f) => <span key={f} style={{ background: T.panel, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "3px 10px", fontSize: 12, color: T.ink }}>{f}</span>)}
+                  {feats.map((f) => <span key={f} {...lorePress(f)} style={{ background: T.panel, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "3px 10px", fontSize: 12, color: T.ink }}>{f}</span>)}
                 </div>
               </div>
             )}
             {gainsSub && (
               <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
                 <div style={{ color: T.gold, marginBottom: 8 }}>{pickData.subName}</div>
-                {allSubs(pick, customs).map((s) => <button key={s} style={{ ...btn(newSub === s), padding: "6px 14px" }} onClick={() => setNewSub(s)}>{s}</button>)}
+                {allSubs(pick, customs).map((s) => <button key={s} {...lorePress(s)} style={{ ...btn(newSub === s), padding: "6px 14px" }} onClick={() => setNewSub(s)}>{s}</button>)}
               </div>
             )}
             {gainsASI && (
@@ -1679,7 +1856,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                 {asiMode === "feat" && (
                   <div style={{ display: "grid", gap: 6 }}>
                     {allFeats(customs).filter((f) => !(ch.feats || []).includes(f.name)).map((f) => (
-                      <div key={f.name} onClick={() => { setFeatPick(f.name); setFeatBump(null); }}
+                      <div key={f.name} {...lorePress(f.name)} onClick={() => { setFeatPick(f.name); setFeatBump(null); }}
                         style={{ ...card, background: featPick === f.name ? T.panel : T.panel2, borderColor: featPick === f.name ? T.gold : T.edge, padding: "8px 12px", cursor: "pointer" }}>
                         <span style={{ color: featPick === f.name ? T.gold : T.ink, fontWeight: 700 }}>{f.name}</span>
                         <span style={{ color: T.dim, fontSize: 12 }}> — {f.desc}</span>
@@ -1714,12 +1891,26 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                 {asiMode === "asi" && <div style={{ color: T.dim, fontSize: 12, marginTop: 6 }}>Pick two (the same ability twice = +2). Max 20.</div>}
               </div>
             )}
+            {gainsStyle && (
+              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
+                <div style={{ color: T.gold, marginBottom: 8 }}>Fighting Style</div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  {styleOptions.map((f) => (
+                    <div key={f} {...lorePress("Fighting Style: " + f)} onClick={() => setStylePick(f)}
+                      style={{ ...card, background: stylePick === f ? T.panel : T.panel2, borderColor: stylePick === f ? T.gold : T.edge, padding: "8px 12px", cursor: "pointer" }}>
+                      <span style={{ color: stylePick === f ? T.gold : T.ink, fontWeight: 700 }}>{f}</span>
+                      <span style={{ color: T.dim, fontSize: 12 }}> — {STYLE_DESC[f]}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {gainsExpertise && (
               <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
                 <div style={{ color: T.gold, marginBottom: 8 }}>Expertise — double proficiency on two skills ({expPicks.length}/2)</div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {expPool.map((sk) => (
-                    <button key={sk} style={{ ...btn(expPicks.includes(sk)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
+                    <button key={sk} {...lorePress(sk)} style={{ ...btn(expPicks.includes(sk)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
                       onClick={() => setExpPicks(expPicks.includes(sk) ? expPicks.filter((x) => x !== sk) : expPicks.length < 2 ? [...expPicks, sk] : expPicks)}>{sk}</button>
                   ))}
                 </div>
@@ -1731,7 +1922,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                 <div style={{ color: T.gold, marginBottom: 8 }}>Metamagic — choose {metaNeed} ({metaPicks.length}/{metaNeed})</div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {metaPool.map((m) => (
-                    <button key={m} style={{ ...btn(metaPicks.includes(m)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
+                    <button key={m} {...lorePress(m)} style={{ ...btn(metaPicks.includes(m)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
                       onClick={() => setMetaPicks(metaPicks.includes(m) ? metaPicks.filter((x) => x !== m) : metaPicks.length < metaNeed ? [...metaPicks, m] : metaPicks)}>{m}</button>
                   ))}
                 </div>
@@ -1741,7 +1932,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
               <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
                 <div style={{ color: T.gold, marginBottom: 8 }}>Pact Boon</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {PACT_BOONS.map((b) => <button key={b} style={{ ...btn(boonPick === b), padding: "6px 14px" }} onClick={() => setBoonPick(b)}>{b}</button>)}
+                  {PACT_BOONS.map((b) => <button key={b} {...lorePress(b)} style={{ ...btn(boonPick === b), padding: "6px 14px" }} onClick={() => setBoonPick(b)}>{b}</button>)}
                 </div>
               </div>
             )}
@@ -1753,7 +1944,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                     const on = invPicks.includes(n);
                     const ok = on || (invReqMet(req) && invPicks.length < invNeed);
                     return (
-                      <div key={n} onClick={() => ok && setInvPicks(on ? invPicks.filter((x) => x !== n) : [...invPicks, n])}
+                      <div key={n} {...lorePress(n)} onClick={() => ok && setInvPicks(on ? invPicks.filter((x) => x !== n) : [...invPicks, n])}
                         style={{ padding: "8px 10px", borderBottom: `1px solid ${T.edge}`, cursor: ok ? "pointer" : "not-allowed", opacity: ok ? 1 : 0.45, background: on ? T.panel : "transparent" }}>
                         <span style={{ color: on ? T.gold : T.ink, fontWeight: on ? 700 : 400 }}>{on ? "✓ " : ""}{n}</span>
                         {(lvl > 0 || req) && <span style={{ color: T.dim, fontSize: 12 }}> · requires {[lvl > 0 ? `warlock ${lvl}` : "", req].filter(Boolean).join(", ")}</span>}
@@ -1769,7 +1960,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                 <div style={{ color: T.gold, marginBottom: 4 }}>Swap an invocation <span style={{ color: T.dim, fontSize: 12 }}>(optional — one per level-up)</span></div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: invSwapOut ? 8 : 0 }}>
                   {curInv.map((n) => (
-                    <button key={n} style={{ ...btn(invSwapOut === n), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
+                    <button key={n} {...lorePress(n)} style={{ ...btn(invSwapOut === n), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
                       onClick={() => { setInvSwapOut(invSwapOut === n ? null : n); setInvSwapIn(null); }}>{invSwapOut === n ? `✕ ${n}` : n}</button>
                   ))}
                 </div>
@@ -1778,7 +1969,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                     {invOptions.map(([n, lvl, req]) => {
                       const ok = invReqMet(req);
                       return (
-                        <div key={n} onClick={() => ok && setInvSwapIn(invSwapIn === n ? null : n)}
+                        <div key={n} {...lorePress(n)} onClick={() => ok && setInvSwapIn(invSwapIn === n ? null : n)}
                           style={{ padding: "8px 10px", borderBottom: `1px solid ${T.edge}`, cursor: ok ? "pointer" : "not-allowed", opacity: ok ? 1 : 0.45, background: invSwapIn === n ? T.panel : "transparent" }}>
                           <span style={{ color: invSwapIn === n ? T.gold : T.ink }}>{invSwapIn === n ? "✓ " : ""}{n}</span>
                           {(lvl > 0 || req) && <span style={{ color: T.dim, fontSize: 12 }}> · requires {[lvl > 0 ? `warlock ${lvl}` : "", req].filter(Boolean).join(", ")}</span>}
@@ -1808,7 +1999,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                 <div style={{ color: T.gold, marginBottom: 4 }}>Replace a known spell <span style={{ color: T.dim, fontSize: 12 }}>(optional — one per level-up)</span></div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: spellSwapOut ? 8 : 0 }}>
                   {(book.spells || []).map((n) => (
-                    <button key={n} style={{ ...btn(spellSwapOut === n), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
+                    <button key={n} {...lorePress(n)} style={{ ...btn(spellSwapOut === n), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
                       onClick={() => { setSpellSwapOut(spellSwapOut === n ? null : n); setSpellSwapIn(null); }}>{spellSwapOut === n ? `✕ ${n}` : n}</button>
                   ))}
                 </div>
@@ -1835,7 +2026,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                 <div style={{ color: T.gold, marginBottom: 8 }}>Multiclass skill ({pick} grants one)</div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {CLASSES[pick].skills.filter((s) => !ch.skills.includes(s)).map((s) => (
-                    <button key={s} style={{ ...btn(mcSkill === s), padding: "5px 10px", fontSize: 13 }} onClick={() => setMcSkill(s)}>{s}</button>
+                    <button key={s} {...lorePress(s)} style={{ ...btn(mcSkill === s), padding: "5px 10px", fontSize: 13 }} onClick={() => setMcSkill(s)}>{s}</button>
                   ))}
                 </div>
               </div>
@@ -1892,7 +2083,7 @@ function InvocationManager({ ch, onInvocations }) {
       </div>
       <div>
         {mine.map((n) => (
-          <span key={n} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel2, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13 }}>
+          <span key={n} {...lorePress(n)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel2, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13 }}>
             {n}<span style={{ color: T.blood, cursor: "pointer", fontWeight: 700 }} onClick={() => onInvocations(mine.filter((x) => x !== n))}>✕</span>
           </span>
         ))}
@@ -1905,7 +2096,7 @@ function InvocationManager({ ch, onInvocations }) {
             {options.map(([n, lvl, req]) => {
               const ok = reqMet(req);
               return (
-                <div key={n} onClick={() => { if (!ok) return; onInvocations([...mine, n]); setOpen(false); }}
+                <div key={n} {...lorePress(n)} onClick={() => { if (!ok) return; onInvocations([...mine, n]); setOpen(false); }}
                   style={{ padding: "10px 8px", borderBottom: `1px solid ${T.edge}`, cursor: ok ? "pointer" : "not-allowed", opacity: ok ? 1 : 0.45 }}>
                   <span style={{ color: T.ink }}>{n}</span>
                   <span style={{ color: T.dim, fontSize: 12 }}>{lvl > 0 || req ? ` · requires ${[lvl > 0 ? `${lvl}th level` : "", req].filter(Boolean).join(", ")}` : ""}</span>
@@ -1972,7 +2163,7 @@ function SpellManager({ ch, customs, onSpells }) {
         const grantedNow = subData?.type === "granted"
           ? Object.entries(subData.spells).filter(([lvl]) => +lvl <= c.level).flatMap(([, arr]) => arr) : [];
         const chip = (name, kind) => (
-          <span key={name} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel2, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13 }}>
+          <span key={name} {...lorePress(name)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel2, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13 }}>
             {name}
             <span style={{ color: T.blood, cursor: "pointer", fontWeight: 700 }} onClick={() => setList(c.name, kind, mine[kind].filter((x) => x !== name))}>✕</span>
           </span>
@@ -1991,7 +2182,7 @@ function SpellManager({ ch, customs, onSpells }) {
             )}
             {grantedNow.length > 0 && (
               <div style={{ marginTop: 6, color: T.green, fontSize: 12 }}>
-                {subData.label}: <span style={{ color: T.ink }}>{grantedNow.join(", ")}</span>
+                {subData.label}: {grantedNow.map((n, i) => <span key={n} {...lorePress(n)} style={{ color: T.ink }}>{i > 0 ? ", " : ""}{n}</span>)}
               </div>
             )}
             {subData?.type === "expanded" && (
@@ -2042,7 +2233,7 @@ function SpellManager({ ch, customs, onSpells }) {
               style={{ background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 16, marginBottom: 10 }} />
             <div style={{ overflowY: "auto" }}>
               {listFor(adding.cls, adding.kind, adding.lvl).slice(0, 60).map((sp) => (
-                <div key={sp.name} onClick={() => {
+                <div key={sp.name} {...lorePress(sp.name)} onClick={() => {
                   if (adding.kind === "arcanum") { setArcanum(adding.cls, adding.lvl, sp.name); setAdding(null); return; }
                   const mine = (ch.spells || {})[adding.cls] || { cantrips: [], spells: [] };
                   setList(adding.cls, adding.kind, [...(mine[adding.kind] || []), sp.name]);
@@ -2313,13 +2504,15 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>Class Features</div>
         {ch.classes.map((c) => (
           <div key={c.name} style={{ marginBottom: 10 }}>
-            <div style={{ color: T.ink, fontWeight: 700 }}>{c.name} {c.level}{c.subclass ? ` — ${c.subclass}` : ""}</div>
+            <div style={{ color: T.ink, fontWeight: 700 }}>{c.name} {c.level}{c.subclass ? <> — <span {...lorePress(c.subclass)}>{c.subclass}</span></> : ""}</div>
             <div style={{ color: T.dim, fontSize: 13, lineHeight: 1.7 }}>
-              {Array.from({ length: c.level }, (_, i) => i + 1)
-                .flatMap((l) => (CLASSES[c.name].feats[l] || [])
-                  .concat(allSubFeats(c.subclass, l, customs))
-                  .concat(CLASSES[c.name].asi.includes(l) ? [ASI] : []))
-                .join(" · ") || "—"}
+              {(() => {
+                const items = Array.from({ length: c.level }, (_, i) => i + 1)
+                  .flatMap((l) => (CLASSES[c.name].feats[l] || [])
+                    .concat(allSubFeats(c.subclass, l, customs))
+                    .concat(CLASSES[c.name].asi.includes(l) ? [ASI] : []));
+                return items.length ? items.map((f, i) => <span key={i} {...lorePress(f)}>{i > 0 ? " · " : ""}{f}</span>) : "—";
+              })()}
               {c.name === "Rogue" && <span style={{ color: T.gold }}> · Sneak Attack {Math.ceil(c.level / 2)}d6</span>}
               {c.name === "Warlock" && INVOCATIONS(c.level) > 0 && <span style={{ color: "#b48ead" }}> · Invocations known: {INVOCATIONS(c.level)}</span>}
             </div>
@@ -2337,7 +2530,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
               const exp = (ch.expertise || []).includes(sk);
               const m = skillPartsFor(sk).reduce((s, p) => s + p.value, 0);
               return (
-                <div key={sk} title={`Roll ${sk}`} onClick={() => rollIt(`${sk} check`, skillPartsFor(sk), "skill", SKILL_ABIL[sk], prof)}
+                <div key={sk} {...lorePress(sk)} title={`Roll ${sk}`} onClick={() => rollIt(`${sk} check`, skillPartsFor(sk), "skill", SKILL_ABIL[sk], prof)}
                   style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", borderRadius: 6, background: prof ? T.panel2 : "transparent", fontSize: 13, cursor: "pointer" }}>
                   <span style={{ color: prof ? T.ink : T.dim }}>{exp ? "★ " : prof ? "● " : ""}{sk}</span>
                   <span style={{ color: exp ? T.gold : prof ? T.ink : T.dim, fontWeight: prof ? 700 : 400 }}>{fmtMod(m)}</span>
@@ -2346,12 +2539,12 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
             })}
           </div>
           <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>● proficient · ★ expertise (double proficiency) · tap any skill to roll it{feats.jack ? " · Jack of All Trades adds +" + feats.jack + " to the rest" : ""}{feats.reliable ? " · Reliable Talent floors proficient checks at 10" : ""}</div>
-          {ch.feats?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Feats: {ch.feats.join(", ")}</div>}
-          {ch.metamagic?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Metamagic: {ch.metamagic.join(", ")}</div>}
+          {ch.feats?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Feats: {ch.feats.map((f, i) => <span key={f} {...lorePress(f)}>{i > 0 ? ", " : ""}{f}</span>)}</div>}
+          {ch.metamagic?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Metamagic: {ch.metamagic.map((m, i) => <span key={m} {...lorePress(m)}>{i > 0 ? ", " : ""}{m}</span>)}</div>}
           {ch.rangerChoices && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Favored Enemy: {ch.rangerChoices.favEnemy} · Natural Explorer: {ch.rangerChoices.natTerrain}</div>}
           {ch.styles?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Fighting Styles: {ch.styles.map((f) => `${f} (${STYLE_DESC[f]})`).join(" · ")}</div>}
           <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Proficiencies ({ch.classes[0].name}): {PROF_TEXT[ch.classes[0].name]}{ch.classes.length > 1 ? " — plus multiclass grants (see Chronicle)" : ""}</div>
-          {ch.languages?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Languages: {ch.languages.join(", ")}</div>}
+          {ch.languages?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Languages: {ch.languages.map((l, i) => <span key={l + i} {...lorePress(l)}>{i > 0 ? ", " : ""}{l}</span>)}</div>}
           <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Racial traits: {RACES[ch.race].traits.join(" · ")}{ch.racialChoices?.ancestry ? ` · ${ch.racialChoices.ancestry} dragon ancestry (${ANCESTRIES[ch.racialChoices.ancestry]})` : ""}{ch.racialChoices?.cantrip ? ` · Cantrip: ${ch.racialChoices.cantrip}` : ""}</div>
         </div>
         <div style={{ ...card, padding: 16 }}>
@@ -2390,10 +2583,14 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
 function parseCompendiumXML(text) {
   const doc = new DOMParser().parseFromString(text, "text/xml");
   if (doc.querySelector("parsererror")) throw new Error("Not valid XML");
-  const out = { subs: {}, feats: [], spells: [], skippedClasses: [] };
+  const out = { subs: {}, feats: [], spells: [], skippedClasses: [], featureTexts: {} };
   const splitColon = (x) => { const m = x.match(/^([^:]+):\s*(.+)$/); return m ? [m[1].trim(), m[2].trim()] : null; };
   const splitParen = (x) => { const m = x.match(/^(.+?)\s*\(([^()]+)\)$/); return m ? [m[1].trim(), m[2].trim()] : null; };
 
+  const keepText = (key, txt) => {
+    if (!key || !txt) return;
+    if (!out.featureTexts[key] || out.featureTexts[key].length < txt.length) out.featureTexts[key] = txt;
+  };
   doc.querySelectorAll("compendium > class").forEach((clsEl) => {
     const clsName = clsEl.querySelector(":scope > name")?.textContent?.trim();
     if (!clsName) return;
@@ -2401,9 +2598,15 @@ function parseCompendiumXML(text) {
     const rows = [];
     clsEl.querySelectorAll(":scope > autolevel").forEach((al) => {
       const lvl = +al.getAttribute("level") || 1;
-      al.querySelectorAll(":scope > feature > name").forEach((n) => {
-        const t = n.textContent.trim();
-        if (t) rows.push({ lvl, n: t });
+      al.querySelectorAll(":scope > feature").forEach((fe) => {
+        const t = fe.querySelector(":scope > name")?.textContent?.trim();
+        if (!t) return;
+        const txt = [...fe.querySelectorAll(":scope > text")].map((x) => x.textContent).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+        rows.push({ lvl, n: t });
+        // the rules text library: keyed by the full feature name and its display forms
+        keepText(t, txt);
+        const pp = splitParen(t); if (pp) keepText(pp[0], txt);
+        const cp = splitColon(t); if (cp) keepText(cp[1], txt);
       });
     });
     // Introducers: "A: Y". Members: "Y: F" or "F (Y)".
@@ -2431,20 +2634,21 @@ function parseCompendiumXML(text) {
   doc.querySelectorAll("compendium > spell").forEach((sp) => {
     const name = sp.querySelector(":scope > name")?.textContent?.trim();
     if (!name) return;
+    const grab = (tag) => sp.querySelector(`:scope > ${tag}`)?.textContent?.trim() || "";
     const level = +(sp.querySelector(":scope > level")?.textContent || 0);
-    const school = sp.querySelector(":scope > school")?.textContent?.trim() || "";
-    const classes = sp.querySelector(":scope > classes")?.textContent?.trim() || "";
-    out.spells.push({ name, level, school, classes });
+    const text = [...sp.querySelectorAll(":scope > text")].map((t) => t.textContent).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    out.spells.push({ name, level, school: grab("school"), classes: grab("classes"), time: grab("time"), range: grab("range"), components: grab("components"), duration: grab("duration"), text });
   });
 
   doc.querySelectorAll("compendium > feat").forEach((fe) => {
     const name = fe.querySelector(":scope > name")?.textContent?.trim();
     if (!name) return;
-    const full = [...fe.querySelectorAll(":scope > text")].map((t) => t.textContent.trim()).filter(Boolean).join(" ").replace(/\s+/g, " ");
+    const full = [...fe.querySelectorAll(":scope > text")].map((t) => t.textContent.trim()).filter(Boolean).join("\n").trim();
+    const flat = full.replace(/\s+/g, " ");
     const prereq = fe.querySelector(":scope > prerequisite")?.textContent?.trim() || "";
-    const bm = full.match(/increase your ([^.]{3,60}?) score by 1/i);
+    const bm = flat.match(/increase your ([^.]{3,60}?) score by 1/i);
     const bump = bm ? ABILITIES.filter((a) => new RegExp(ABIL_NAMES[a], "i").test(bm[1])) : [];
-    out.feats.push({ name, desc: full.slice(0, 160), prereq, bump });
+    out.feats.push({ name, desc: flat.slice(0, 160), prereq, bump, text: full });
   });
   return out;
 }
@@ -2470,10 +2674,12 @@ function HomebrewForge({ customs, onSave, onBack }) {
         const res = parseCompendiumXML(reader.result);
         const existingSubs = new Set(Object.values(customs.subs).flat().map((x) => x.name));
         Object.keys(res.subs).forEach((c) => { res.subs[c] = res.subs[c].filter((x) => !existingSubs.has(x.name)); if (!res.subs[c].length) delete res.subs[c]; });
-        const existingFeats = new Set([...FEATS, ...customs.feats].map((f) => f.name));
-        res.feats = res.feats.filter((f) => !existingFeats.has(f.name));
-        const existingSpells = new Set((customs.spells || []).map((x) => x.name));
-        res.spells = res.spells.filter((x) => !existingSpells.has(x.name));
+        // duplicates are skipped — unless the incoming copy carries rules text the stored one lacks
+        const builtinFeats = new Set(FEATS.map((f) => f.name));
+        const oldFeats = new Map(customs.feats.map((f) => [f.name, f]));
+        res.feats = res.feats.filter((f) => !builtinFeats.has(f.name) && (!oldFeats.has(f.name) || (f.text && !oldFeats.get(f.name).text)));
+        const oldSpells = new Map((customs.spells || []).map((x) => [x.name, x]));
+        res.spells = res.spells.filter((x) => !oldSpells.has(x.name) || (x.text && !oldSpells.get(x.name).text));
         setParsed(res);
       } catch (err) { setImportErr(err.message || "Could not parse this file"); }
     };
@@ -2484,7 +2690,12 @@ function HomebrewForge({ customs, onSave, onBack }) {
   const doImport = () => {
     const subs = { ...customs.subs };
     Object.entries(parsed.subs).forEach(([c, arr]) => { subs[c] = [...(subs[c] || []), ...arr]; });
-    onSave({ subs, feats: [...customs.feats, ...parsed.feats], spells: [...(customs.spells || []), ...parsed.spells] });
+    // same-name entries are replaced (text upgrades); everything else appends
+    const inFeats = new Map(parsed.feats.map((f) => [f.name, f]));
+    const feats = [...customs.feats.map((f) => inFeats.get(f.name) || f), ...parsed.feats.filter((f) => !customs.feats.some((o) => o.name === f.name))];
+    const inSpells = new Map(parsed.spells.map((x) => [x.name, x]));
+    const spells = [...(customs.spells || []).map((s) => inSpells.get(s.name) || s), ...parsed.spells.filter((x) => !(customs.spells || []).some((o) => o.name === x.name))];
+    onSave({ subs, feats, spells, featureTexts: { ...(customs.featureTexts || {}), ...parsed.featureTexts } });
     setParsed(null);
   };
   const [importText, setImportText] = useState("");
@@ -2608,7 +2819,7 @@ function HomebrewForge({ customs, onSave, onBack }) {
               <button style={{ ...btn(true), opacity: importText.trim() ? 1 : 0.4 }} disabled={!importText.trim()} onClick={() => {
                 try {
                   const data = JSON.parse(importText);
-                  const next = { subs: { ...customs.subs }, feats: [...customs.feats], spells: [...(customs.spells || [])] };
+                  const next = { subs: { ...customs.subs }, feats: [...customs.feats], spells: [...(customs.spells || [])], featureTexts: { ...(customs.featureTexts || {}), ...(data.featureTexts || {}) } };
                   let nSubs = 0, nFeats = 0;
                   if (data.subs) Object.entries(data.subs).forEach(([c, arr]) => {
                     if (!CLASSES[c] || !Array.isArray(arr)) return;
@@ -2708,6 +2919,7 @@ export default function App() {
         }
         @keyframes diceTumbleA { from { transform: rotate3d(1, 0.7, 0.35, -1620deg); } to { transform: rotate3d(1, 0.7, 0.35, 0deg); } }
         @keyframes diceTumbleB { from { transform: rotate3d(0.6, 1, 0.45, 1440deg); } to { transform: rotate3d(0.6, 1, 0.45, 0deg); } }
+        [data-lore] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
       `}</style>
       <div style={{ textAlign: "center", padding: "26px 14px 6px" }}>
         <div style={{ fontFamily: "Georgia, serif", fontSize: 30, color: T.gold, letterSpacing: 1 }}>The Adventurer's Ledger</div>
@@ -2783,6 +2995,8 @@ export default function App() {
         <LevelUp ch={active} customs={customs} onCancel={() => setLeveling(false)}
           onDone={(next) => { persist(chars.map((c) => (c.id === next.id ? next : c))); setLeveling(false); }} />
       )}
+
+      <LoreSheet customs={customs} />
     </div>
   );
 }
