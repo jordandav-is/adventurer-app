@@ -4580,6 +4580,32 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
 
 
 /* ============ COMPENDIUM XML IMPORT ============ */
+/* Fold a parsed compendium into stored custom content: duplicates are skipped unless the
+   incoming copy carries rules text the stored one lacks (same rules as the Forge import). */
+function mergeCompendium(customs, res) {
+  const existingSubs = new Set(Object.values(customs.subs || {}).flat().map((x) => x.name));
+  const subsIn = {};
+  Object.entries(res.subs).forEach(([c, arr]) => { const a = arr.filter((x) => !existingSubs.has(x.name)); if (a.length) subsIn[c] = a; });
+  const oldFeats = new Map((customs.feats || []).map((f) => [f.name, f]));
+  const featsIn = res.feats.filter((f) => !oldFeats.has(f.name) || (f.text && !oldFeats.get(f.name).text));
+  const oldSpells = new Map((customs.spells || []).map((x) => [x.name, x]));
+  const spellsIn = res.spells.filter((x) => !oldSpells.has(x.name) || (x.text && !oldSpells.get(x.name).text) || oldSpells.get(x.name).ritual === undefined);
+  const oldItems = new Set((customs.items || []).map((x) => x.name));
+  const itemsIn = res.items.filter((x) => !oldItems.has(x.name));
+  const oldTexts = customs.featureTexts || {};
+  const newTexts = Object.keys(res.featureTexts || {}).some((k) => oldTexts[k] !== res.featureTexts[k]);
+  const subs = { ...customs.subs };
+  Object.entries(subsIn).forEach(([c, arr]) => { subs[c] = [...(subs[c] || []), ...arr]; });
+  const inFeats = new Map(featsIn.map((f) => [f.name, f]));
+  const feats = [...(customs.feats || []).map((f) => inFeats.get(f.name) || f), ...featsIn.filter((f) => !(customs.feats || []).some((o) => o.name === f.name))];
+  const inSpells = new Map(spellsIn.map((x) => [x.name, x]));
+  const spells = [...(customs.spells || []).map((s) => inSpells.get(s.name) || s), ...spellsIn.filter((x) => !(customs.spells || []).some((o) => o.name === x.name))];
+  return {
+    changed: !!(Object.keys(subsIn).length || featsIn.length || spellsIn.length || itemsIn.length || newTexts),
+    customs: { subs, feats, spells, items: [...(customs.items || []), ...itemsIn], featureTexts: { ...oldTexts, ...(res.featureTexts || {}) } },
+  };
+}
+
 function parseCompendiumXML(text) {
   const doc = new DOMParser().parseFromString(text, "text/xml");
   if (doc.querySelector("parsererror")) throw new Error("Not valid XML");
@@ -4921,9 +4947,27 @@ export default function App() {
   const [customs, setCustoms] = useState(EMPTY_CUSTOM);
   const [ioMsg, setIoMsg] = useState("");
 
-  useEffect(() => { loadChars().then(setChars); loadCustom().then(setCustoms); }, []);
+  useEffect(() => {
+    loadChars().then(setChars);
+    loadCustom().then((c) => { setCustoms(c); autoCompendium(c); });
+  }, []);
   const persistCustom = (next) => { setCustoms(next); saveCustom(next); };
   const persist = (next) => { setChars(next); saveChars(next); };
+  /* A compendium.xml shipped with the deploy imports itself: fetched at boot, folded in
+     once, and re-folded only when the file actually changes. No file, no fuss. */
+  const autoCompendium = async (current) => {
+    try {
+      const res = await fetch("compendium.xml", { cache: "no-cache" });
+      if (!res.ok || !/xml|text/.test(res.headers.get("content-type") || "")) return;
+      const text = await res.text();
+      const mark = `${text.length}:${text.slice(0, 400)}`;
+      const seen = await window.storage.get("dnd-bundled-compendium-v1").catch(() => null);
+      if (seen?.value === mark) return;
+      const merged = mergeCompendium(current, parseCompendiumXML(text));
+      if (merged.changed) { persistCustom(merged.customs); setIoMsg("Bundled compendium loaded."); }
+      await window.storage.set("dnd-bundled-compendium-v1", mark);
+    } catch { /* offline or no bundled compendium — the Forge import still works */ }
+  };
 
   if (chars === null) return (
     <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", color: T.dim, fontFamily: "Georgia, serif" }}>
