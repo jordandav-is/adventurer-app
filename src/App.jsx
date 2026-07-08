@@ -1757,18 +1757,37 @@ function infoFor(rawName, customs) {
   return null;
 }
 
-/* Long-press (or right-click) to open the lore sheet. data-lore also kills text selection via CSS. */
+/* Long-press (or right-click) to open the lore sheet. data-lore kills text selection on the
+   element itself via CSS, but iOS will happily start selecting NEIGHBORING text mid-press —
+   so the whole page gets a selection lock the moment a lore press begins, any selection that
+   snuck in is dissolved, and the lock lifts only when the press aborts or the sheet closes. */
 let __showLore = null;
+function loreLock(on) {
+  document.documentElement.classList.toggle("lore-lock", on);
+  if (on) { try { const sel = window.getSelection(); if (sel && !sel.isCollapsed) sel.removeAllRanges(); } catch { /* selection API sulking — the CSS lock still holds */ } }
+}
 function lorePress(name) {
   return {
     "data-lore": "",
     onContextMenu: (e) => { e.preventDefault(); e.stopPropagation(); __showLore && __showLore(name); },
     onPointerDown: (e) => {
       const el = e.currentTarget;
+      // a long-press whose release landed on the sheet's backdrop never got its click,
+      // so the fired flag can go stale — each new press starts with a clean slate
+      delete el.dataset.loreFired;
       const sx = e.clientX, sy = e.clientY;
-      const t = setTimeout(() => { el.dataset.loreFired = "1"; __showLore && __showLore(name); }, 480);
+      loreLock(true);
+      const t = setTimeout(() => {
+        el.dataset.loreFired = "1";
+        loreLock(true); // re-dissolve anything iOS selected during the hold
+        if (__showLore) __showLore(name); else loreLock(false);
+      }, 480);
       const move = (ev) => { if (Math.hypot(ev.clientX - sx, ev.clientY - sy) > 12) end(); };
-      const end = () => { clearTimeout(t); el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", end); el.removeEventListener("pointercancel", end); el.removeEventListener("pointerleave", end); };
+      const end = () => {
+        clearTimeout(t);
+        if (!el.dataset.loreFired) loreLock(false); // aborted press; a fired one unlocks when the sheet closes
+        el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", end); el.removeEventListener("pointercancel", end); el.removeEventListener("pointerleave", end);
+      };
       el.addEventListener("pointermove", move); el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end); el.addEventListener("pointerleave", end);
     },
     onClickCapture: (e) => {
@@ -1780,16 +1799,17 @@ function lorePress(name) {
 function LoreSheet({ customs }) {
   const [item, setItem] = useState(null);
   const openedAt = useRef(0);
-  __showLore = (name) => { openedAt.current = Date.now(); setItem(infoFor(name, customs) || { title: String(name), meta: "", body: null }); };
+  __showLore = (name) => { openedAt.current = Date.now(); loreLock(true); setItem(infoFor(name, customs) || { title: String(name), meta: "", body: null }); };
   if (!item) return null;
+  const close = () => { setItem(null); loreLock(false); };
   // the release of the long-press lands on this backdrop — a short grace period keeps it open
-  const dismiss = () => { if (Date.now() - openedAt.current > 400) setItem(null); };
+  const dismiss = () => { if (Date.now() - openedAt.current > 400) close(); };
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 80, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={dismiss}>
       <div style={{ ...card, width: "min(620px, 100%)", maxHeight: "72vh", overflowY: "auto", borderRadius: "16px 16px 0 0", padding: 20, paddingBottom: "calc(20px + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
           <div style={{ fontFamily: "Georgia, serif", fontSize: 21, color: T.gold }}>{item.title}</div>
-          <span style={{ color: T.dim, cursor: "pointer", fontSize: 20, lineHeight: 1 }} onClick={() => setItem(null)}>✕</span>
+          <span style={{ color: T.dim, cursor: "pointer", fontSize: 20, lineHeight: 1 }} onClick={close}>✕</span>
         </div>
         {item.meta && <div style={{ color: "#b48ead", fontSize: 13, marginTop: 4 }}>{item.meta}</div>}
         <div style={{ color: T.ink, fontSize: 14, lineHeight: 1.7, marginTop: 12 }}>
@@ -4885,6 +4905,7 @@ export default function App() {
         @keyframes diceTumbleA { from { transform: rotate3d(1, 0.7, 0.35, -1620deg); } to { transform: rotate3d(1, 0.7, 0.35, 0deg); } }
         @keyframes diceTumbleB { from { transform: rotate3d(0.6, 1, 0.45, 1440deg); } to { transform: rotate3d(0.6, 1, 0.45, 0deg); } }
         [data-lore] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+        .lore-lock, .lore-lock * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
       `}</style>
       <div style={{ textAlign: "center", padding: "26px 14px 6px" }}>
         <div style={{ fontFamily: "Georgia, serif", fontSize: 30, color: T.gold, letterSpacing: 1 }}>The Adventurer's Ledger</div>
