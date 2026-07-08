@@ -3603,7 +3603,56 @@ function InvocationManager({ ch, onInvocations }) {
 
 const ARCANUM_UNLOCK = { 6: 11, 7: 13, 8: 15, 9: 17 }; // arcanum spell level -> warlock level
 
-function SpellManager({ ch, customs, onSpells, onUpdate }) {
+/* Classes that know their whole list and prepare a subset — preparations change freely after a long rest */
+const PREP_ALL_CLASSES = ["Cleric", "Druid", "Paladin"];
+
+/* Long-rest preparation: swap what's held in mind, from the full class list */
+function PrepareSpells({ ch, customs, onSpells, onClose }) {
+  const pool = customs?.spells || [];
+  const book = ch.spells || {};
+  const prepCasters = ch.classes.filter((c) => PREP_ALL_CLASSES.includes(c.name) && spellCapacity(c.name, c.level, ch.abilities).n > 0);
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
+      <div style={{ ...card, width: "min(560px, 100%)", maxHeight: "85vh", overflowY: "auto", borderRadius: "16px 16px 0 0", padding: 16, paddingBottom: "calc(16px + env(safe-area-inset-bottom))" }}
+        onClick={(e) => e.stopPropagation()}>
+        <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 18 }}>Prepare spells</div>
+        <div style={{ color: T.dim, fontSize: 12, marginBottom: 10 }}>You know your whole list — choose what you hold in mind. Preparations change freely after each long rest.</div>
+        {prepCasters.map((c) => {
+          const cap = spellCapacity(c.name, c.level, ch.abilities);
+          const maxLvl = maxSpellLevel(c.name, c.level);
+          const subData = subSpellData(c.subclass, c.name, customs);
+          const upTo = (spells) => Object.entries(spells).filter(([l]) => +l <= c.level).flatMap(([, arr]) => arr);
+          const plain = (n) => n.replace(/\*+$/, ""); // subclass-tagged twins ride in the compendium with a trailing *
+          const grantedSet = new Set(upTo(subData?.type === "granted" ? subData.spells : {}).map(plain));
+          const granted = [...grantedSet];
+          const expanded = subData?.type === "expanded" ? upTo(subData.spells) : [];
+          const fitting = pool.filter((sp) => (spellFitsClass(sp, c.name, c.subclass) || expanded.includes(sp.name)) && sp.level >= 1 && sp.level <= maxLvl && !grantedSet.has(plain(sp.name)));
+          const names = new Set(fitting.map((sp) => sp.name));
+          const options = fitting
+            .filter((sp) => !(sp.name.endsWith("*") && names.has(plain(sp.name))))
+            .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+          const picks = book[c.name]?.spells || [];
+          return (
+            <div key={c.name} style={{ marginBottom: 14 }}>
+              <div style={{ color: T.ink, fontWeight: 700 }}>
+                <ClassTag name={c.name} /> {c.level}
+                <span style={{ color: picks.length > cap.n ? T.blood : T.dim, fontWeight: 400, fontSize: 12 }}> · {picks.length}/{cap.n} {cap.label}</span>
+              </div>
+              {granted.length > 0 && (
+                <div style={{ color: T.green, fontSize: 11, margin: "4px 0" }}>{subData.label}: {granted.join(", ")} — free, not counted.</div>
+              )}
+              <SpellPickGrid options={options} picks={picks} cap={cap.n} placeholder="Search your class list…"
+                onChange={(arr) => onSpells({ ...book, [c.name]: { cantrips: [], ...(book[c.name] || {}), spells: arr } })} />
+            </div>
+          );
+        })}
+        <button style={{ ...btn(true), width: "100%" }} onClick={onClose}>Done — spells prepared</button>
+      </div>
+    </div>
+  );
+}
+
+function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare }) {
   const casters = ch.classes.filter((c) => CLASSES[c.name].caster);
   const wl = ch.classes.find((c) => c.name === "Warlock");
   const hasBoAS = (ch.invocations || []).includes("Book of Ancient Secrets");
@@ -3653,6 +3702,35 @@ function SpellManager({ ch, customs, onSpells, onUpdate }) {
     onSpells({ ...book, [clsName]: { cantrips: [], spells: [], ...(book[clsName] || {}), arcanum: arc } });
   };
 
+  /* Everything held, regrouped by spell level, then by where it came from */
+  const spLvl = (n) => pool.find((sp) => sp.name === n)?.level ?? SPELL_LVL_HINT[n] ?? 1;
+  const groups = new Map(); // level -> [{ source, names, tint }]
+  const addGroup = (lvl, source, names, tint) => {
+    if (!names.length) return;
+    if (!groups.has(lvl)) groups.set(lvl, []);
+    groups.get(lvl).push({ source, names: [...names].sort(), tint });
+  };
+  const byLevel = (names) => {
+    const m = {};
+    names.forEach((n) => { const l = spLvl(n); (m[l] = m[l] || []).push(n); });
+    return Object.entries(m);
+  };
+  casters.forEach((c) => {
+    const mine = book[c.name] || { cantrips: [], spells: [] };
+    const subData = subSpellData(c.subclass, c.name, customs);
+    const grantedNow = subData?.type === "granted"
+      ? Object.entries(subData.spells).filter(([lvl]) => +lvl <= c.level).flatMap(([, arr]) => arr) : [];
+    addGroup(0, c.name, mine.cantrips || []);
+    byLevel(mine.spells || []).forEach(([l, arr]) => addGroup(+l, c.name, arr));
+    byLevel(grantedNow).forEach(([l, arr]) => addGroup(+l, (subData.label || "Granted").replace(/\s*\(always prepared\)/, " · always prepared"), arr, T.green));
+    Object.entries(mine.arcanum || {}).forEach(([l, n]) => addGroup(+l, "Mystic Arcanum", [n], "#b48ead"));
+  });
+  if (ch.racialChoices?.cantrip) addGroup(0, `${ch.race} · racial`, [ch.racialChoices.cantrip]);
+  if (hasTome) addGroup(0, "Book of Shadows · Tome · cast at will", ch.tomeCantrips || []);
+  if (hasBoAS) byLevel(ch.boasRituals || []).forEach(([l, arr]) => addGroup(+l, "Book of Shadows · ritual only", arr));
+  const lvlsHeld = [...groups.keys()].sort((a, b) => a - b);
+  const LVL_NAMES = ["Cantrips", "1st level", "2nd level", "3rd level", "4th level", "5th level", "6th level", "7th level", "8th level", "9th level"];
+
   return (
     <div style={{ ...card, padding: 16, marginTop: 14 }}>
       <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 4 }}>Grimoire</div>
@@ -3663,92 +3741,79 @@ function SpellManager({ ch, customs, onSpells, onUpdate }) {
         const maxLvl = maxSpellLevel(c.name, c.level);
         const mine = book[c.name] || { cantrips: [], spells: [] };
         const subData = subSpellData(c.subclass, c.name, customs);
-        const grantedNow = subData?.type === "granted"
-          ? Object.entries(subData.spells).filter(([lvl]) => +lvl <= c.level).flatMap(([, arr]) => arr) : [];
-        const chip = (name, kind) => (
-          <span key={name} {...lorePress(name)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel2, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13 }}>
-            {name}
-            <span style={{ color: T.blood, cursor: "pointer", fontWeight: 700 }} onClick={() => setList(c.name, kind, mine[kind].filter((x) => x !== name))}>✕</span>
-          </span>
-        );
+        const isPrep = PREP_ALL_CLASSES.includes(c.name);
         return (
-          <div key={c.name} style={{ marginBottom: 14 }}>
-            <div style={{ color: T.ink, fontWeight: 700 }}><ClassTag name={c.name} /> {c.level} <span style={{ color: T.dim, fontWeight: 400, fontSize: 12 }}>· max spell level {maxLvl || "—"}{c.name === "Warlock" && c.level >= 11 ? " · Mystic Arcanum below" : ""}</span></div>
-            {canCap > 0 && (
-              <div style={{ marginTop: 6 }}>
-                <span style={{ color: mine.cantrips.length > canCap ? T.blood : T.dim, fontSize: 12 }}>Cantrips {mine.cantrips.length}/{canCap} </span>
-                {mine.cantrips.map((n) => chip(n, "cantrips"))}
-                {mine.cantrips.length < canCap && pool.length > 0 && (
-                  <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => { setAdding({ cls: c.name, kind: "cantrips" }); setQ(""); }}>＋ add</button>
-                )}
-              </div>
-            )}
-            {grantedNow.length > 0 && (
-              <div style={{ marginTop: 6, color: T.green, fontSize: 12 }}>
-                {subData.label}: {grantedNow.map((n, i) => <span key={n} {...lorePress(n)} style={{ color: T.ink }}>{i > 0 ? ", " : ""}{n}</span>)}
-              </div>
-            )}
+          <div key={c.name} style={{ marginBottom: 10 }}>
+            <div style={{ color: T.ink, fontWeight: 700 }}>
+              <ClassTag name={c.name} /> {c.level}
+              <span style={{ color: T.dim, fontWeight: 400, fontSize: 12 }}>
+                {" "}· max spell level {maxLvl || "—"}
+                {canCap > 0 && <span style={{ color: mine.cantrips.length > canCap ? T.blood : T.dim }}> · cantrips {mine.cantrips.length}/{canCap}</span>}
+                {cap.n > 0 && <span style={{ color: mine.spells.length > cap.n ? T.blood : T.dim }}> · {mine.spells.length}/{cap.n} {cap.label}</span>}
+              </span>
+            </div>
             {subData?.type === "expanded" && (
-              <div style={{ marginTop: 6, color: "#b48ead", fontSize: 12 }}>{subData.label}</div>
+              <div style={{ marginTop: 4, color: "#b48ead", fontSize: 12 }}>{subData.label}</div>
             )}
-            {cap.n > 0 && (
-              <div style={{ marginTop: 6 }}>
-                <span style={{ color: mine.spells.length > cap.n ? T.blood : T.dim, fontSize: 12 }}>{mine.spells.length}/{cap.n} {cap.label} </span>
-                {mine.spells.map((n) => chip(n, "spells"))}
-                {mine.spells.length < cap.n && pool.length > 0 && (
-                  <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => { setAdding({ cls: c.name, kind: "spells" }); setQ(""); }}>＋ add</button>
-                )}
-              </div>
+            {!isPrep && c.name !== "Wizard" && (
+              <div style={{ marginTop: 4, color: T.dim, fontSize: 11 }}>Known spells — swapped one-for-one on level-up, per the rules.</div>
             )}
-            {c.name === "Warlock" && c.level >= 11 && (
-              <div style={{ marginTop: 6 }}>
-                <span style={{ color: "#b48ead", fontSize: 12 }}>Mystic Arcanum · one spell per level, 1 cast per long rest, no slot required </span>
-                {Object.entries(ARCANUM_UNLOCK).filter(([, wl]) => c.level >= wl).map(([lvlStr]) => {
-                  const aLvl = +lvlStr;
-                  const picked = (mine.arcanum || {})[aLvl];
-                  return picked ? (
-                    <span key={aLvl} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel2, border: `1px solid #b48ead55`, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13 }}>
-                      <span style={{ color: "#b48ead" }}>{aLvl}th</span> {picked}
-                      <span style={{ color: T.blood, cursor: "pointer", fontWeight: 700 }} onClick={() => setArcanum(c.name, aLvl, null)}>✕</span>
-                    </span>
-                  ) : (
-                    <button key={aLvl} style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0, borderColor: "#b48ead55", color: "#b48ead" }}
-                      onClick={() => { setAdding({ cls: c.name, kind: "arcanum", lvl: aLvl }); setQ(""); }} disabled={pool.length === 0}>
-                      ＋ {aLvl}th
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {isPrep && cap.n > 0 && pool.length > 0 && (
+                <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={onPrepare}>⟳ prepare spells</button>
+              )}
+              {canCap > 0 && mine.cantrips.length < canCap && pool.length > 0 && (
+                <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => { setAdding({ cls: c.name, kind: "cantrips" }); setQ(""); }}>＋ cantrip ({canCap - mine.cantrips.length} owed)</button>
+              )}
+              {!isPrep && cap.n > 0 && mine.spells.length < cap.n && pool.length > 0 && (
+                <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => { setAdding({ cls: c.name, kind: "spells" }); setQ(""); }}>{c.name === "Wizard" ? "＋ scribe spell" : `＋ spell (${cap.n - mine.spells.length} owed)`}</button>
+              )}
+              {c.name === "Warlock" && c.level >= 11 && Object.entries(ARCANUM_UNLOCK).filter(([, wl]) => c.level >= wl).map(([lvlStr]) => {
+                const aLvl = +lvlStr;
+                return (mine.arcanum || {})[aLvl] ? null : (
+                  <button key={aLvl} style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0, borderColor: "#b48ead55", color: "#b48ead" }}
+                    onClick={() => { setAdding({ cls: c.name, kind: "arcanum", lvl: aLvl }); setQ(""); }} disabled={pool.length === 0}>
+                    ＋ {aLvl}th arcanum
+                  </button>
+                );
+              })}
+            </div>
           </div>
         );
       })}
 
       {hasBoAS && (
-        <div style={{ marginBottom: 14, paddingTop: 10, borderTop: `1px solid ${T.edge}` }}>
+        <div style={{ marginBottom: 10 }}>
           <div style={{ color: T.ink, fontWeight: 700 }}>Book of Shadows — Ancient Secrets <span style={{ color: T.dim, fontWeight: 400, fontSize: 12 }}>· rituals only · level ≤ {Math.max(1, Math.ceil((wl?.level || 1) / 2))}</span></div>
-          <div style={{ marginTop: 6 }}>
-            {(ch.boasRituals || []).map((n) => (
-              <span key={n} {...lorePress(n)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel2, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13 }}>
-                {n}<span style={{ color: T.blood, cursor: "pointer", fontWeight: 700 }} onClick={() => onUpdate({ boasRituals: (ch.boasRituals || []).filter((x) => x !== n) })}>✕</span>
-              </span>
-            ))}
-            {pool.length > 0 && <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => { setAdding({ kind: "boas" }); setQ(""); }}>＋ transcribe ritual</button>}
-          </div>
+          {pool.length > 0 && <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0, marginTop: 6 }} onClick={() => { setAdding({ kind: "boas" }); setQ(""); }}>＋ transcribe ritual</button>}
           {(ch.boasRituals || []).length < 2 && <div style={{ color: T.dim, fontSize: 11, marginTop: 4 }}>Start with two 1st-level rituals from any class; transcribe rituals you find in your travels.</div>}
         </div>
       )}
       {hasTome && (
-        <div style={{ marginBottom: 14, paddingTop: 10, borderTop: `1px solid ${T.edge}` }}>
+        <div style={{ marginBottom: 10 }}>
           <div style={{ color: T.ink, fontWeight: 700 }}>Book of Shadows — Tome Cantrips <span style={{ color: T.dim, fontWeight: 400, fontSize: 12 }}>· {(ch.tomeCantrips || []).length}/3 · any class · cast at will</span></div>
-          <div style={{ marginTop: 6 }}>
-            {(ch.tomeCantrips || []).map((n) => (
-              <span key={n} {...lorePress(n)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel2, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13 }}>
-                {n}<span style={{ color: T.blood, cursor: "pointer", fontWeight: 700 }} onClick={() => onUpdate({ tomeCantrips: (ch.tomeCantrips || []).filter((x) => x !== n) })}>✕</span>
-              </span>
-            ))}
-            {(ch.tomeCantrips || []).length < 3 && pool.length > 0 && <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => { setAdding({ kind: "tome" }); setQ(""); }}>＋ add</button>}
-          </div>
+          {(ch.tomeCantrips || []).length < 3 && pool.length > 0 && <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0, marginTop: 6 }} onClick={() => { setAdding({ kind: "tome" }); setQ(""); }}>＋ add ({3 - (ch.tomeCantrips || []).length} owed)</button>}
+        </div>
+      )}
+
+      {lvlsHeld.length > 0 && (
+        <div style={{ paddingTop: 10, borderTop: `1px solid ${T.edge}` }}>
+          {lvlsHeld.map((l) => (
+            <div key={l} style={{ marginBottom: 10 }}>
+              <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 15 }}>{LVL_NAMES[l] || `${l}th level`}</div>
+              {groups.get(l).map((g) => (
+                <div key={`${l}|${g.source}`} style={{ marginTop: 3 }}>
+                  <div style={{ color: g.tint || T.dim, fontSize: 11, letterSpacing: 0.5, textTransform: "uppercase" }}>{g.source}</div>
+                  <div>
+                    {g.names.map((n) => (
+                      <span key={n} {...lorePress(n)} style={{ display: "inline-block", background: T.panel2, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13, color: g.tint || T.ink }}>{n}</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+          <div style={{ color: T.dim, fontSize: 11 }}>Long-press any spell to read it.</div>
         </div>
       )}
 
@@ -4203,8 +4268,10 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   /* limited-use features refill on their own schedule */
   const usedFeats = ch.usedFeatures || {};
   const trackers = useTrackersFor(ch, customs);
+  /* prepared casters re-pick their spells at dawn, so a long rest is never a no-op for them */
+  const canPrep = ch.classes.some((c) => PREP_ALL_CLASSES.includes(c.name) && spellCapacity(c.name, c.level, ch.abilities).n > 0) && (customs?.spells || []).length > 0;
   const shortWould = usedPact > 0 || effectsOf(ch).some((e) => restTouches(e, "short")) || trackers.some((t) => t.per === "short" && (usedFeats[t.key] || 0) > 0);
-  const longWould = dmgRaw > 0 || tempHp > 0 || usedSlots.some(Boolean) || usedPact > 0 || usedArc.length > 0 || effectsOf(ch).some((e) => restTouches(e, "long")) || trackers.some((t) => (usedFeats[t.key] || 0) > 0);
+  const longWould = dmgRaw > 0 || tempHp > 0 || usedSlots.some(Boolean) || usedPact > 0 || usedArc.length > 0 || effectsOf(ch).some((e) => restTouches(e, "long")) || trackers.some((t) => (usedFeats[t.key] || 0) > 0) || canPrep;
   const resetUses = (kind) => {
     const u = { ...usedFeats };
     trackers.forEach((t) => { if (kind === "long" || t.per === "short") delete u[t.key]; });
@@ -4216,7 +4283,11 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     const refund = effectsOf(ch).filter((e) => !kept.has(e.id)).reduce((s, e) => s + instMaxHp(e, ch), 0);
     onUpdate({ usedPact: 0, effects: restEffects("short"), usedFeatures: resetUses("short"), ...(refund ? { dmg: Math.max(0, dmgRaw - refund) } : {}) });
   };
-  const longRest = () => onUpdate({ dmg: 0, usedSlots: [], usedPact: 0, usedArcanum: [], tempHp: 0, effects: restEffects("long"), usedFeatures: {} });
+  const [prepOpen, setPrepOpen] = useState(false);
+  const longRest = () => {
+    onUpdate({ dmg: 0, usedSlots: [], usedPact: 0, usedArcanum: [], tempHp: 0, effects: restEffects("long"), usedFeatures: {} });
+    if (canPrep) setPrepOpen(true); // dawn — swap your prepared spells
+  };
 
   /* ---- the bones: d20 rolls with every modifier the sheet knows about ---- */
   const [rollSpec, setRollSpec] = useState(null);
@@ -4538,7 +4609,8 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
 
       <FeatureUsesCard ch={ch} customs={customs} onUpdate={onUpdate} />
 
-      <SpellManager ch={ch} customs={customs} onSpells={onSpells} onUpdate={onUpdate} />
+      <SpellManager ch={ch} customs={customs} onSpells={onSpells} onUpdate={onUpdate} onPrepare={canPrep ? () => setPrepOpen(true) : undefined} />
+      {prepOpen && <PrepareSpells ch={ch} customs={customs} onSpells={onSpells} onClose={() => setPrepOpen(false)} />}
       <ChoiceManager ch={ch} customs={customs} onUpdate={onUpdate} />
       <InvocationManager ch={ch} onInvocations={onInvocations} />
 
