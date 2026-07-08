@@ -3790,11 +3790,8 @@ function EffectsCard({ ch, customs, fx, onUpdate }) {
         <span style={{ color: tempHp ? "#5eb1bf" : T.dim, fontFamily: "Georgia, serif", fontSize: 18, minWidth: 26, textAlign: "center" }}>{tempHp}</span>
         <button style={pillBtn} onClick={() => onUpdate({ tempHp: tempHp + 1 })}>＋</button>
         {tempHp > 0 && <button style={{ ...pillBtn, width: "auto", padding: "0 10px", fontSize: 12 }} onClick={() => onUpdate({ tempHp: 0 })}>clear</button>}
-        <span style={{ color: T.dim, fontSize: 11 }}>absorbs damage first · new grants don't stack, keep the larger · fades on a long rest</span>
       </div>
-      {effects.length === 0 ? (
-        <div style={{ color: T.dim, fontSize: 13, marginTop: 12 }}>Nothing clings to you — no blessings, no curses. Add one when the Mage Armor goes up, the Rage takes hold, or the poison sets in.</div>
-      ) : (
+      {effects.length === 0 ? null : (
         <div style={{ display: "grid", gap: 6, marginTop: 12 }}>
           {effects.map((e) => {
             const def = effDefOf(e);
@@ -3826,7 +3823,6 @@ function EffectsCard({ ch, customs, fx, onUpdate }) {
         </div>
       )}
       {summary.length > 0 && <div style={{ color: T.gold, fontSize: 12, marginTop: 10 }}>Now shaping the sheet: {summary.join(" · ")}</div>}
-      <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>Long-press an effect for its rules · AC, HP, speed, attacks, saves, and roll reminders update automatically · rests sweep expired effects away</div>
       {adding && <AddEffectSheet ch={ch} customs={customs} existing={effects} onAdd={addEffect} onClose={() => setAdding(false)} />}
     </div>
   );
