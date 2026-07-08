@@ -3272,14 +3272,40 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
 
 /* ============ GRIMOIRE (SPELL MANAGEMENT) ============ */
 /* ============ INVENTORY & EQUIPMENT ============ */
+const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+
 function InventoryCard({ ch, customs, onUpdate, onConsume }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [usableOnly, setUsableOnly] = useState(true);
   const [freeText, setFreeText] = useState("");
+  const [coin, setCoin] = useState("10");
   const inv = ch.inventory || [];
   const pool = customs?.items || [];
   const save = (rows) => onUpdate({ inventory: rows });
+  /* ---- the coin purse: money is checked before it is spent, and the ledger remembers ---- */
+  const gold = round2(Math.max(0, ch.gold ?? 0));
+  const priceOf = (it) => parseFloat(it?.value) || 0;
+  const coinAmt = Math.max(0, parseFloat(coin) || 0);
+  const buy = (it) => {
+    const price = priceOf(it);
+    if (price > gold) return; // the shopkeeper's arms stay crossed
+    const has = inv.find((r) => r.name === it.name);
+    onUpdate({
+      inventory: has ? inv.map((r) => (r.name === it.name ? { ...r, qty: (r.qty || 1) + 1 } : r)) : [...inv, { name: it.name, qty: 1 }],
+      gold: round2(gold - price),
+      log: [...(ch.log || []), `Bought ${it.name} for ${price} gp.`],
+    });
+  };
+  const sell = (row, it) => {
+    const half = round2(priceOf(it) / 2);
+    onUpdate({
+      inventory: inv.flatMap((r) => (r.name === row.name ? ((r.qty || 1) > 1 ? [{ ...r, qty: (r.qty || 1) - 1 }] : []) : [r])),
+      gold: round2(gold + half),
+      log: [...(ch.log || []), `Sold ${row.name} for ${half} gp.`],
+    });
+  };
+  const adjustGold = (delta, line) => onUpdate({ gold: round2(Math.max(0, gold + delta)), log: [...(ch.log || []), line] });
   const totalWeight = inv.reduce((s, r) => s + ((findItem(r.name, customs)?.weight || 0) * (r.qty || 1)), 0);
   const capacity = ch.abilities.str * 15;
   const equip = (row) => {
@@ -3301,6 +3327,18 @@ function InventoryCard({ ch, customs, onUpdate, onConsume }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
         <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17 }}>Inventory</div>
         <div style={{ color: totalWeight > capacity ? T.blood : T.dim, fontSize: 12 }}>{totalWeight.toFixed(0)} / {capacity} lb{totalWeight > capacity ? " — over capacity!" : ""}</div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+        <span style={{ color: T.gold, fontSize: 13, fontWeight: 700 }}>Purse</span>
+        <span data-purse style={{ fontFamily: "Georgia, serif", fontSize: 17, color: T.gold }}>{gold} gp</span>
+        <input type="number" min={0} value={coin} onChange={(e) => setCoin(e.target.value)} title="Amount of gold"
+          style={{ width: 66, textAlign: "center", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "5px 4px", fontSize: 14 }} />
+        <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0, borderColor: T.blood, color: "#d76a76", opacity: !coinAmt || coinAmt > gold ? 0.4 : 1 }}
+          disabled={!coinAmt || coinAmt > gold} title={coinAmt > gold ? "Not enough gold in the purse" : "Pay for lodging, bribes, diamonds for Revivify…"}
+          onClick={() => adjustGold(-coinAmt, `Spent ${coinAmt} gp.`)}>− Spend</button>
+        <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0, borderColor: T.green, color: T.green, opacity: !coinAmt ? 0.4 : 1 }}
+          disabled={!coinAmt} title="Loot, rewards, ill-gotten gains" onClick={() => adjustGold(coinAmt, `Gained ${coinAmt} gp.`)}>+ Gain</button>
+        {coinAmt > gold && <span style={{ color: "#d76a76", fontSize: 11 }}>the purse holds only {gold} gp</span>}
       </div>
       {inv.length === 0 && <div style={{ color: T.dim, fontSize: 13, margin: "8px 0" }}>Empty packs win no battles. Add gear below — equip armor, shields, and weapons to power your AC and attack buttons.</div>}
       {inv.map((row) => {
@@ -3329,6 +3367,11 @@ function InventoryCard({ ch, customs, onUpdate, onConsume }) {
                 {/potion|elixir|philter/i.test(row.name) ? "Drink" : "Use"}
               </button>
             )}
+            {it && priceOf(it) > 0 && (
+              <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0 }} title={`Sell one for half value (${round2(priceOf(it) / 2)} gp)`} onClick={() => sell(row, it)}>
+                Sell {round2(priceOf(it) / 2)}g
+              </button>
+            )}
             <span style={{ color: T.blood, cursor: "pointer", fontWeight: 700, padding: "0 4px" }} onClick={() => save(inv.filter((r) => r.name !== row.name))}>✕</span>
           </div>
         );
@@ -3343,7 +3386,7 @@ function InventoryCard({ ch, customs, onUpdate, onConsume }) {
         <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={() => setOpen(false)}>
           <div style={{ ...card, width: "min(560px, 100%)", maxHeight: "75vh", display: "flex", flexDirection: "column", borderRadius: "16px 16px 0 0", padding: 16, paddingBottom: "calc(16px + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-              <div style={{ color: T.gold, fontFamily: "Georgia, serif" }}>Add gear <span style={{ color: T.dim, fontSize: 12 }}>· long-press to inspect first</span></div>
+              <div style={{ color: T.gold, fontFamily: "Georgia, serif" }}>Add gear <span style={{ color: T.dim, fontSize: 12 }}>· tap to add as loot (free) · Buy pays from the purse ({gold} gp)</span></div>
               <button style={{ ...btn(usableOnly), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => setUsableOnly(!usableOnly)}>
                 {usableOnly ? `✓ Usable by ${ch.name}` : "Showing everything"}
               </button>
@@ -3352,16 +3395,29 @@ function InventoryCard({ ch, customs, onUpdate, onConsume }) {
               style={{ background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 16, marginBottom: 10 }} />
             <LazyList items={shown} resetKey={`${q}|${usableOnly}`}
               empty={<div style={{ color: T.dim, fontSize: 13, padding: 8 }}>Nothing matches.</div>}
-              render={(it) => (
-                <div key={it.name} {...lorePress(it.name)} onClick={() => {
-                  const has = inv.find((r) => r.name === it.name);
-                  save(has ? inv.map((r) => (r.name === it.name ? { ...r, qty: (r.qty || 1) + 1 } : r)) : [...inv, { name: it.name, qty: 1 }]);
-                  setOpen(false);
-                }} style={{ padding: "10px 8px", borderBottom: `1px solid ${T.edge}`, cursor: "pointer" }}>
-                  <span style={{ color: T.ink }}>{it.name}</span>
-                  <span style={{ color: T.dim, fontSize: 12 }}> · {ITEM_TYPES[it.type] || it.type}{it.ac ? ` · AC ${it.type === "S" ? "+" : ""}${it.ac}` : ""}{it.dmg1 ? ` · ${it.dmg1} ${DMG_TYPES[it.dmgType] || ""}` : ""}{it.value ? ` · ${it.value} gp` : ""}{sourceOf(it.text) ? ` · ${sourceOf(it.text)}` : ""}</span>
-                </div>
-              )} />
+              render={(it) => {
+                const price = priceOf(it);
+                const broke = price > gold;
+                return (
+                  <div key={it.name} {...lorePress(it.name)} onClick={() => {
+                    const has = inv.find((r) => r.name === it.name);
+                    save(has ? inv.map((r) => (r.name === it.name ? { ...r, qty: (r.qty || 1) + 1 } : r)) : [...inv, { name: it.name, qty: 1 }]);
+                    setOpen(false);
+                  }} style={{ padding: "10px 8px", borderBottom: `1px solid ${T.edge}`, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ flex: 1 }}>
+                      <span style={{ color: T.ink }}>{it.name}</span>
+                      <span style={{ color: T.dim, fontSize: 12 }}> · {ITEM_TYPES[it.type] || it.type}{it.ac ? ` · AC ${it.type === "S" ? "+" : ""}${it.ac}` : ""}{it.dmg1 ? ` · ${it.dmg1} ${DMG_TYPES[it.dmgType] || ""}` : ""}{it.value ? ` · ${it.value} gp` : ""}{sourceOf(it.text) ? ` · ${sourceOf(it.text)}` : ""}</span>
+                    </span>
+                    {price > 0 && (
+                      <button disabled={broke} title={broke ? `You have ${gold} gp — the shopkeeper's arms stay crossed` : `Pay ${price} gp from the purse`}
+                        style={{ ...btn(false), padding: "2px 10px", fontSize: 12, minHeight: 0, whiteSpace: "nowrap", ...(broke ? { borderColor: T.blood, color: T.blood, opacity: 0.55, cursor: "default" } : {}) }}
+                        onClick={(e) => { e.stopPropagation(); buy(it); }}>
+                        {broke ? "can't afford" : `Buy ${price} gp`}
+                      </button>
+                    )}
+                  </div>
+                );
+              }} />
           </div>
         </div>
       )}
@@ -3897,7 +3953,7 @@ function AddEffectSheet({ ch, customs, existing, onAdd, onClose }) {
             <div style={{ color: T.dim, fontSize: 13, marginTop: 4 }}>{pending.brief}</div>
             <label style={{ display: "block", color: T.dim, fontSize: 13, marginTop: 12 }}>{pending.input.label} ({pending.input.min}–{pending.input.max})</label>
             <div style={{ display: "flex", gap: 10, marginTop: 6, alignItems: "center" }}>
-              <input type="number" min={pending.input.min} max={pending.input.max} value={val} autoFocus
+              <input data-fx-val type="number" min={pending.input.min} max={pending.input.max} value={val} autoFocus
                 onChange={(e) => setVal(e.target.value)}
                 style={{ ...fieldStyle, width: 90, textAlign: "center", fontSize: 18 }} />
               <button style={btn(true)} onClick={() => commit(pending, clampVal(), ally)}>Apply</button>
