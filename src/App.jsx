@@ -3867,9 +3867,7 @@ function FeatureUsesCard({ ch, onUpdate }) {
           <button style={{ ...btn(true), padding: "8px 14px", minHeight: 0 }} onClick={addCustom}>Add</button>
         </div>
       )}
-      {trackers.length === 0 ? (
-        <div style={{ color: T.dim, fontSize: 13, marginTop: 10 }}>No limited-use features yet — they appear as your classes earn them, or forge your own above.</div>
-      ) : (
+      {trackers.length === 0 ? null : (
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
           {trackers.map((t) => {
             const u = usedOf(t), avail = t.max - u;
@@ -3900,7 +3898,6 @@ function FeatureUsesCard({ ch, onUpdate }) {
           })}
         </div>
       )}
-      <div style={{ color: T.dim, fontSize: 11, marginTop: 8 }}>Long-press a name for its rules · expending Rage or Wild Shape raises the matching effect above · short-rest features refill on any rest, the rest at dawn</div>
     </div>
   );
 }
