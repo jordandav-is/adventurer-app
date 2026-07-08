@@ -1492,11 +1492,57 @@ const USE_TRACKERS = [
   { key: "breath-weapon", name: "Breath Weapon", when: (ch) => ch.race === "Dragonborn", max: () => 1, per: "short" },
   { key: "relentless-endurance", name: "Relentless Endurance", when: (ch) => ch.race === "Half-Orc", max: () => 1, per: "long" },
 ];
-/* The trackers a character actually owns right now, built-in and hand-forged alike */
-function useTrackersFor(ch) {
+/* Beyond the curated list, ANY feature whose rules text names its own recharge earns a
+   tracker automatically — imported subclasses included. "Once you use this feature, you
+   can't use it again until you finish a short or long rest" is machine-readable, so the
+   sheet reads it: Fey Presence, Hexblade's Curse, Wrath of the Storm, invocation daily
+   castings — if the text says it recharges, it gets pips. */
+function parseLimitedUse(text, ch) {
+  if (!text) return null;
+  const t = text.toLowerCase().replace(/[’‘]/g, "'");
+  // the sentence that forbids re-use AND names the rest that lifts the ban
+  const limiter = t.split(/\.\s+/).find((s) => /(rest|dawn)/.test(s) &&
+    /(can't (use|do)[^.]*again|once (you have )?(use|used|per)|must finish a[^.]*rest before|regain[^.]*expended (uses|points|luck))/.test(s));
+  if (!limiter) return null;
+  const per = /short/.test(limiter) ? "short" : "long";
+  let max = 1;
+  const abil = t.match(/number of times equal to (?:(\d+) \+ )?your (strength|dexterity|constitution|intelligence|wisdom|charisma) modifier/);
+  const pts = t.match(/you have (\d+|two|three|four|five) (?:[a-z]+ )?points/);
+  if (abil) max = Math.max(1, mod(ch.abilities[abil[2].slice(0, 3)]) + (abil[1] ? +abil[1] : 0));
+  else if (/number of times equal to your proficiency bonus/.test(t)) max = profBonus(totalLevel(ch));
+  else if (/use (this feature|it) twice/.test(t)) max = 2;
+  else if (/use (this feature|it) three times/.test(t)) max = 3;
+  else if (pts) max = { two: 2, three: 3, four: 4, five: 5 }[pts[1]] || +pts[1] || 1;
+  return { max: Math.max(1, Math.min(20, max)), per };
+}
+function derivedTrackers(ch, customs) {
+  const curated = new Set(USE_TRACKERS.map((t) => t.name.toLowerCase()));
+  const names = [], seen = new Set();
+  const add = (raw) => {
+    const n = String(raw || "").trim();
+    if (n && !seen.has(n.toLowerCase()) && !curated.has(n.toLowerCase())) { seen.add(n.toLowerCase()); names.push(n); }
+  };
+  ch.classes.forEach((c) => {
+    for (let l = 1; l <= c.level; l++) {
+      (CLASSES[c.name].feats[l] || []).forEach((f) => { if (!(c.subclass && /\bfeature\b$/i.test(f))) add(f); });
+      allSubFeats(c.subclass, l, customs).forEach(add);
+    }
+  });
+  (ch.invocations || []).forEach(add);
+  (ch.feats || []).forEach(add);
+  (RACES[ch.race]?.traits || []).forEach((tr) => add(tr.replace(/\s*\(.*$/, "")));
+  const out = [];
+  names.forEach((n) => {
+    const p = parseLimitedUse(infoFor(n, customs)?.body, ch);
+    if (p) out.push({ key: `feat-${slugFx(n)}`, name: n, max: p.max, per: p.per });
+  });
+  return out;
+}
+/* The trackers a character actually owns right now: curated, text-derived, and hand-forged */
+function useTrackersFor(ch, customs) {
   const built = USE_TRACKERS.filter((t) => t.when(ch)).map((t) => ({ ...t, max: t.max(ch), per: typeof t.per === "function" ? t.per(ch) : t.per }));
   const custom = (Array.isArray(ch.customTrackers) ? ch.customTrackers : []).map((t) => ({ key: `custom-${t.id}`, name: t.name, max: Math.max(1, t.max || 1), per: t.per === "short" ? "short" : "long", pool: (t.max || 1) > 12, custom: true, id: t.id }));
-  return [...built, ...custom];
+  return [...built, ...derivedTrackers(ch, customs), ...custom];
 }
 
 /* ============ CONSUMABLES — arrows fly away, potions go down the hatch ============ */
@@ -3829,8 +3875,8 @@ function EffectsCard({ ch, customs, fx, onUpdate }) {
 }
 
 /* ============ FEATURE USES CARD — pips for every daily heroic ============ */
-function FeatureUsesCard({ ch, onUpdate }) {
-  const trackers = useTrackersFor(ch);
+function FeatureUsesCard({ ch, customs, onUpdate }) {
+  const trackers = useTrackersFor(ch, customs);
   const used = ch.usedFeatures || {};
   const [forging, setForging] = useState(false);
   const [form, setForm] = useState({ name: "", max: "3", per: "long" });
@@ -4092,7 +4138,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   });
   /* limited-use features refill on their own schedule */
   const usedFeats = ch.usedFeatures || {};
-  const trackers = useTrackersFor(ch);
+  const trackers = useTrackersFor(ch, customs);
   const shortWould = usedPact > 0 || effectsOf(ch).some((e) => restTouches(e, "short")) || trackers.some((t) => t.per === "short" && (usedFeats[t.key] || 0) > 0);
   const longWould = dmgRaw > 0 || tempHp > 0 || usedSlots.some(Boolean) || usedPact > 0 || usedArc.length > 0 || effectsOf(ch).some((e) => restTouches(e, "long")) || trackers.some((t) => (usedFeats[t.key] || 0) > 0);
   const resetUses = (kind) => {
@@ -4426,7 +4472,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         </div>
       )}
 
-      <FeatureUsesCard ch={ch} onUpdate={onUpdate} />
+      <FeatureUsesCard ch={ch} customs={customs} onUpdate={onUpdate} />
 
       <SpellManager ch={ch} customs={customs} onSpells={onSpells} onUpdate={onUpdate} />
       <ChoiceManager ch={ch} customs={customs} onUpdate={onUpdate} />
