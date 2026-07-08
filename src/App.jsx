@@ -995,16 +995,18 @@ function rollNotes(ch, kind, abil) {
     if (ch.race === "Hill Dwarf" && abil === "con") n.push("Dwarven Resilience: advantage vs. poison");
     if (ch.race === "Lightfoot Halfling" && abil === "wis") n.push("Brave: advantage vs. being frightened");
     if (ch.race === "Rock Gnome" && ["int", "wis", "cha"].includes(abil)) n.push("Gnome Cunning: advantage vs. magic");
-    if (f.barbarian >= 1 && abil === "str") n.push("Rage: advantage on Strength saves while raging");
+    if (f.barbarian >= 1 && abil === "str" && !hasEffect(ch, "rage")) n.push("Rage: advantage on Strength saves while raging");
     if (f.barbarian >= 2 && abil === "dex") n.push("Danger Sense: advantage vs. effects you can see");
   }
   if (kind === "check" || kind === "skill") {
-    if (f.barbarian >= 1 && abil === "str") n.push("Rage: advantage on Strength checks while raging");
+    if (f.barbarian >= 1 && abil === "str" && !hasEffect(ch, "rage")) n.push("Rage: advantage on Strength checks while raging");
   }
   if (kind === "attack") {
-    if (f.barbarian >= 2 && abil === "str") n.push("Reckless Attack: take advantage now, grant it until your next turn");
+    if (f.barbarian >= 2 && abil === "str" && !hasEffect(ch, "reckless-attack")) n.push("Reckless Attack: take advantage now, grant it until your next turn");
     if (f.savageAttacks) n.push("Savage Attacks: one extra damage die on a melee crit");
   }
+  const fx = fxMods(ch);
+  n.push(...(fx.notes[kind === "skill" ? "check" : kind] || []));
   return n;
 }
 
@@ -1215,9 +1217,10 @@ function canEquip(item, ch) {
   return true;
 }
 
-/* Armor Class from equipped gear + class features, with a readable breakdown */
+/* Armor Class from equipped gear + class features + active effects, with a readable breakdown */
 function armorClass(ch, customs) {
   const dex = mod(ch.abilities.dex);
+  const fx = fxMods(ch);
   const inv = equippedOf(ch).map((r) => findItem(r.name, customs)).filter(Boolean);
   const armor = inv.find((x) => isArmorType(x.type));
   const shield = inv.find((x) => x.type === "S");
@@ -1236,9 +1239,198 @@ function armorClass(ch, customs) {
     else if (draconic) { ac = 13 + dex; parts.push("Draconic Resilience 13", `Dex ${fmtMod(dex)}`); }
     else { ac = 10 + dex; parts.push("Unarmored 10", `Dex ${fmtMod(dex)}`); }
   }
+  if (!armor && fx.acBase13 && 13 + dex > ac) { ac = 13 + dex; parts.splice(0, parts.length, "Mage Armor 13", `Dex ${fmtMod(dex)}`); }
   if (shield) { ac += shield.ac || 2; parts.push(`${shield.name} +${shield.ac || 2}`); }
   if (armor && (ch.styles || []).includes("Defense")) { ac += 1; parts.push("Defense style +1"); }
+  fx.ac.forEach((b) => { ac += b.value; parts.push(`${b.label} ${fmtMod(b.value)}`); });
+  if (fx.acFloor && ac < fx.acFloor.value) { ac = fx.acFloor.value; parts.push(`${fx.acFloor.label} (AC can't drop below ${fx.acFloor.value})`); }
   return { ac, parts, armor, shield };
+}
+
+/* ============ ACTIVE EFFECTS — buffs, boons, curses, and the state of being on fire ============ */
+/* Every trackable spell, feature, feat toggle, and condition. Mechanics the sheet can compute
+   are structured (AC, speed, max HP, attack/save/damage bonuses); everything the dice can't
+   decide for you becomes a reminder note on the relevant roll.
+   mods(val, ch, inst) → { ac:[{label,value}], acBase13, acFloor:{label,value}, maxHp, halveMaxHp,
+   speedAdd:[{label,value}], speedMult, speedZero, atk/dmg:[{label,value,scope}], save:[{label,value}],
+   shillelagh, notes:{attack,save,check,dmg} } — scope: "melee" | "ranged" | "weapon" | "spell" | "all" */
+const classLevel = (ch, name) => ch.classes.find((c) => c.name === name)?.level || 0;
+const hasSubLike = (ch, frag) => ch.classes.some((c) => (c.subclass || "").toLowerCase().includes(frag.toLowerCase()));
+const hasFeat = (ch, name) => (ch.feats || []).includes(name);
+const knownSpellNames = (ch) => {
+  const out = new Set();
+  Object.values(ch.spells || {}).forEach((b) => ["cantrips", "spells"].forEach((k) => (b?.[k] || []).forEach((n) => out.add(n))));
+  return out;
+};
+const slugFx = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+const E = (kind, name, def) => ({ key: slugFx(name), kind, name, ...def });
+
+const EFFECT_LIB = [
+  /* ---- Spells: the caster's wardrobe ---- */
+  E("Spell", "Mage Armor", { dur: "8 hours", ends: "long", brief: "Base AC becomes 13 + Dex while you wear no armor", mods: () => ({ acBase13: true }) }),
+  E("Spell", "Shield", { dur: "until the start of your next turn", ends: "manual", brief: "+5 AC, including against the attack that triggered it", mods: () => ({ ac: [{ label: "Shield", value: 5 }] }) }),
+  E("Spell", "Shield of Faith", { conc: true, dur: "10 minutes", ends: "short", brief: "+2 AC", mods: () => ({ ac: [{ label: "Shield of Faith", value: 2 }] }) }),
+  E("Spell", "Barkskin", { conc: true, dur: "1 hour", ends: "short", brief: "Your AC can't drop below 16", mods: () => ({ acFloor: { label: "Barkskin", value: 16 } }) }),
+  E("Spell", "Haste", { conc: true, dur: "1 minute", ends: "short", brief: "+2 AC, double speed, advantage on Dex saves, one extra limited action each turn", desc: "When the spell ends, you can't move or take actions until after your next turn — the lethargy bill comes due.", mods: () => ({ ac: [{ label: "Haste", value: 2 }], speedMult: 2, notes: { save: ["Haste: advantage on Dexterity saving throws"], attack: ["Haste: one extra action per turn (one Attack, Dash, Disengage, Hide, or Use an Object)"] } }) }),
+  E("Spell", "Slow", { conc: true, dur: "1 minute", ends: "short", brief: "−2 AC and Dex saves, speed halved, no reactions, one attack per turn", mods: () => ({ ac: [{ label: "Slow", value: -2 }], speedMult: 0.5, notes: { save: ["Slow: −2 to Dexterity saving throws"], attack: ["Slow: one attack per turn; no bonus-action spells"] } }) }),
+  E("Spell", "Bless", { conc: true, dur: "1 minute", ends: "short", brief: "Add +1d4 to attack rolls and saving throws", mods: () => ({ notes: { attack: ["Bless: add +1d4 to the attack roll"], save: ["Bless: add +1d4 to the save"] } }) }),
+  E("Spell", "Bane", { conc: true, dur: "1 minute", ends: "short", brief: "Subtract 1d4 from attack rolls and saving throws", mods: () => ({ notes: { attack: ["Bane: subtract 1d4 from the attack roll"], save: ["Bane: subtract 1d4 from the save"] } }) }),
+  E("Spell", "Aid", { dur: "8 hours", ends: "long", brief: "Max & current HP increase by 5 per slot level above 1st", input: { label: "Cast at slot level", unit: "slot", min: 2, max: 9, def: 2 }, mods: (v) => ({ maxHp: 5 * Math.max(1, (v || 2) - 1) }) }),
+  E("Spell", "False Life", { dur: "1 hour", ends: "short", brief: "Gain temporary hit points (1d4 + 4, +5 per slot level above 1st)", input: { label: "Temp HP rolled", unit: "temp HP", min: 1, max: 45, def: 7 }, tempHp: (v) => v || 7 }),
+  E("Spell", "Armor of Agathys", { dur: "1 hour", ends: "short", brief: "5 temp HP per slot level; melee attackers take that much cold damage while it holds", input: { label: "Cast at slot level", unit: "slot", min: 1, max: 9, def: 1 }, tempHp: (v) => 5 * (v || 1), mods: (v) => ({ notes: { dmg: [`Armor of Agathys: melee attackers take ${5 * (v || 1)} cold damage while the temp HP holds`] } }) }),
+  E("Spell", "Heroism", { conc: true, dur: "1 minute", ends: "short", brief: "Immune to being frightened; gain temp HP equal to the caster's spell modifier at the start of each turn", mods: () => ({ notes: { save: ["Heroism: immune to being frightened"] } }) }),
+  E("Spell", "Shillelagh", { dur: "1 minute", ends: "short", brief: "Your club or quarterstaff attacks use Wisdom and deal 1d8 damage", mods: () => ({ shillelagh: true }) }),
+  E("Spell", "Longstrider", { dur: "1 hour", ends: "short", brief: "+10 ft speed", mods: () => ({ speedAdd: [{ label: "Longstrider", value: 10 }] }) }),
+  E("Spell", "Expeditious Retreat", { conc: true, dur: "10 minutes", ends: "short", brief: "Dash as a bonus action every turn" }),
+  E("Spell", "Jump", { dur: "1 minute", ends: "short", brief: "Your jump distance is tripled", mods: () => ({ notes: { check: ["Jump: your jump distance is tripled"] } }) }),
+  E("Spell", "Enhance Ability", { conc: true, dur: "1 hour", ends: "short", brief: "Advantage on checks with one chosen ability, plus its rider (Bear: temp HP, Bull: double carry, Cat: safe falls…)", mods: () => ({ notes: { check: ["Enhance Ability: advantage on checks with the chosen ability"] } }) }),
+  E("Spell", "Enlarge", { match: "Enlarge/Reduce", conc: true, dur: "1 minute", ends: "short", brief: "Size doubled: advantage on Str checks & saves, +1d4 on enlarged-weapon damage", mods: () => ({ notes: { check: ["Enlarge: advantage on Strength checks"], save: ["Enlarge: advantage on Strength saves"], dmg: ["Enlarge: +1d4 damage with your enlarged weapon"] } }) }),
+  E("Spell", "Reduce", { match: "Enlarge/Reduce", conc: true, dur: "1 minute", ends: "short", brief: "Size halved: disadvantage on Str checks & saves, −1d4 on reduced-weapon damage", mods: () => ({ notes: { check: ["Reduce: disadvantage on Strength checks"], save: ["Reduce: disadvantage on Strength saves"], dmg: ["Reduce: −1d4 damage with your reduced weapon"] } }) }),
+  E("Spell", "Invisibility", { conc: true, dur: "1 hour", ends: "short", brief: "Attackers have disadvantage; you attack with advantage — but attacking or casting ends the spell", mods: () => ({ notes: { attack: ["Invisibility: attack with advantage — and the spell ends the moment you attack or cast"] } }) }),
+  E("Spell", "Greater Invisibility", { conc: true, dur: "1 minute", ends: "short", brief: "Invisible even while attacking and casting", mods: () => ({ notes: { attack: ["Greater Invisibility: your attack rolls have advantage"] } }) }),
+  E("Spell", "Blur", { conc: true, dur: "1 minute", ends: "short", brief: "Attackers who rely on sight have disadvantage against you" }),
+  E("Spell", "Mirror Image", { dur: "1 minute", ends: "short", brief: "Three duplicates; incoming attacks may strike an image (AC 10 + your Dex) instead of you" }),
+  E("Spell", "Blink", { dur: "1 minute", ends: "short", brief: "Roll a d20 at the end of each turn: 11+ whisks you to the Ethereal Plane until your next turn" }),
+  E("Spell", "Stoneskin", { conc: true, dur: "1 hour", ends: "short", brief: "Resistance to nonmagical bludgeoning, piercing, and slashing damage" }),
+  E("Spell", "Protection from Energy", { conc: true, dur: "1 hour", ends: "short", brief: "Resistance to one damage type: acid, cold, fire, lightning, or thunder" }),
+  E("Spell", "Protection from Evil and Good", { conc: true, dur: "10 minutes", ends: "short", brief: "Aberrations, celestials, elementals, fey, fiends, and undead have disadvantage to hit you and can't charm, frighten, or possess you" }),
+  E("Spell", "Sanctuary", { dur: "1 minute", ends: "short", brief: "Attackers must pass a Wisdom save or lose the attack; ends if you attack or harm anyone" }),
+  E("Spell", "Divine Favor", { conc: true, dur: "1 minute", ends: "short", brief: "Weapon hits deal +1d4 radiant damage", mods: () => ({ notes: { dmg: ["Divine Favor: +1d4 radiant damage"] } }) }),
+  E("Spell", "Magic Weapon", { conc: true, dur: "1 hour", ends: "short", brief: "One weapon becomes magical: +1 to attack and damage (+2/+3 at higher slots)", input: { label: "Bonus (+1, or more at higher slots)", unit: "+", min: 1, max: 3, def: 1 }, mods: (v) => ({ atk: [{ label: "Magic Weapon", value: v || 1, scope: "weapon" }], dmg: [{ label: "Magic Weapon", value: v || 1, scope: "weapon" }] }) }),
+  E("Spell", "Guidance", { conc: true, dur: "1 minute", ends: "short", brief: "Add +1d4 to one ability check, then the spell is spent", mods: () => ({ notes: { check: ["Guidance: add +1d4 to the check (then the spell is spent)"] } }) }),
+  E("Spell", "Resistance", { conc: true, dur: "1 minute", ends: "short", brief: "Add +1d4 to one saving throw, then the spell is spent", mods: () => ({ notes: { save: ["Resistance: add +1d4 to the save (then the spell is spent)"] } }) }),
+  E("Spell", "Hunter's Mark", { conc: true, dur: "1 hour", ends: "short", brief: "+1d6 damage on weapon hits against your marked quarry; advantage to track it", mods: () => ({ notes: { dmg: ["Hunter's Mark: +1d6 against your marked quarry"], check: ["Hunter's Mark: advantage on Perception/Survival to find your quarry"] } }) }),
+  E("Spell", "Hex", { conc: true, dur: "1 hour", ends: "short", brief: "+1d6 necrotic on hits against the hexed target; it has disadvantage on one ability's checks", mods: () => ({ notes: { dmg: ["Hex: +1d6 necrotic against the hexed target"] } }) }),
+  E("Spell", "True Strike", { conc: true, dur: "1 round", ends: "manual", brief: "Advantage on your first attack against the studied target on your next turn", mods: () => ({ notes: { attack: ["True Strike: advantage on your first attack against the studied target"] } }) }),
+  E("Spell", "Foresight", { dur: "8 hours", ends: "long", brief: "Advantage on attacks, checks, and saves; attackers have disadvantage; you can't be surprised", mods: () => ({ notes: { attack: ["Foresight: advantage"], save: ["Foresight: advantage"], check: ["Foresight: advantage"] } }) }),
+  E("Spell", "Freedom of Movement", { dur: "1 hour", ends: "short", brief: "Ignore difficult terrain; magic can't reduce your speed, paralyze, or restrain you; escape grapples for 5 ft" }),
+  E("Spell", "Death Ward", { dur: "8 hours", ends: "long", brief: "The first time you'd drop to 0 HP, you drop to 1 instead" }),
+  E("Spell", "Fire Shield", { dur: "10 minutes", ends: "short", brief: "Resistance to fire or cold (your choice); melee attackers take 2d8 damage", mods: () => ({ notes: { dmg: ["Fire Shield: melee attackers take 2d8 damage"] } }) }),
+  E("Spell", "Warding Bond", { dur: "1 hour", ends: "short", brief: "+1 AC, +1 saves, resistance to all damage — and the caster shares your wounds", mods: () => ({ ac: [{ label: "Warding Bond", value: 1 }], save: [{ label: "Warding Bond", value: 1 }] }) }),
+  E("Spell", "Heroes' Feast", { dur: "24 hours", ends: "long", brief: "Immune to poison & fear, advantage on Wisdom saves, max & current HP up by 2d10", input: { label: "HP increase rolled (2d10)", unit: "HP", min: 2, max: 20, def: 11 }, mods: (v) => ({ maxHp: v || 11, notes: { save: ["Heroes' Feast: advantage on Wisdom saves; immune to poison and fright"] } }) }),
+  E("Spell", "Mind Blank", { dur: "24 hours", ends: "long", brief: "Immune to psychic damage, mind reading, and divination" }),
+  E("Spell", "Holy Aura", { conc: true, dur: "1 minute", ends: "short", brief: "Attackers have disadvantage against you; you have advantage on all saves", mods: () => ({ notes: { save: ["Holy Aura: advantage on saving throws"] } }) }),
+  E("Spell", "Beacon of Hope", { conc: true, dur: "1 minute", ends: "short", brief: "Advantage on Wisdom saves and death saves; healing you receive is maximized", mods: () => ({ notes: { save: ["Beacon of Hope: advantage on Wisdom saving throws"] } }) }),
+  E("Spell", "Spider Climb", { conc: true, dur: "1 hour", ends: "short", brief: "Walk on walls and ceilings, hands free" }),
+  E("Spell", "Fly", { conc: true, dur: "10 minutes", ends: "short", brief: "Flying speed of 60 ft" }),
+  E("Spell", "Levitate", { conc: true, dur: "10 minutes", ends: "short", brief: "Float vertically up to 20 ft; no horizontal movement without pushing off something" }),
+  E("Spell", "Feather Fall", { dur: "1 minute", ends: "short", brief: "Fall at 60 ft per round and land without damage" }),
+  E("Spell", "Gaseous Form", { conc: true, dur: "1 hour", ends: "short", brief: "A misty cloud: fly 10 ft, resistance to nonmagical damage, advantage on Str/Dex/Con saves — no attacks, no casting", mods: () => ({ notes: { save: ["Gaseous Form: advantage on Str/Dex/Con saves"] } }) }),
+  E("Spell", "Alter Self", { conc: true, dur: "1 hour", ends: "short", brief: "Change appearance, grow natural weapons (+1 magical, 1d6), or adapt to water" }),
+  E("Spell", "Darkvision", { dur: "8 hours", ends: "long", brief: "See in darkness to 60 ft" }),
+  E("Spell", "See Invisibility", { dur: "1 hour", ends: "short", brief: "See invisible creatures and into the Ethereal Plane" }),
+  E("Spell", "Water Breathing", { dur: "24 hours", ends: "long", brief: "Breathe underwater" }),
+  E("Spell", "Water Walk", { dur: "1 hour", ends: "short", brief: "Stride across liquid surfaces as if they were solid ground" }),
+  E("Spell", "Regenerate", { dur: "1 hour", ends: "short", brief: "Regain 1 HP at the start of each of your turns; severed bits reattach" }),
+
+  /* ---- Class features & actions in play ---- */
+  E("Feature", "Rage", { dur: "1 minute (keep attacking or taking damage to sustain it)", ends: "short", brief: "Resistance to bludgeoning/piercing/slashing; bonus damage on Str melee hits; advantage on Str checks & saves; no spellcasting or concentration", mine: (ch) => classLevel(ch, "Barbarian") >= 1,
+    mods: (v, ch) => { const l = classLevel(ch, "Barbarian"); const b = l >= 16 ? 4 : l >= 9 ? 3 : 2; return { dmg: [{ label: "Rage", value: b, scope: "melee" }], notes: { save: ["Rage: advantage on Strength saves · resistance to bludgeoning, piercing, slashing"], check: ["Rage: advantage on Strength checks"], attack: [`Rage: +${b} damage on Strength-based melee hits`] } }; } }),
+  E("Feature", "Reckless Attack", { dur: "until your next turn", ends: "manual", brief: "Advantage on Strength melee attacks this turn — and every attack against you has advantage too", mine: (ch) => classLevel(ch, "Barbarian") >= 2, mods: () => ({ notes: { attack: ["Reckless Attack: advantage on Strength-based melee attacks; enemies have advantage against you"] } }) }),
+  E("Feature", "Frenzy", { dur: "while raging", ends: "short", brief: "Bonus-action melee attack each turn; one level of exhaustion when the rage ends", mine: (ch) => hasSubLike(ch, "Berserker") }),
+  E("Feature", "Wild Shape", { dur: "up to half your druid level in hours", ends: "short", brief: "You are the beast: use its physical stats and HP, keep your Int/Wis/Cha, saves, and skill proficiencies; at 0 beast HP you revert and excess damage carries over", desc: "Track the beast's hit points in the Temp HP counter if you like — when the form's pool empties, remove this effect and take any leftover damage on your true body.", mine: (ch) => classLevel(ch, "Druid") >= 2 }),
+  E("Feature", "Bardic Inspiration (received)", { dur: "10 minutes or until spent", ends: "short", brief: "Add the inspiration die to one attack roll, ability check, or saving throw — after you see the d20", mods: () => ({ notes: { attack: ["Bardic Inspiration: you may add the die after seeing the roll"], save: ["Bardic Inspiration: you may add the die after seeing the roll"], check: ["Bardic Inspiration: you may add the die after seeing the roll"] } }) }),
+  E("Feature", "Sacred Weapon", { dur: "1 minute", ends: "short", brief: "Add your Charisma modifier to attack rolls with the blessed weapon; it sheds bright light", mine: (ch) => hasSubLike(ch, "Devotion"), mods: (v, ch) => ({ atk: [{ label: "Sacred Weapon", value: Math.max(1, mod(ch.abilities.cha)), scope: "weapon" }] }) }),
+  E("Feature", "Empty Body", { dur: "1 minute", ends: "short", brief: "Invisible, and resistant to all damage except force", mine: (ch) => classLevel(ch, "Monk") >= 18, mods: () => ({ notes: { attack: ["Empty Body: your attack rolls have advantage (invisible)"] } }) }),
+  E("Action", "Dodge", { dur: "until the start of your next turn", ends: "manual", brief: "Attackers you can see have disadvantage; you have advantage on Dexterity saves", mods: () => ({ notes: { save: ["Dodge: advantage on Dexterity saves"] } }) }),
+  E("Action", "Patient Defense", { dur: "until the start of your next turn", ends: "manual", brief: "Dodge as a bonus action (1 ki): attackers have disadvantage; advantage on Dex saves", mine: (ch) => classLevel(ch, "Monk") >= 2, mods: () => ({ notes: { save: ["Patient Defense: advantage on Dexterity saves"] } }) }),
+  E("Action", "Help (received)", { dur: "your next roll", ends: "manual", brief: "Advantage on your next ability check, or on your first attack against the distracted target", mods: () => ({ notes: { attack: ["Help: advantage on your first attack against the target"], check: ["Help: advantage on the assisted check"] } }) }),
+  E("Action", "Hidden", { dur: "until you're found, move into view, or attack", ends: "manual", brief: "Attack with advantage from hiding — attacking reveals you", mods: () => ({ notes: { attack: ["Hidden: attack with advantage — and give away your position"] } }) }),
+
+  /* ---- Feat toggles (SRD sheets import these from the compendium) ---- */
+  E("Feat", "Great Weapon Master", { dur: "declared before each attack", ends: "manual", brief: "Take −5 to hit with a heavy melee weapon for +10 damage", mine: (ch) => hasFeat(ch, "Great Weapon Master"), mods: () => ({ atk: [{ label: "Great Weapon Master", value: -5, scope: "melee" }], dmg: [{ label: "Great Weapon Master", value: 10, scope: "melee" }] }) }),
+  E("Feat", "Sharpshooter", { dur: "declared before each attack", ends: "manual", brief: "Take −5 to hit with a ranged weapon for +10 damage; ignore cover and long range", mine: (ch) => hasFeat(ch, "Sharpshooter"), mods: () => ({ atk: [{ label: "Sharpshooter", value: -5, scope: "ranged" }], dmg: [{ label: "Sharpshooter", value: 10, scope: "ranged" }] }) }),
+  E("Feat", "Defensive Duelist", { dur: "until the start of your next turn", ends: "manual", brief: "Reaction while wielding a finesse weapon: add your proficiency bonus to AC against one melee hit", mine: (ch) => hasFeat(ch, "Defensive Duelist"), mods: (v, ch) => ({ ac: [{ label: "Defensive Duelist", value: profBonus(totalLevel(ch)) }] }) }),
+
+  /* ---- Conditions: the 5e catalogue of misery ---- */
+  E("Condition", "Blinded", { dur: "until removed", ends: "manual", brief: "Auto-fail sight checks; your attacks have disadvantage, attacks against you have advantage", mods: () => ({ notes: { attack: ["Blinded: disadvantage on your attacks; attackers have advantage"], check: ["Blinded: automatic failure on checks that require sight"] } }) }),
+  E("Condition", "Charmed", { dur: "until removed", ends: "manual", brief: "You can't attack the charmer; they have advantage on social checks against you" }),
+  E("Condition", "Deafened", { dur: "until removed", ends: "manual", brief: "Auto-fail checks that require hearing", mods: () => ({ notes: { check: ["Deafened: automatic failure on checks that require hearing"] } }) }),
+  E("Condition", "Frightened", { dur: "until removed", ends: "manual", brief: "Disadvantage on checks and attacks while the source of fear is in sight; you can't willingly move closer to it", mods: () => ({ notes: { attack: ["Frightened: disadvantage while the source of fear is in sight"], check: ["Frightened: disadvantage while the source of fear is in sight"] } }) }),
+  E("Condition", "Grappled", { dur: "until you escape or the grappler lets go", ends: "manual", brief: "Speed 0. Escape with Athletics/Acrobatics vs the grappler", mods: () => ({ speedZero: true }) }),
+  E("Condition", "Incapacitated", { dur: "until removed", ends: "manual", brief: "No actions, no reactions" }),
+  E("Condition", "Invisible (condition)", { dur: "until removed", ends: "manual", brief: "Attackers have disadvantage; your attacks have advantage", mods: () => ({ notes: { attack: ["Invisible: your attack rolls have advantage"] } }) }),
+  E("Condition", "Paralyzed", { dur: "until removed", ends: "manual", brief: "Incapacitated, speed 0; auto-fail Str & Dex saves; attackers have advantage and hits within 5 ft are crits", mods: () => ({ speedZero: true, notes: { save: ["Paralyzed: automatic failure on Strength and Dexterity saves"] } }) }),
+  E("Condition", "Petrified", { dur: "until removed", ends: "manual", brief: "Stone: incapacitated, speed 0, resistance to all damage, immune to poison & disease; auto-fail Str & Dex saves", mods: () => ({ speedZero: true, notes: { save: ["Petrified: automatic failure on Strength and Dexterity saves"] } }) }),
+  E("Condition", "Poisoned", { dur: "until removed", ends: "manual", brief: "Disadvantage on attack rolls and ability checks", mods: () => ({ notes: { attack: ["Poisoned: disadvantage on attack rolls"], check: ["Poisoned: disadvantage on ability checks"] } }) }),
+  E("Condition", "Prone", { dur: "until you stand (half your movement)", ends: "manual", brief: "Crawl at half speed; your attacks have disadvantage; melee attackers within 5 ft have advantage, ranged have disadvantage", mods: () => ({ speedMult: 0.5, notes: { attack: ["Prone: disadvantage on your attack rolls"] } }) }),
+  E("Condition", "Restrained", { dur: "until freed", ends: "manual", brief: "Speed 0; your attacks and Dex saves have disadvantage; attacks against you have advantage", mods: () => ({ speedZero: true, notes: { attack: ["Restrained: disadvantage on your attacks; attackers have advantage"], save: ["Restrained: disadvantage on Dexterity saves"] } }) }),
+  E("Condition", "Stunned", { dur: "until removed", ends: "manual", brief: "Incapacitated, speed 0, auto-fail Str & Dex saves; attackers have advantage", mods: () => ({ speedZero: true, notes: { save: ["Stunned: automatic failure on Strength and Dexterity saves"] } }) }),
+  E("Condition", "Unconscious", { dur: "until you wake", ends: "manual", brief: "Incapacitated, prone, speed 0; drop what you hold; auto-fail Str & Dex saves; attackers have advantage, hits within 5 ft are crits", mods: () => ({ speedZero: true, notes: { save: ["Unconscious: automatic failure on Strength and Dexterity saves"] } }) }),
+  E("Condition", "Exhaustion", { dur: "one level fades per long rest", ends: "manual", stacks: 6, brief: "1: disadvantage on checks · 2: speed halved · 3: disadvantage on attacks & saves · 4: max HP halved · 5: speed 0 · 6: death",
+    mods: (v, ch, inst) => {
+      const s = Math.max(1, Math.min(6, inst?.stacks || 1));
+      const m = { notes: { check: [`Exhaustion ${s}: disadvantage on ability checks`] } };
+      if (s >= 2) m.speedMult = 0.5;
+      if (s >= 3) { m.notes.attack = [`Exhaustion ${s}: disadvantage on attack rolls`]; m.notes.save = [`Exhaustion ${s}: disadvantage on saving throws`]; }
+      if (s >= 4) m.halveMaxHp = true;
+      if (s >= 5) m.speedZero = true;
+      return m;
+    } }),
+];
+const EFFECT_BY_KEY = Object.fromEntries(EFFECT_LIB.map((e) => [e.key, e]));
+const hasEffect = (ch, key) => (ch.effects || []).some((e) => e.key === key);
+const isConcInst = (e) => (e.key === "custom" ? !!e.conc : !!EFFECT_BY_KEY[e.key]?.conc);
+
+/* One readable line for a custom effect's numbers */
+const describeCustomFx = (m) => [m.ac && `AC ${fmtMod(m.ac)}`, m.atk && `attacks ${fmtMod(m.atk)}`, m.save && `saves ${fmtMod(m.save)}`, m.dmg && `weapon damage ${fmtMod(m.dmg)}`, m.speed && `speed ${fmtMod(m.speed)} ft`, m.maxHp && `max HP ${fmtMod(m.maxHp)}`].filter(Boolean).join(" · ");
+
+/* Aggregate every active effect into the numbers and reminders the sheet consumes */
+function fxMods(ch) {
+  const out = { count: 0, ac: [], acBase13: false, acFloor: null, maxHp: 0, halveMaxHp: false, speedAdd: [], speedMult: 1, speedZero: false, atk: [], save: [], dmg: [], shillelagh: false, conc: [], notes: { attack: [], save: [], check: [], dmg: [] } };
+  for (const inst of ch.effects || []) {
+    const def = inst.key === "custom" ? null : EFFECT_BY_KEY[inst.key];
+    if (!def && inst.key !== "custom") continue;
+    out.count++;
+    if (isConcInst(inst)) out.conc.push(inst.name || def.name);
+    let m = {};
+    if (def) m = def.mods ? def.mods(inst.val, ch, inst) : {};
+    else {
+      const c = inst.mods || {}, L = inst.name || "Custom effect";
+      if (c.ac) m.ac = [{ label: L, value: c.ac }];
+      if (c.atk) m.atk = [{ label: L, value: c.atk, scope: "all" }];
+      if (c.save) m.save = [{ label: L, value: c.save }];
+      if (c.dmg) m.dmg = [{ label: L, value: c.dmg, scope: "weapon" }];
+      if (c.speed) m.speedAdd = [{ label: L, value: c.speed }];
+      if (c.maxHp) m.maxHp = c.maxHp;
+    }
+    if (m.ac) out.ac.push(...m.ac);
+    if (m.acBase13) out.acBase13 = true;
+    if (m.acFloor && (!out.acFloor || m.acFloor.value > out.acFloor.value)) out.acFloor = m.acFloor;
+    if (m.maxHp) out.maxHp += m.maxHp;
+    if (m.halveMaxHp) out.halveMaxHp = true;
+    if (m.speedAdd) out.speedAdd.push(...m.speedAdd);
+    if (m.speedMult != null) out.speedMult *= m.speedMult;
+    if (m.speedZero) out.speedZero = true;
+    if (m.atk) out.atk.push(...m.atk);
+    if (m.save) out.save.push(...m.save);
+    if (m.dmg) out.dmg.push(...m.dmg);
+    if (m.shillelagh) out.shillelagh = true;
+    if (m.notes) for (const k of ["attack", "save", "check", "dmg"]) if (m.notes[k]) out.notes[k].push(...m.notes[k]);
+  }
+  return out;
+}
+
+/* Effective max HP: base + effect increases, halved by deep exhaustion */
+function effMaxHp(ch) {
+  const fx = fxMods(ch);
+  const t = ch.maxHp + fx.maxHp;
+  return Math.max(1, fx.halveMaxHp ? Math.floor(t / 2) : t);
+}
+
+/* Speed was never derived before effects needed to bend it; now it earns a breakdown */
+function speedOf(ch, customs) {
+  const fx = fxMods(ch);
+  let v = RACES[ch.race].speed;
+  const parts = [`base ${v}`];
+  const { armor, shield } = armorClass(ch, customs);
+  const monk = classLevel(ch, "Monk"), barb = classLevel(ch, "Barbarian");
+  if (monk >= 2 && !armor && !shield) { const b = monk >= 18 ? 30 : monk >= 14 ? 25 : monk >= 10 ? 20 : monk >= 6 ? 15 : 10; v += b; parts.push(`Unarmored Movement +${b}`); }
+  if (barb >= 5 && (!armor || armor.type !== "HA")) { v += 10; parts.push("Fast Movement +10"); }
+  fx.speedAdd.forEach((s) => { v += s.value; parts.push(`${s.label} ${fmtMod(s.value)}`); });
+  if (fx.speedMult !== 1) { v = Math.floor(v * fx.speedMult); parts.push(fx.speedMult > 1 ? `×${fx.speedMult}` : "halved"); }
+  if (fx.speedZero) { v = 0; parts.push("held at 0"); }
+  return { v: Math.max(0, v), parts, modified: parts.length > 1 };
 }
 
 /* ============ LORE LIBRARY (long-press anything to read it) ============ */
@@ -1469,6 +1661,8 @@ function infoFor(rawName, customs) {
   if (key) return { title: strip, meta: "Feature", body: ft[key], foot: sourceOf(ft[key]) };
   if (FEATURE_TEXT[name] || FEATURE_TEXT[strip]) return { title: strip, meta: "Feature", body: FEATURE_TEXT[name] || FEATURE_TEXT[strip], foot: SRD_FOOT };
   if (CORE_FEATURE_INFO[strip]) return { title: strip, meta: "Feature", body: CORE_FEATURE_INFO[strip] };
+  const eff = EFFECT_LIB.find((x) => x.name === name || x.name === strip);
+  if (eff) return { title: eff.name, meta: [eff.kind === "Condition" ? "Condition" : `${eff.kind} · trackable effect`, eff.conc && "Concentration", eff.dur].filter(Boolean).join(" · "), body: [eff.brief, eff.desc].filter(Boolean).join("\n") };
   return null;
 }
 
@@ -3366,6 +3560,209 @@ function ChoiceManager({ ch, customs, onUpdate }) {
 }
 
 /* ============ CHARACTER SHEET ============ */
+/* ============ ACTIVE EFFECTS CARD — the buff tracker ============ */
+const pillBtn = { width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.edge}`, background: T.panel, color: T.gold, fontSize: 16, cursor: "pointer", lineHeight: 1, padding: 0 };
+const fieldStyle = { background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 10px", fontSize: 15, fontFamily: "inherit", boxSizing: "border-box", width: "100%" };
+const FX_KIND_COLOR = { Spell: "#6c91e0", Feature: "#7fb069", Feat: "#c77dca", Action: "#5eb1bf", Condition: "#d76a76", Custom: "#c9a44c" };
+
+function EffectsCard({ ch, customs, onUpdate }) {
+  const fx = fxMods(ch);
+  const effects = ch.effects || [];
+  const tempHp = Math.max(0, ch.tempHp || 0);
+  const [adding, setAdding] = useState(false);
+  const remove = (id) => onUpdate({ effects: effects.filter((e) => e.id !== id) });
+  const bumpStacks = (id, d, max) => onUpdate({ effects: effects.map((e) => (e.id === id ? { ...e, stacks: Math.max(1, Math.min(max, (e.stacks || 1) + d)) } : e)) });
+  const addEffect = (inst, grantTemp) => {
+    let next = effects;
+    const def = inst.key === "custom" ? null : EFFECT_BY_KEY[inst.key];
+    // concentration is a jealous god: starting a new concentration effect drops the old one
+    if (isConcInst(inst)) next = next.filter((e) => !isConcInst(e));
+    if (def?.stacks && next.some((e) => e.key === inst.key)) next = next.map((e) => (e.key === inst.key ? { ...e, stacks: Math.min(def.stacks, (e.stacks || 1) + 1) } : e));
+    else if (inst.key !== "custom" && next.some((e) => e.key === inst.key)) { /* refreshed, not stacked */ }
+    else next = [...next, inst];
+    // temp HP never stacks — you keep the larger pool
+    onUpdate({ effects: next, ...(grantTemp ? { tempHp: Math.max(tempHp, grantTemp) } : {}) });
+    setAdding(false);
+  };
+  const acTotal = fx.ac.reduce((s, b) => s + b.value, 0);
+  const summary = [
+    fx.acBase13 && "base AC 13+Dex", acTotal !== 0 && `AC ${fmtMod(acTotal)}`, fx.acFloor && `AC no lower than ${fx.acFloor.value}`,
+    fx.maxHp !== 0 && `max HP ${fmtMod(fx.maxHp)}`, fx.halveMaxHp && "max HP halved",
+    fx.speedZero ? "speed 0" : fx.speedMult !== 1 ? (fx.speedMult > 1 ? `speed ×${fx.speedMult}` : "speed halved") : null,
+    fx.speedAdd.length > 0 && `speed ${fmtMod(fx.speedAdd.reduce((s, b) => s + b.value, 0))} ft`,
+    ...fx.atk.map((b) => `${b.label} ${fmtMod(b.value)} to ${b.scope === "all" ? "" : b.scope + " "}attacks`),
+    ...fx.dmg.map((b) => `${b.label} ${fmtMod(b.value)} to ${b.scope === "all" ? "" : b.scope + " "}damage`),
+    ...fx.save.map((b) => `${b.label} ${fmtMod(b.value)} to saves`),
+    fx.shillelagh && "club/quarterstaff ✦ Wis & 1d8",
+  ].filter(Boolean);
+  return (
+    <div style={{ ...card, padding: 16, marginTop: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17 }}>Active Effects</div>
+        {fx.conc.length > 0 && <span title="One concentration effect at a time; Con save when you take damage" style={{ color: "#b48ead", fontSize: 12 }}>◉ concentrating on {fx.conc.join(", ")}</span>}
+        <div style={{ flex: 1 }} />
+        <button style={{ ...btn(false), padding: "6px 12px", minHeight: 0, fontSize: 13 }} onClick={() => setAdding(true)}>＋ Add effect</button>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+        <span style={{ color: "#5eb1bf", fontSize: 13, fontWeight: 700 }}>Temp HP</span>
+        <button style={{ ...pillBtn, opacity: tempHp ? 1 : 0.4 }} disabled={!tempHp} onClick={() => onUpdate({ tempHp: Math.max(0, tempHp - 1) })}>−</button>
+        <span style={{ color: tempHp ? "#5eb1bf" : T.dim, fontFamily: "Georgia, serif", fontSize: 18, minWidth: 26, textAlign: "center" }}>{tempHp}</span>
+        <button style={pillBtn} onClick={() => onUpdate({ tempHp: tempHp + 1 })}>＋</button>
+        {tempHp > 0 && <button style={{ ...pillBtn, width: "auto", padding: "0 10px", fontSize: 12 }} onClick={() => onUpdate({ tempHp: 0 })}>clear</button>}
+        <span style={{ color: T.dim, fontSize: 11 }}>absorbs damage first · new grants don't stack, keep the larger · fades on a long rest</span>
+      </div>
+      {effects.length === 0 ? (
+        <div style={{ color: T.dim, fontSize: 13, marginTop: 12 }}>Nothing clings to you — no blessings, no curses. Add one when the Mage Armor goes up, the Rage takes hold, or the poison sets in.</div>
+      ) : (
+        <div style={{ display: "grid", gap: 6, marginTop: 12 }}>
+          {effects.map((e) => {
+            const def = e.key === "custom" ? null : EFFECT_BY_KEY[e.key];
+            if (!def && e.key !== "custom") return null;
+            const name = e.name || def.name;
+            const kind = def ? def.kind : "Custom";
+            const brief = def ? def.brief : [describeCustomFx(e.mods || {}), e.note].filter(Boolean).join(" · ");
+            const dur = e.key === "custom" ? e.dur : def.dur;
+            return (
+              <div key={e.id} data-fx-chip={e.key} style={{ display: "flex", alignItems: "flex-start", gap: 8, background: T.panel2, border: `1px solid ${T.edge}`, borderRadius: 10, padding: "8px 10px" }}>
+                <div {...lorePress(name)} style={{ flex: 1, cursor: "pointer" }}>
+                  <span style={{ color: T.ink, fontWeight: 700, fontSize: 14 }}>
+                    {name}{def?.stacks ? ` · level ${e.stacks || 1}` : e.val != null && def?.input ? ` (${def.input.unit === "+" ? "+" + e.val : `${def.input.unit} ${e.val}`})` : ""}
+                  </span>
+                  <span style={{ color: FX_KIND_COLOR[kind], fontSize: 10.5, marginLeft: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>{kind}</span>
+                  {isConcInst(e) && <span title="Concentration" style={{ color: "#b48ead", fontSize: 12, marginLeft: 6 }}>◉ conc</span>}
+                  <div style={{ color: T.dim, fontSize: 12, marginTop: 2, lineHeight: 1.5 }}>{brief}{dur ? ` — ${dur}` : ""}</div>
+                </div>
+                {def?.stacks && (
+                  <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                    <button style={{ ...pillBtn, opacity: (e.stacks || 1) <= 1 ? 0.4 : 1 }} disabled={(e.stacks || 1) <= 1} onClick={() => bumpStacks(e.id, -1, def.stacks)}>−</button>
+                    <button style={{ ...pillBtn, opacity: (e.stacks || 1) >= def.stacks ? 0.4 : 1 }} disabled={(e.stacks || 1) >= def.stacks} onClick={() => bumpStacks(e.id, 1, def.stacks)}>＋</button>
+                  </span>
+                )}
+                <span onClick={() => remove(e.id)} title="Remove effect" style={{ color: T.dim, cursor: "pointer", fontSize: 16, padding: "0 2px", lineHeight: 1.4 }}>✕</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {summary.length > 0 && <div style={{ color: T.gold, fontSize: 12, marginTop: 10 }}>Now shaping the sheet: {summary.join(" · ")}</div>}
+      <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>Long-press an effect for its rules · AC, HP, speed, attacks, saves, and roll reminders update automatically · rests sweep expired effects away</div>
+      {adding && <AddEffectSheet ch={ch} existing={effects} onAdd={addEffect} onClose={() => setAdding(false)} />}
+    </div>
+  );
+}
+
+function AddEffectSheet({ ch, existing, onAdd, onClose }) {
+  const [q, setQ] = useState("");
+  const [pending, setPending] = useState(null); // a picked effect awaiting its number (slot level, rolled HP…)
+  const [val, setVal] = useState(1);
+  const [custom, setCustom] = useState(null);
+  const known = knownSpellNames(ch);
+  const have = new Set(existing.map((e) => e.key));
+  const concActive = existing.filter(isConcInst).map((e) => e.name);
+  const ql = q.trim().toLowerCase();
+  const matches = (d) => !ql || d.name.toLowerCase().includes(ql) || (d.brief || "").toLowerCase().includes(ql);
+  const isMine = (d) => (d.kind === "Spell" ? known.has(d.match || d.name) : d.mine ? d.mine(ch) : false);
+  const suggested = EFFECT_LIB.filter((d) => matches(d) && isMine(d));
+  const sugKeys = new Set(suggested.map((d) => d.key));
+  const groups = [
+    [`Yours — ${ch.name}'s spells & features`, suggested],
+    ["Spells", EFFECT_LIB.filter((d) => d.kind === "Spell" && matches(d) && !sugKeys.has(d.key))],
+    ["Class features", EFFECT_LIB.filter((d) => d.kind === "Feature" && matches(d) && !sugKeys.has(d.key))],
+    ["Actions & stances", EFFECT_LIB.filter((d) => d.kind === "Action" && matches(d) && !sugKeys.has(d.key))],
+    ["Feat toggles", EFFECT_LIB.filter((d) => d.kind === "Feat" && matches(d) && !sugKeys.has(d.key))],
+    ["Conditions", EFFECT_LIB.filter((d) => d.kind === "Condition" && matches(d) && !sugKeys.has(d.key))],
+  ].filter(([, a]) => a.length);
+  const commit = (d, v) => onAdd({ id: uid(), key: d.key, name: d.name, ...(v != null ? { val: v } : {}), ...(d.stacks ? { stacks: 1 } : {}) }, d.tempHp ? d.tempHp(v, ch) : 0);
+  const pick = (d) => { if (d.input) { setPending(d); setVal(d.input.def); } else commit(d); };
+  const blankCustom = { name: "", ac: "", atk: "", save: "", dmg: "", speed: "", maxHp: "", tempHp: "", note: "", conc: false, dur: "", ends: "short" };
+  const submitCustom = () => {
+    const mods = {};
+    [["ac", "ac"], ["atk", "atk"], ["save", "save"], ["dmg", "dmg"], ["speed", "speed"], ["maxHp", "maxHp"]].forEach(([f, k]) => { const n = parseInt(custom[f], 10) || 0; if (n) mods[k] = n; });
+    onAdd({ id: uid(), key: "custom", name: (custom.name || "").trim() || "Custom effect", conc: custom.conc, dur: (custom.dur || "").trim() || "until removed", ends: custom.ends, note: (custom.note || "").trim(), mods }, Math.max(0, parseInt(custom.tempHp, 10) || 0));
+  };
+  const numField = (label, f) => (
+    <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: T.dim, flex: "1 1 96px" }}>
+      {label}
+      <input type="number" value={custom[f]} placeholder="0" onChange={(e) => setCustom({ ...custom, [f]: e.target.value })} style={fieldStyle} />
+    </label>
+  );
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
+      <div style={{ ...card, width: "min(680px, 100%)", maxHeight: "82vh", overflowY: "auto", borderRadius: "16px 16px 0 0", padding: 20, paddingBottom: "calc(20px + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+          <div style={{ fontFamily: "Georgia, serif", fontSize: 21, color: T.gold }}>Bestow an Effect</div>
+          <span style={{ color: T.dim, cursor: "pointer", fontSize: 20, lineHeight: 1 }} onClick={onClose}>✕</span>
+        </div>
+        {pending ? (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ color: T.ink, fontWeight: 700 }}>{pending.name}</div>
+            <div style={{ color: T.dim, fontSize: 13, marginTop: 4 }}>{pending.brief}</div>
+            <label style={{ display: "block", color: T.dim, fontSize: 13, marginTop: 12 }}>{pending.input.label}</label>
+            <div style={{ display: "flex", gap: 10, marginTop: 6, alignItems: "center" }}>
+              <input type="number" min={pending.input.min} max={pending.input.max} value={val} autoFocus
+                onChange={(e) => setVal(Math.max(pending.input.min, Math.min(pending.input.max, parseInt(e.target.value, 10) || pending.input.min)))}
+                style={{ ...fieldStyle, width: 90, textAlign: "center", fontSize: 18 }} />
+              <button style={btn(true)} onClick={() => commit(pending, val)}>Apply</button>
+              <button style={btn(false)} onClick={() => setPending(null)}>Back</button>
+            </div>
+            {pending.tempHp && <div style={{ color: "#5eb1bf", fontSize: 12, marginTop: 8 }}>Grants {pending.tempHp(val, ch)} temporary hit points.</div>}
+          </div>
+        ) : custom ? (
+          <div style={{ marginTop: 14 }}>
+            <label style={{ display: "block", color: T.dim, fontSize: 12 }}>Name<input value={custom.name} autoFocus placeholder="Potion of Heroism, DM's mysterious blessing…" onChange={(e) => setCustom({ ...custom, name: e.target.value })} style={{ ...fieldStyle, marginTop: 4 }} /></label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+              {numField("AC bonus", "ac")}{numField("Attack bonus", "atk")}{numField("Save bonus", "save")}{numField("Weapon damage", "dmg")}{numField("Speed (ft)", "speed")}{numField("Max HP", "maxHp")}{numField("Temp HP granted", "tempHp")}
+            </div>
+            <label style={{ display: "block", color: T.dim, fontSize: 12, marginTop: 10 }}>Reminder note (shown with the effect)<input value={custom.note} placeholder="advantage on stealth checks in dim light…" onChange={(e) => setCustom({ ...custom, note: e.target.value })} style={{ ...fieldStyle, marginTop: 4 }} /></label>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
+              <label style={{ color: T.dim, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}><input type="checkbox" checked={custom.conc} onChange={(e) => setCustom({ ...custom, conc: e.target.checked })} /> Concentration</label>
+              <label style={{ color: T.dim, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>Expires:
+                <select value={custom.ends} onChange={(e) => setCustom({ ...custom, ends: e.target.value })} style={{ ...fieldStyle, width: "auto", padding: "6px 8px" }}>
+                  <option value="short">on any rest</option><option value="long">on a long rest</option><option value="manual">only when removed</option>
+                </select>
+              </label>
+              <input value={custom.dur} placeholder="duration, e.g. 1 hour" onChange={(e) => setCustom({ ...custom, dur: e.target.value })} style={{ ...fieldStyle, width: 150 }} />
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+              <button style={btn(true)} onClick={submitCustom}>Bestow it</button>
+              <button style={btn(false)} onClick={() => setCustom(null)}>Back</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <input value={q} placeholder="Search — mage armor, rage, poisoned…" onChange={(e) => setQ(e.target.value)} style={fieldStyle} />
+              <button style={{ ...btn(false), whiteSpace: "nowrap", fontSize: 13 }} onClick={() => setCustom(blankCustom)}><Icon name="hammer" size={13} /> Custom</button>
+            </div>
+            {concActive.length > 0 && <div style={{ color: "#b48ead", fontSize: 12, marginTop: 8 }}>◉ Concentrating on {concActive.join(", ")} — adding another concentration effect will end it.</div>}
+            {groups.length === 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 14 }}>Nothing in the catalog matches — forge it as a custom effect instead.</div>}
+            {groups.map(([title, defs]) => (
+              <div key={title} style={{ marginTop: 14 }}>
+                <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 15 }}>{title}</div>
+                <div style={{ display: "grid", gap: 4, marginTop: 6 }}>
+                  {defs.map((d) => {
+                    const active = have.has(d.key);
+                    const disabled = active && !d.stacks;
+                    return (
+                      <div key={d.key} data-fx-row={d.key} onClick={() => !disabled && pick(d)}
+                        style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "7px 9px", borderRadius: 8, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.45 : 1, background: T.panel2, border: `1px solid ${T.edge}` }}>
+                        <span style={{ color: T.ink, fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap" }}>{d.name}</span>
+                        {d.conc && <span style={{ color: "#b48ead", fontSize: 11 }}>◉</span>}
+                        <span style={{ color: T.dim, fontSize: 12, flex: 1 }}>{d.brief}</span>
+                        <span style={{ color: FX_KIND_COLOR[d.kind], fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" }}>{active ? (d.stacks ? "worsen" : "active") : d.dur}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, onInvocations, onUpdate, customs }) {
   const lvl = totalLevel(ch);
   const pb = profBonus(lvl);
@@ -3375,13 +3772,27 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   const photoUpload = usePhotoUpload(onPhoto);
   const [confirmDel, setConfirmDel] = useState(false);
 
-  /* ---- play state: damage taken, expended slots, rests ---- */
-  const dmg = Math.max(0, Math.min(ch.dmg || 0, ch.maxHp));
-  const curHp = ch.maxHp - dmg;
-  const hpRatio = curHp / ch.maxHp;
+  /* ---- play state: damage taken, temp HP, active effects, expended slots, rests ---- */
+  const fx = fxMods(ch);
+  const effMax = effMaxHp(ch);
+  const dmg = Math.max(0, Math.min(ch.dmg || 0, effMax));
+  const curHp = effMax - dmg;
+  const tempHp = Math.max(0, ch.tempHp || 0);
+  const hpRatio = curHp / effMax;
   const hpColor = hpRatio > 0.5 ? T.green : hpRatio > 0.25 ? T.gold : "#d76a76";
   const [hpAmt, setHpAmt] = useState(1);
-  const applyHp = (delta) => onUpdate({ dmg: Math.max(0, Math.min(ch.maxHp, dmg - delta)) });
+  const [concNote, setConcNote] = useState(null);
+  const applyHp = (delta) => {
+    if (delta >= 0) { onUpdate({ dmg: Math.max(0, dmg - delta) }); return; }
+    // damage chews through temporary hit points before touching the real ones
+    const d = -delta;
+    const fromTemp = Math.min(tempHp, d);
+    const patch = {};
+    if (fromTemp) patch.tempHp = tempHp - fromTemp;
+    if (d - fromTemp > 0) patch.dmg = Math.min(effMax, dmg + (d - fromTemp));
+    onUpdate(patch);
+    if (fx.conc.length) setConcNote(`Concentration check — Con save DC ${Math.max(10, Math.floor(d / 2))} or lose ${fx.conc.join(", ")}.`);
+  };
   const usedSlots = ch.usedSlots || [];
   const usedOf = (i) => Math.min(usedSlots[i] || 0, slots ? slots[i] || 0 : 0);
   const setUsed = (i, n) => {
@@ -3393,8 +3804,18 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   const arcLevels = Object.keys(arcanum).map(Number).sort();
   const usedArc = ch.usedArcanum || [];
   const toggleArc = (lvl) => onUpdate({ usedArcanum: usedArc.includes(lvl) ? usedArc.filter((l) => l !== lvl) : [...usedArc, lvl] });
-  const shortRest = () => onUpdate({ usedPact: 0 });
-  const longRest = () => onUpdate({ dmg: 0, usedSlots: [], usedPact: 0, usedArcanum: [] });
+  /* Which effects survive a rest: short-fuse ones clear on any rest, long-fuse on a long
+     rest, conditions cling until removed by hand — except exhaustion, which fades a level */
+  const restEffects = (kind) => (ch.effects || []).flatMap((e) => {
+    if (e.key === "exhaustion") return kind === "long" ? ((e.stacks || 1) > 1 ? [{ ...e, stacks: (e.stacks || 1) - 1 }] : []) : [e];
+    const ends = e.key === "custom" ? (e.ends || "manual") : (EFFECT_BY_KEY[e.key]?.ends || "manual");
+    return ends === "short" || (kind === "long" && ends === "long") ? [] : [e];
+  });
+  const effJson = JSON.stringify(ch.effects || []);
+  const shortWould = usedPact > 0 || JSON.stringify(restEffects("short")) !== effJson;
+  const longWould = dmg > 0 || tempHp > 0 || usedSlots.some(Boolean) || usedPact > 0 || usedArc.length > 0 || JSON.stringify(restEffects("long")) !== effJson;
+  const shortRest = () => onUpdate({ usedPact: 0, effects: restEffects("short") });
+  const longRest = () => onUpdate({ dmg: 0, usedSlots: [], usedPact: 0, usedArcanum: [], tempHp: 0, effects: restEffects("long") });
   const pip = (filled, color) => ({ cursor: "pointer", fontSize: 18, fontFamily: "Georgia, serif", color: filled ? color : T.dim, opacity: filled ? 1 : 0.45, userSelect: "none", padding: "0 1px" });
 
   /* ---- the bones: d20 rolls with every modifier the sheet knows about ---- */
@@ -3412,6 +3833,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     { label: ABIL_NAMES[a], value: mod(ch.abilities[a]) },
     ...(saveProfFor(a) ? [{ label: saveProfLabel(a), value: pb }] : []),
     ...(feats.aura ? [{ label: "Aura of Protection", value: feats.aura }] : []),
+    ...fx.save,
   ];
   const saveMod = (a) => savePartsFor(a).reduce((s, p) => s + p.value, 0);
   const checkPartsFor = (a) => {
@@ -3432,32 +3854,41 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   const rollIt = (title, parts, kind, abil, proficient) => setRollSpec({ title, parts, kind, abil, proficient });
   const acInfo = armorClass(ch, customs);
   const [dmgRoll, setDmgRoll] = useState(null); // { title, dice, bonus, bonusLabel, note }
+  /* Active-effect attack/damage bonuses, filtered to the kind of attack being made */
+  const fxAtk = (scope) => fx.atk.filter((b) => b.scope === "all" || b.scope === scope || (b.scope === "weapon" && scope !== "spell")).map(({ label, value }) => ({ label, value }));
+  const fxDmg = (scope) => fx.dmg.filter((b) => b.scope === "all" || b.scope === scope || b.scope === "weapon");
+  const shillTarget = (it) => fx.shillelagh && /\b(club|quarterstaff)\b/i.test(it.name);
   const weaponAbility = (it) => {
+    if (shillTarget(it)) return "wis";
     const props = (it.property || "").split(",").map((x) => x.trim());
     if (it.type === "R") return "dex";
     if (props.includes("F")) return mod(ch.abilities.dex) > mod(ch.abilities.str) ? "dex" : "str";
     return "str";
   };
+  const weaponDie = (it) => (shillTarget(it) ? "1d8" : it.dmg1 || "1d4");
+  const weaponAbilLabel = (it, abil) => (shillTarget(it) ? "Wisdom (Shillelagh)" : ABIL_NAMES[abil]);
   const rollWeaponDamage = (it) => {
-    const m = (it.dmg1 || "1d4").match(/(\d+)d(\d+)/);
+    const m = weaponDie(it).match(/(\d+)d(\d+)/);
     if (!m) return;
     const abil = weaponAbility(it);
     const props = (it.property || "").split(",").map((x) => x.trim());
     const dueling = (ch.styles || []).includes("Dueling") && it.type === "M" && !props.includes("2H") ? 2 : 0;
-    const bonus = mod(ch.abilities[abil]) + dueling;
+    const extras = fxDmg(it.type === "R" ? "ranged" : "melee");
+    const bonus = mod(ch.abilities[abil]) + dueling + extras.reduce((s, b) => s + b.value, 0);
+    const dmgNotes = rollNotes(ch, "dmg");
     setDmgRoll({
       title: `${it.name} damage`,
       dice: Array.from({ length: +m[1] }, () => ({ sides: +m[2], value: roll(+m[2]) })),
-      bonus, bonusLabel: `${ABIL_NAMES[abil]}${dueling ? " + Dueling" : ""}`,
-      note: `${DMG_TYPES[it.dmgType] || "damage"}${it.dmg2 ? ` · versatile: ${it.dmg2} two-handed` : ""}${(ch.styles || []).includes("Great Weapon Fighting") && props.includes("2H") ? " · GWF: you may reroll 1s and 2s" : ""}`,
+      bonus, bonusLabel: [weaponAbilLabel(it, abil), dueling ? "Dueling" : null, ...extras.map((b) => b.label)].filter(Boolean).join(" + "),
+      note: `${DMG_TYPES[it.dmgType] || "damage"}${it.dmg2 && !shillTarget(it) ? ` · versatile: ${it.dmg2} two-handed` : ""}${(ch.styles || []).includes("Great Weapon Fighting") && props.includes("2H") ? " · GWF: you may reroll 1s and 2s" : ""}${dmgNotes.length ? " · " + dmgNotes.join(" · ") : ""}`,
     });
   };
   const equippedWeapons = equippedOf(ch).map((r) => findItem(r.name, customs)).filter((x) => x && isWeaponType(x.type));
   const casterClasses = ch.classes.filter((c) => CLASSES[c.name].caster);
   const attackRolls = [
-    { icon: "sword", label: "Melee", abil: "str", parts: [{ label: "Strength", value: mod(ch.abilities.str) }, { label: "proficiency", value: pb }] },
-    { icon: "bow", label: "Ranged / Finesse", abil: "dex", parts: [{ label: "Dexterity", value: mod(ch.abilities.dex) }, { label: "proficiency", value: pb }, ...(feats.archery ? [{ label: "Archery", value: feats.archery }] : [])] },
-    ...casterClasses.map((c) => ({ icon: "sparkles", label: `Spell (${c.name})`, abil: SPELL_ABILITY[c.name], parts: [{ label: ABIL_NAMES[SPELL_ABILITY[c.name]], value: mod(ch.abilities[SPELL_ABILITY[c.name]]) }, { label: "proficiency", value: pb }] })),
+    { icon: "sword", label: "Melee", abil: "str", parts: [{ label: "Strength", value: mod(ch.abilities.str) }, { label: "proficiency", value: pb }, ...fxAtk("melee")] },
+    { icon: "bow", label: "Ranged / Finesse", abil: "dex", parts: [{ label: "Dexterity", value: mod(ch.abilities.dex) }, { label: "proficiency", value: pb }, ...(feats.archery ? [{ label: "Archery", value: feats.archery }] : []), ...fxAtk("ranged")] },
+    ...casterClasses.map((c) => ({ icon: "sparkles", label: `Spell (${c.name})`, abil: SPELL_ABILITY[c.name], parts: [{ label: ABIL_NAMES[SPELL_ABILITY[c.name]], value: mod(ch.abilities[SPELL_ABILITY[c.name]]) }, { label: "proficiency", value: pb }, ...fxAtk("spell")] })),
   ];
 
   return (
@@ -3509,22 +3940,31 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: T.ink }}><Icon name="shield" size={16} style={{ marginRight: 4 }} />{acInfo.ac}</div>
           <div style={{ color: T.dim, fontSize: 10, lineHeight: 1.4 }}>{acInfo.parts.join(" + ")}</div>
         </div>
-        <div style={{ ...card, padding: 12, textAlign: "center" }}>
+        <div style={{ ...card, padding: 12, textAlign: "center" }} title={tempHp ? "Temporary hit points absorb damage first" : undefined}>
           <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Hit Points</div>
-          <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: hpColor }}>{curHp}<span style={{ fontSize: 15, color: T.dim }}> / {ch.maxHp}</span></div>
+          <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: hpColor }}>
+            {curHp}{tempHp > 0 && <span style={{ fontSize: 16, color: "#5eb1bf" }}> +{tempHp}</span>}<span style={{ fontSize: 15, color: T.dim }}> / {effMax}</span>
+          </div>
           <div style={{ height: 4, borderRadius: 2, background: T.panel2, marginTop: 6, overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${hpRatio * 100}%`, background: hpColor, transition: "width 240ms ease" }} />
           </div>
+          {(fx.maxHp !== 0 || fx.halveMaxHp) && <div style={{ color: T.dim, fontSize: 10, marginTop: 4 }}>{fx.halveMaxHp ? "max halved by Exhaustion" : `max ${fmtMod(fx.maxHp)} from effects`}</div>}
         </div>
         <div style={{ ...card, padding: 12, textAlign: "center", cursor: "pointer" }} title="Roll initiative"
           onClick={() => rollIt("Initiative", checkPartsFor("dex"), "check", "dex")}>
           <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Initiative <Icon name="d20" size={11} style={{ marginRight: 0 }} /></div>
           <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: T.ink }}>{fmtMod(checkPartsFor("dex").reduce((s, p) => s + p.value, 0))}</div>
         </div>
-        <div style={{ ...card, padding: 12, textAlign: "center" }}>
-          <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Speed</div>
-          <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: T.ink }}>{RACES[ch.race].speed}</div>
-        </div>
+        {(() => {
+          const spd = speedOf(ch, customs);
+          return (
+            <div style={{ ...card, padding: 12, textAlign: "center" }} title={spd.parts.join(" · ")}>
+              <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Speed</div>
+              <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: spd.v === 0 ? "#d76a76" : spd.modified ? T.gold : T.ink }}>{spd.v}</div>
+              {spd.modified && <div style={{ color: T.dim, fontSize: 10, lineHeight: 1.4 }}>{spd.parts.join(" · ")}</div>}
+            </div>
+          );
+        })()}
         <div style={{ ...card, padding: 12, textAlign: "center" }}>
           <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Hit Dice</div>
           <div style={{ fontSize: 18, fontFamily: "Georgia, serif", color: T.ink, marginTop: 6 }}>
@@ -3549,9 +3989,16 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           style={{ width: 58, textAlign: "center", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 4px", fontSize: 16 }} />
         <button style={{ ...btn(false), borderColor: T.green, color: T.green }} onClick={() => applyHp(hpAmt)} disabled={dmg === 0}>+ Heal</button>
         <div style={{ flex: 1 }} />
-        {pact && <button style={btn(false)} onClick={shortRest} disabled={usedPact === 0} title="Recover pact slots"><Icon name="moon" /> Short Rest</button>}
-        <button style={btn(false)} onClick={longRest} disabled={dmg === 0 && usedSlots.every((n) => !n) && usedPact === 0 && usedArc.length === 0} title="Full HP, all slots recovered"><Icon name="sun" /> Long Rest</button>
+        <button style={btn(false)} onClick={shortRest} disabled={!shortWould} title="Recover pact slots; short-lived effects expire"><Icon name="moon" /> Short Rest</button>
+        <button style={btn(false)} onClick={longRest} disabled={!longWould} title="Full HP, all slots recovered, temp HP and expiring effects cleared, exhaustion eases"><Icon name="sun" /> Long Rest</button>
+        {concNote && (
+          <div style={{ width: "100%", color: "#b48ead", fontSize: 12.5, lineHeight: 1.5 }}>
+            ⚠ {concNote} <span style={{ color: T.dim, cursor: "pointer", textDecoration: "underline dotted" }} onClick={() => setConcNote(null)}>dismiss</span>
+          </div>
+        )}
       </div>
+
+      <EffectsCard ch={ch} customs={customs} onUpdate={onUpdate} />
 
       <div style={{ ...card, padding: 14, marginTop: 14 }}>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -3579,19 +4026,19 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
             {equippedWeapons.map((it) => {
               const abil = weaponAbility(it);
-              const atkParts = [{ label: ABIL_NAMES[abil], value: mod(ch.abilities[abil]) }, { label: "proficiency", value: pb }, ...(it.type === "R" && feats.archery ? [{ label: "Archery", value: feats.archery }] : [])];
+              const atkParts = [{ label: weaponAbilLabel(it, abil), value: mod(ch.abilities[abil]) }, { label: "proficiency", value: pb }, ...(it.type === "R" && feats.archery ? [{ label: "Archery", value: feats.archery }] : []), ...fxAtk(it.type === "R" ? "ranged" : "melee")];
               const atkMod = atkParts.reduce((s, p) => s + p.value, 0);
               const props = (it.property || "").split(",").map((x) => x.trim());
-              const dmgBonus = mod(ch.abilities[abil]) + ((ch.styles || []).includes("Dueling") && it.type === "M" && !props.includes("2H") ? 2 : 0);
+              const dmgBonus = mod(ch.abilities[abil]) + ((ch.styles || []).includes("Dueling") && it.type === "M" && !props.includes("2H") ? 2 : 0) + fxDmg(it.type === "R" ? "ranged" : "melee").reduce((s, b) => s + b.value, 0);
               return (
                 <span key={it.name} style={{ display: "inline-flex", border: `1px solid ${T.edge}`, borderRadius: 10, overflow: "hidden" }}>
                   <button {...lorePress(it.name)} style={{ ...btn(false), border: "none", borderRadius: 0, padding: "8px 12px" }}
                     onClick={() => rollIt(`${it.name} attack`, atkParts, "attack", abil)}>
-                    <Icon name={it.type === "R" ? "bow" : "sword"} /> {it.name} {fmtMod(atkMod)}
+                    <Icon name={it.type === "R" ? "bow" : "sword"} /> {it.name} {fmtMod(atkMod)}{shillTarget(it) ? " ✦" : ""}
                   </button>
                   <button style={{ ...btn(false), border: "none", borderLeft: `1px solid ${T.edge}`, borderRadius: 0, padding: "8px 12px", color: T.blood }}
                     onClick={() => rollWeaponDamage(it)}>
-                    {it.dmg1 || "—"}{dmgBonus ? fmtMod(dmgBonus) : ""}
+                    {weaponDie(it)}{dmgBonus ? fmtMod(dmgBonus) : ""}
                   </button>
                 </span>
               );
@@ -4175,7 +4622,7 @@ export default function App() {
                 <Portrait photo={c.photo} size={56} name={c.name} />
                 <div>
                   <div style={{ fontFamily: "Georgia, serif", fontSize: 18, color: T.gold }}>{c.name}</div>
-                  <div style={{ color: T.dim, fontSize: 13 }}>{c.race} · {c.classes.map((x, i) => <span key={x.name}>{i > 0 ? " / " : ""}<ClassTag name={x.name} size={12} /> {x.level}</span>)} · Level {totalLevel(c)} · {c.dmg ? `${Math.max(0, c.maxHp - c.dmg)}/` : ""}{c.maxHp} HP</div>
+                  <div style={{ color: T.dim, fontSize: 13 }}>{c.race} · {c.classes.map((x, i) => <span key={x.name}>{i > 0 ? " / " : ""}<ClassTag name={x.name} size={12} /> {x.level}</span>)} · Level {totalLevel(c)} · {c.dmg ? `${Math.max(0, effMaxHp(c) - c.dmg)}/` : ""}{effMaxHp(c)} HP{c.effects?.length ? ` · ${c.effects.length} active effect${c.effects.length === 1 ? "" : "s"}` : ""}</div>
                 </div>
               </div>
             ))}
