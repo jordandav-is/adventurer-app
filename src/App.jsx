@@ -1279,6 +1279,14 @@ const knownSpellNames = (ch, customs) => {
 };
 const slugFx = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 const E = (kind, name, def) => ({ key: slugFx(name), kind, name, ...def });
+/* Shillelagh swings on the spellcasting ability of whichever class knows it (Druid Wis,
+   a Tome warlock Cha, a Nature cleric Wis…) — Wisdom is only the fallback */
+const shillAbil = (ch) => {
+  for (const [cls, book] of Object.entries(ch.spells || {})) {
+    if (SPELL_ABILITY[cls] && ["cantrips", "spells"].some((k) => (book?.[k] || []).includes("Shillelagh"))) return SPELL_ABILITY[cls];
+  }
+  return "wis";
+};
 
 const EFFECT_LIB = [
   /* ---- Spells: the caster's wardrobe ---- */
@@ -1294,7 +1302,7 @@ const EFFECT_LIB = [
   E("Spell", "False Life", { dur: "1 hour", ends: "short", brief: "Gain temporary hit points (1d4 + 4, +5 per slot level above 1st)", input: { label: "Temp HP rolled", unit: "temp HP", min: 1, max: 45, def: 7 }, tempHp: (v) => v || 7 }),
   E("Spell", "Armor of Agathys", { dur: "1 hour", ends: "short", brief: "5 temp HP per slot level; melee attackers take that much cold damage while it holds", input: { label: "Cast at slot level", unit: "slot", min: 1, max: 9, def: 1 }, tempHp: (v) => 5 * (v || 1), mods: (v) => ({ notes: { dmg: [`Armor of Agathys: melee attackers take ${5 * (v || 1)} cold damage while the temp HP holds`] } }) }),
   E("Spell", "Heroism", { conc: true, dur: "1 minute", ends: "short", brief: "Immune to being frightened; gain temp HP equal to the caster's spell modifier at the start of each turn", mods: () => ({ notes: { save: ["Heroism: immune to being frightened"] } }) }),
-  E("Spell", "Shillelagh", { dur: "1 minute", ends: "short", brief: "Your club or quarterstaff attacks use Wisdom and deal 1d8 damage", mods: () => ({ shillelagh: true }) }),
+  E("Spell", "Shillelagh", { dur: "1 minute", ends: "short", brief: "Your club or quarterstaff attacks use your spellcasting ability and deal 1d8 damage", mods: (v, ch) => ({ shillelagh: { abil: shillAbil(ch) } }) }),
   E("Spell", "Longstrider", { dur: "1 hour", ends: "short", brief: "+10 ft speed", mods: () => ({ speedAdd: [{ label: "Longstrider", value: 10 }] }) }),
   E("Spell", "Expeditious Retreat", { conc: true, dur: "10 minutes", ends: "short", brief: "Dash as a bonus action every turn" }),
   E("Spell", "Jump", { dur: "1 minute", ends: "short", brief: "Your jump distance is tripled", mods: () => ({ notes: { check: ["Jump: your jump distance is tripled"] } }) }),
@@ -1403,7 +1411,7 @@ const describeCustomFx = (m) => [m.ac && `AC ${fmtMod(m.ac)}`, m.atk && `attacks
 
 /* Aggregate every active effect into the numbers and reminders the sheet consumes */
 function fxMods(ch) {
-  const out = { ac: [], acBase: null, acFloor: null, maxHp: 0, halveMaxHp: false, speedAdd: [], speedMult: 1, speedZero: false, atk: [], save: [], dmg: [], shillelagh: false, conc: [], notes: { attack: [], save: [], check: [], dmg: [] } };
+  const out = { ac: [], acBase: null, acFloor: null, maxHp: 0, halveMaxHp: false, speedAdd: [], speedMult: 1, speedZero: false, atk: [], save: [], dmg: [], shillelagh: null, conc: [], notes: { attack: [], save: [], check: [], dmg: [] } };
   for (const inst of effectsOf(ch)) {
     const def = effDefOf(inst);
     if (!def && inst.key !== "custom") continue;
@@ -1430,7 +1438,7 @@ function fxMods(ch) {
     if (m.atk) out.atk.push(...m.atk);
     if (m.save) out.save.push(...m.save);
     if (m.dmg) out.dmg.push(...m.dmg);
-    if (m.shillelagh) out.shillelagh = true;
+    if (m.shillelagh) out.shillelagh = m.shillelagh;
     if (m.notes) for (const k of ["attack", "save", "check", "dmg"]) if (m.notes[k]) out.notes[k].push(...m.notes[k]);
   }
   return out;
@@ -1454,6 +1462,41 @@ function speedOf(ch, customs, fx = fxMods(ch)) {
   if (fx.speedMult !== 1) { v = Math.floor(v * fx.speedMult); parts.push(fx.speedMult > 1 ? `×${fx.speedMult}` : "halved"); }
   if (fx.speedZero) { v = 0; parts.push("held at 0"); }
   return { v: Math.max(0, v), parts, modified: parts.length > 1 };
+}
+
+/* ============ LIMITED-USE FEATURES — the ledger of daily heroics ============ */
+/* Everything with a per-rest budget gets spell-slot-style pips (or a pool counter when the
+   numbers run big). `when` decides who owns it, `max` how many, `per` when it refills;
+   `effect` links a tracker to its EFFECT_LIB entry so expending a use activates the buff.
+   Unlimited-at-20 features (Rage, Wild Shape) simply stop tracking at that level. */
+const USE_TRACKERS = [
+  { key: "rage-uses", name: "Rage", cls: "Barbarian", when: (ch) => classLevel(ch, "Barbarian") >= 1 && classLevel(ch, "Barbarian") < 20, max: (ch) => { const l = classLevel(ch, "Barbarian"); return l >= 17 ? 6 : l >= 12 ? 5 : l >= 6 ? 4 : l >= 3 ? 3 : 2; }, per: "long", effect: "rage" },
+  { key: "second-wind", name: "Second Wind", cls: "Fighter", when: (ch) => classLevel(ch, "Fighter") >= 1, max: () => 1, per: "short" },
+  { key: "action-surge", name: "Action Surge", cls: "Fighter", when: (ch) => classLevel(ch, "Fighter") >= 2, max: (ch) => (classLevel(ch, "Fighter") >= 17 ? 2 : 1), per: "short" },
+  { key: "indomitable", name: "Indomitable", cls: "Fighter", when: (ch) => classLevel(ch, "Fighter") >= 9, max: (ch) => { const l = classLevel(ch, "Fighter"); return l >= 17 ? 3 : l >= 13 ? 2 : 1; }, per: "long" },
+  { key: "superiority-dice", name: "Superiority Dice", cls: "Fighter", when: (ch) => hasSub(ch, "Battle Master") && classLevel(ch, "Fighter") >= 3, max: (ch) => { const l = classLevel(ch, "Fighter"); return l >= 15 ? 6 : l >= 7 ? 5 : 4; }, per: "short" },
+  { key: "bardic-inspiration-uses", name: "Bardic Inspiration", cls: "Bard", when: (ch) => classLevel(ch, "Bard") >= 1, max: (ch) => Math.max(1, mod(ch.abilities.cha)), per: (ch) => (classLevel(ch, "Bard") >= 5 ? "short" : "long") },
+  { key: "channel-divinity", name: "Channel Divinity", when: (ch) => classLevel(ch, "Cleric") >= 2 || classLevel(ch, "Paladin") >= 3, max: (ch) => { const c = classLevel(ch, "Cleric"); return c >= 18 ? 3 : c >= 6 ? 2 : 1; }, per: "short" },
+  { key: "wild-shape-uses", name: "Wild Shape", cls: "Druid", when: (ch) => classLevel(ch, "Druid") >= 2 && classLevel(ch, "Druid") < 20, max: () => 2, per: "short", effect: "wild-shape" },
+  { key: "natural-recovery", name: "Natural Recovery", cls: "Druid", when: (ch) => hasSub(ch, "Circle of the Land"), max: () => 1, per: "long" },
+  { key: "ki-points", name: "Ki Points", cls: "Monk", when: (ch) => classLevel(ch, "Monk") >= 2, max: (ch) => classLevel(ch, "Monk"), per: "short" },
+  { key: "wholeness-of-body", name: "Wholeness of Body", cls: "Monk", when: (ch) => hasSub(ch, "Way of the Open Hand") && classLevel(ch, "Monk") >= 6, max: () => 1, per: "long" },
+  { key: "lay-on-hands", name: "Lay on Hands", cls: "Paladin", when: (ch) => classLevel(ch, "Paladin") >= 1, max: (ch) => 5 * classLevel(ch, "Paladin"), per: "long", pool: true, unit: "HP" },
+  { key: "divine-sense", name: "Divine Sense", cls: "Paladin", when: (ch) => classLevel(ch, "Paladin") >= 1, max: (ch) => 1 + Math.max(0, mod(ch.abilities.cha)), per: "long" },
+  { key: "cleansing-touch", name: "Cleansing Touch", cls: "Paladin", when: (ch) => classLevel(ch, "Paladin") >= 14, max: (ch) => Math.max(1, mod(ch.abilities.cha)), per: "long" },
+  { key: "sorcery-points", name: "Sorcery Points", cls: "Sorcerer", when: (ch) => classLevel(ch, "Sorcerer") >= 2, max: (ch) => classLevel(ch, "Sorcerer"), per: "long", pool: true },
+  { key: "arcane-recovery", name: "Arcane Recovery", cls: "Wizard", when: (ch) => classLevel(ch, "Wizard") >= 1, max: () => 1, per: "long" },
+  { key: "stroke-of-luck", name: "Stroke of Luck", cls: "Rogue", when: (ch) => classLevel(ch, "Rogue") >= 20, max: () => 1, per: "short" },
+  { key: "dark-ones-own-luck", name: "Dark One's Own Luck", cls: "Warlock", when: (ch) => hasSub(ch, "The Fiend"), max: () => 1, per: "short" },
+  { key: "hurl-through-hell", name: "Hurl Through Hell", cls: "Warlock", when: (ch) => hasSub(ch, "The Fiend") && classLevel(ch, "Warlock") >= 14, max: () => 1, per: "long" },
+  { key: "breath-weapon", name: "Breath Weapon", when: (ch) => ch.race === "Dragonborn", max: () => 1, per: "short" },
+  { key: "relentless-endurance", name: "Relentless Endurance", when: (ch) => ch.race === "Half-Orc", max: () => 1, per: "long" },
+];
+/* The trackers a character actually owns right now, built-in and hand-forged alike */
+function useTrackersFor(ch) {
+  const built = USE_TRACKERS.filter((t) => t.when(ch)).map((t) => ({ ...t, max: t.max(ch), per: typeof t.per === "function" ? t.per(ch) : t.per }));
+  const custom = (Array.isArray(ch.customTrackers) ? ch.customTrackers : []).map((t) => ({ key: `custom-${t.id}`, name: t.name, max: Math.max(1, t.max || 1), per: t.per === "short" ? "short" : "long", pool: (t.max || 1) > 12, custom: true, id: t.id }));
+  return [...built, ...custom];
 }
 
 /* ============ LORE LIBRARY (long-press anything to read it) ============ */
@@ -3585,6 +3628,7 @@ function ChoiceManager({ ch, customs, onUpdate }) {
 /* ============ CHARACTER SHEET ============ */
 /* ============ ACTIVE EFFECTS CARD — the buff tracker ============ */
 const pillBtn = { width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.edge}`, background: T.panel, color: T.gold, fontSize: 16, cursor: "pointer", lineHeight: 1, padding: 0, WebkitTapHighlightColor: "transparent", touchAction: "manipulation" };
+const pip = (filled, color) => ({ cursor: "pointer", fontSize: 18, fontFamily: "Georgia, serif", color: filled ? color : T.dim, opacity: filled ? 1 : 0.45, userSelect: "none", padding: "0 1px" });
 const fieldStyle = { background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 10px", fontSize: 15, fontFamily: "inherit", boxSizing: "border-box", width: "100%" };
 const FX_KIND_COLOR = { Spell: "#6c91e0", Feature: "#7fb069", Feat: "#c77dca", Action: "#5eb1bf", Condition: "#d76a76", Custom: "#c9a44c" };
 
@@ -3624,7 +3668,7 @@ function EffectsCard({ ch, customs, fx, onUpdate }) {
     ...fx.atk.map((b) => `${b.label} ${fmtMod(b.value)} to ${b.scope === "all" ? "" : b.scope + " "}attacks`),
     ...fx.dmg.map((b) => `${b.label} ${fmtMod(b.value)} to ${b.scope === "all" ? "" : b.scope + " "}damage`),
     ...fx.save.map((b) => `${b.label} ${fmtMod(b.value)} to saves`),
-    fx.shillelagh && "club/quarterstaff ✦ Wis & 1d8",
+    fx.shillelagh && `club/quarterstaff ✦ ${ABIL_NAMES[fx.shillelagh.abil]} & 1d8`,
   ].filter(Boolean);
   return (
     <div style={{ ...card, padding: 16, marginTop: 14 }}>
@@ -3678,6 +3722,83 @@ function EffectsCard({ ch, customs, fx, onUpdate }) {
       {summary.length > 0 && <div style={{ color: T.gold, fontSize: 12, marginTop: 10 }}>Now shaping the sheet: {summary.join(" · ")}</div>}
       <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>Long-press an effect for its rules · AC, HP, speed, attacks, saves, and roll reminders update automatically · rests sweep expired effects away</div>
       {adding && <AddEffectSheet ch={ch} customs={customs} existing={effects} onAdd={addEffect} onClose={() => setAdding(false)} />}
+    </div>
+  );
+}
+
+/* ============ FEATURE USES CARD — pips for every daily heroic ============ */
+function FeatureUsesCard({ ch, onUpdate }) {
+  const trackers = useTrackersFor(ch);
+  const used = ch.usedFeatures || {};
+  const [forging, setForging] = useState(false);
+  const [form, setForm] = useState({ name: "", max: "3", per: "long" });
+  const usedOf = (t) => Math.max(0, Math.min(used[t.key] || 0, t.max));
+  const setUsed = (t, n) => onUpdate({ usedFeatures: { ...used, [t.key]: Math.max(0, Math.min(t.max, n)) } });
+  const spend = (t) => {
+    const patch = { usedFeatures: { ...used, [t.key]: usedOf(t) + 1 } };
+    // spending a use of a tracked buff also raises the buff itself
+    if (t.effect && EFFECT_BY_KEY[t.effect] && !hasEffect(ch, t.effect)) patch.effects = [...effectsOf(ch), { id: uid(), key: t.effect, name: EFFECT_BY_KEY[t.effect].name }];
+    onUpdate(patch);
+  };
+  const removeCustom = (id) => onUpdate({ customTrackers: (ch.customTrackers || []).filter((t) => t.id !== id) });
+  const addCustom = () => {
+    const name = form.name.trim();
+    if (!name) return;
+    onUpdate({ customTrackers: [...(ch.customTrackers || []), { id: uid(), name, max: Math.max(1, parseInt(form.max, 10) || 1), per: form.per }] });
+    setForm({ name: "", max: "3", per: "long" });
+    setForging(false);
+  };
+  return (
+    <div style={{ ...card, padding: 16, marginTop: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17 }}>Feature Uses <span style={{ color: T.dim, fontSize: 12, fontFamily: "inherit" }}>· tap ◆ to expend, ◇ to recover</span></div>
+        <div style={{ flex: 1 }} />
+        <button style={{ ...btn(false), padding: "6px 12px", minHeight: 0, fontSize: 13 }} onClick={() => setForging(!forging)}>＋ Custom tracker</button>
+      </div>
+      {forging && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
+          <input value={form.name} autoFocus placeholder="Hexblade's Curse, wand charges, blessings owed…" onChange={(e) => setForm({ ...form, name: e.target.value })} style={{ ...fieldStyle, flex: "2 1 220px" }} />
+          <input type="number" min={1} value={form.max} title="Number of uses" onChange={(e) => setForm({ ...form, max: e.target.value })} style={{ ...fieldStyle, width: 70, textAlign: "center" }} />
+          <select value={form.per} onChange={(e) => setForm({ ...form, per: e.target.value })} style={{ ...fieldStyle, width: "auto" }}>
+            <option value="short">refills on any rest</option><option value="long">refills on a long rest</option>
+          </select>
+          <button style={{ ...btn(true), padding: "8px 14px", minHeight: 0 }} onClick={addCustom}>Add</button>
+        </div>
+      )}
+      {trackers.length === 0 ? (
+        <div style={{ color: T.dim, fontSize: 13, marginTop: 10 }}>No limited-use features yet — they appear as your classes earn them, or forge your own above.</div>
+      ) : (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+          {trackers.map((t) => {
+            const u = usedOf(t), avail = t.max - u;
+            const themed = (t.cls && (CLASS_THEMES[t.cls] || {}).color) || T.gold;
+            return (
+              <div key={t.key} data-use-tracker={t.key} style={{ textAlign: "center", padding: "8px 12px", background: T.panel2, borderRadius: 8, border: `1px solid ${T.edge}` }}>
+                <div {...lorePress(t.name)} style={{ color: T.dim, fontSize: 11 }}>
+                  <span style={{ color: themed }}>{t.name}</span> · {t.per === "short" ? "any rest" : "long rest"}
+                  {t.custom && <span title="Remove tracker" style={{ color: T.dim, cursor: "pointer", marginLeft: 6 }} onClick={(e) => { e.stopPropagation(); removeCustom(t.id); }}>✕</span>}
+                </div>
+                {t.pool || t.max > 12 ? (
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "center", marginTop: 4 }}>
+                    <button style={{ ...pillBtn, opacity: avail <= 0 ? 0.4 : 1 }} disabled={avail <= 0} onClick={() => spend(t)}>−</button>
+                    <span style={{ fontFamily: "Georgia, serif", fontSize: 18, color: avail ? T.ink : T.dim }}>{avail}<span style={{ color: T.dim, fontSize: 12 }}>/{t.max}{t.unit ? ` ${t.unit}` : ""}</span></span>
+                    <button style={{ ...pillBtn, opacity: u <= 0 ? 0.4 : 1 }} disabled={u <= 0} onClick={() => setUsed(t, u - 1)}>＋</button>
+                  </div>
+                ) : (
+                  <div>
+                    {Array.from({ length: t.max }, (_, j) => (
+                      <span key={j} style={pip(j < avail, T.ink)} onClick={() => (j < avail ? spend(t) : setUsed(t, u - 1))}>
+                        {j < avail ? "◆" : "◇"}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div style={{ color: T.dim, fontSize: 11, marginTop: 8 }}>Long-press a name for its rules · expending Rage or Wild Shape raises the matching effect above · short-rest features refill on any rest, the rest at dawn</div>
     </div>
   );
 }
@@ -3870,16 +3991,23 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     if (def?.stacks && def.restDecay === kind) return (e.stacks || 1) > 1 ? [{ ...e, stacks: (e.stacks || 1) - 1 }] : [];
     return [];
   });
-  const shortWould = usedPact > 0 || effectsOf(ch).some((e) => restTouches(e, "short"));
-  const longWould = dmgRaw > 0 || tempHp > 0 || usedSlots.some(Boolean) || usedPact > 0 || usedArc.length > 0 || effectsOf(ch).some((e) => restTouches(e, "long"));
+  /* limited-use features refill on their own schedule */
+  const usedFeats = ch.usedFeatures || {};
+  const trackers = useTrackersFor(ch);
+  const shortWould = usedPact > 0 || effectsOf(ch).some((e) => restTouches(e, "short")) || trackers.some((t) => t.per === "short" && (usedFeats[t.key] || 0) > 0);
+  const longWould = dmgRaw > 0 || tempHp > 0 || usedSlots.some(Boolean) || usedPact > 0 || usedArc.length > 0 || effectsOf(ch).some((e) => restTouches(e, "long")) || trackers.some((t) => (usedFeats[t.key] || 0) > 0);
+  const resetUses = (kind) => {
+    const u = { ...usedFeats };
+    trackers.forEach((t) => { if (kind === "long" || t.per === "short") delete u[t.key]; });
+    return u;
+  };
   const shortRest = () => {
     const kept = new Set(restEffects("short").map((e) => e.id));
     // granted max HP walks out with its effect: refund it from recorded damage
     const refund = effectsOf(ch).filter((e) => !kept.has(e.id)).reduce((s, e) => s + instMaxHp(e, ch), 0);
-    onUpdate({ usedPact: 0, effects: restEffects("short"), ...(refund ? { dmg: Math.max(0, dmgRaw - refund) } : {}) });
+    onUpdate({ usedPact: 0, effects: restEffects("short"), usedFeatures: resetUses("short"), ...(refund ? { dmg: Math.max(0, dmgRaw - refund) } : {}) });
   };
-  const longRest = () => onUpdate({ dmg: 0, usedSlots: [], usedPact: 0, usedArcanum: [], tempHp: 0, effects: restEffects("long") });
-  const pip = (filled, color) => ({ cursor: "pointer", fontSize: 18, fontFamily: "Georgia, serif", color: filled ? color : T.dim, opacity: filled ? 1 : 0.45, userSelect: "none", padding: "0 1px" });
+  const longRest = () => onUpdate({ dmg: 0, usedSlots: [], usedPact: 0, usedArcanum: [], tempHp: 0, effects: restEffects("long"), usedFeatures: {} });
 
   /* ---- the bones: d20 rolls with every modifier the sheet knows about ---- */
   const [rollSpec, setRollSpec] = useState(null);
@@ -3927,14 +4055,14 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   const fxDmg = (scope, abil, props) => fx.dmg.filter((b) => fxInScope(b, scope, abil, props));
   const shillTarget = (it) => fx.shillelagh && /\b(club|quarterstaff)\b/i.test(it.name);
   const weaponAbility = (it) => {
-    if (shillTarget(it)) return "wis";
+    if (shillTarget(it)) return fx.shillelagh.abil;
     const props = (it.property || "").split(",").map((x) => x.trim());
     if (it.type === "R") return "dex";
     if (props.includes("F")) return mod(ch.abilities.dex) > mod(ch.abilities.str) ? "dex" : "str";
     return "str";
   };
   const weaponDie = (it) => (shillTarget(it) ? "1d8" : it.dmg1 || "1d4");
-  const weaponAbilLabel = (it, abil) => (shillTarget(it) ? "Wisdom (Shillelagh)" : ABIL_NAMES[abil]);
+  const weaponAbilLabel = (it, abil) => (shillTarget(it) ? `${ABIL_NAMES[abil]} (Shillelagh)` : ABIL_NAMES[abil]);
   const rollWeaponDamage = (it) => {
     const m = weaponDie(it).match(/(\d+)d(\d+)/);
     if (!m) return;
@@ -4175,6 +4303,8 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           )}
         </div>
       )}
+
+      <FeatureUsesCard ch={ch} onUpdate={onUpdate} />
 
       <SpellManager ch={ch} customs={customs} onSpells={onSpells} onUpdate={onUpdate} />
       <ChoiceManager ch={ch} customs={customs} onUpdate={onUpdate} />
