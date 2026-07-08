@@ -669,6 +669,33 @@ function maxSpellLevel(clsName, clsLevel) {
   if (c === "pact") return PACT(clsLevel).lvl;
   return 0;
 }
+/* Source XMLs list domain/oath/circle spells twice: "Bless" (Cleric, Paladin) and a starred
+   twin "Bless*" carrying only the subclass tags (Cleric (Life), …) plus a footnote. The twin
+   is pure metadata — fold its class tokens into the plain entry and drop it, so no picker
+   ever offers the same spell twice. Spells starred without a plain twin pass through untouched. */
+function foldStarredSpells(spells) {
+  const tok = (s) => (s || "").split(",").map((t) => t.trim()).filter(Boolean);
+  const plainNames = new Set(spells.filter((sp) => !sp.name.endsWith("*")).map((sp) => sp.name));
+  const extras = new Map(); // plain name -> subclass tokens carried only by the starred twin
+  const kept = [];
+  spells.forEach((sp) => {
+    const plain = sp.name.replace(/\*+$/, "");
+    if (plain !== sp.name && plainNames.has(plain)) {
+      extras.set(plain, [...(extras.get(plain) || []), ...tok(sp.classes)]);
+      return;
+    }
+    kept.push(sp);
+  });
+  if (!extras.size) return spells; // nothing to fold — hand back the same array
+  return kept.map((sp) => {
+    const ex = extras.get(sp.name);
+    if (!ex) return sp;
+    const have = tok(sp.classes);
+    const add = [...new Set(ex)].filter((t) => !have.includes(t));
+    return add.length ? { ...sp, classes: [...have, ...add].join(", ") } : sp;
+  });
+}
+
 /* A spell's classes string lists entries like "Bard, Cleric (Arcana), Warlock (Archfey)".
    A plain class entry fits any member of that class; a parenthesized entry fits only a matching subclass. */
 const spellFitsClass = (sp, clsName, subclass) => {
@@ -4814,6 +4841,7 @@ function parseCompendiumXML(text) {
     const text = [...sp.querySelectorAll(":scope > text")].map((t) => t.textContent).join("\n").replace(/\n{3,}/g, "\n\n").trim();
     out.spells.push({ name, level, school: grab("school"), classes: grab("classes"), time: grab("time"), range: grab("range"), components: grab("components"), duration: grab("duration"), ritual: /^y/i.test(grab("ritual")), text });
   });
+  out.spells = foldStarredSpells(out.spells);
 
   doc.querySelectorAll("compendium > item").forEach((it) => {
     const name = it.querySelector(":scope > name")?.textContent?.trim();
@@ -5099,8 +5127,36 @@ export default function App() {
           || Object.values(stored.subs || {}).flat().length !== Object.values(slim.subs).flat().length;
         if (shrunk) saveCustom(slim);
       }
+      // legacy stores (or imports parsed before the fold) may still carry starred twins
+      effective = { ...effective, spells: foldStarredSpells(effective.spells || []) };
       setCustoms(effective);
-      setChars(cs);
+
+      // characters may reference spells by their old starred names — point them at the plain entry
+      const names = new Set(effective.spells.map((sp) => sp.name));
+      let starFixes = 0;
+      const fixName = (n) => {
+        if (typeof n === "string" && /\*$/.test(n)) {
+          const plain = n.replace(/\*+$/, "");
+          if (!names.has(n) && names.has(plain)) { starFixes++; return plain; }
+        }
+        return n;
+      };
+      const deStarChar = (ch) => ({
+        ...ch,
+        spells: Object.fromEntries(Object.entries(ch.spells || {}).map(([cls, b]) => [cls, {
+          ...b,
+          cantrips: (b.cantrips || []).map(fixName),
+          spells: (b.spells || []).map(fixName),
+          ...(b.arcanum ? { arcanum: Object.fromEntries(Object.entries(b.arcanum).map(([l, n]) => [l, fixName(n)])) } : {}),
+        }])),
+        ...(ch.boasRituals ? { boasRituals: ch.boasRituals.map(fixName) } : {}),
+        ...(ch.tomeCantrips ? { tomeCantrips: ch.tomeCantrips.map(fixName) } : {}),
+        ...(ch.racialChoices?.cantrip ? { racialChoices: { ...ch.racialChoices, cantrip: fixName(ch.racialChoices.cantrip) } } : {}),
+        ...(ch.choices ? { choices: Object.fromEntries(Object.entries(ch.choices).map(([k, v]) => [k, Array.isArray(v) ? v.map(fixName) : v])) } : {}),
+      });
+      const migrated = cs.map(deStarChar);
+      if (starFixes) saveChars(migrated);
+      setChars(starFixes ? migrated : cs);
     })();
   }, []);
   const persistCustom = (next) => { setCustoms(next); saveCustom(stripBase(next, __BASE)); };
