@@ -1014,7 +1014,7 @@ function rollNotes(ch, kind, abil) {
   return n;
 }
 
-function RollTray({ title, mode, parts, kind, abil, proficient, ch, onClose }) {
+function RollTray({ title, mode, parts, kind, abil, proficient, extra, ch, onClose }) {
   const f = rollFeatures(ch);
   // roll once, in the state initializer — re-renders must not re-throw the bones
   const [res] = useState(() => {
@@ -1038,7 +1038,7 @@ function RollTray({ title, mode, parts, kind, abil, proficient, ch, onClose }) {
   const nat = res.dice[res.kept].v;
   const crit = kind === "attack" && nat >= f.critRange;
   const fumble = nat === 1 && !res.floored;
-  const notes = [...res.notes, ...rollNotes(ch, kind, abil)];
+  const notes = [...res.notes, ...rollNotes(ch, kind, abil), ...(extra || [])];
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000000c8", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }} onClick={onClose}>
       <div style={{ ...card, padding: 28, textAlign: "center", minWidth: 320, maxWidth: "92vw" }} onClick={(e) => e.stopPropagation()}>
@@ -1497,6 +1497,31 @@ function useTrackersFor(ch) {
   const built = USE_TRACKERS.filter((t) => t.when(ch)).map((t) => ({ ...t, max: t.max(ch), per: typeof t.per === "function" ? t.per(ch) : t.per }));
   const custom = (Array.isArray(ch.customTrackers) ? ch.customTrackers : []).map((t) => ({ key: `custom-${t.id}`, name: t.name, max: Math.max(1, t.max || 1), per: t.per === "short" ? "short" : "long", pool: (t.max || 1) > 12, custom: true, id: t.id }));
   return [...built, ...custom];
+}
+
+/* ============ CONSUMABLES — arrows fly away, potions go down the hatch ============ */
+const usesAmmo = (it) => (it.property || "").split(",").map((x) => x.trim()).includes("A");
+/* Which inventory row feeds this weapon: the matching ammo word first, any ammunition second */
+function ammoRowFor(ch, customs, weapon) {
+  const rows = (ch.inventory || []).filter((r) => (r.qty || 1) > 0);
+  const ammo = rows.filter((r) => { const it = findItem(r.name, customs); return (it && it.type === "A") || /arrow|bolt|bullet|needle/i.test(r.name); });
+  const w = weapon.name.toLowerCase();
+  const word = w.includes("crossbow") ? "bolt" : w.includes("bow") ? "arrow" : w.includes("sling") ? "bullet" : w.includes("blowgun") ? "needle" : null;
+  return (word && ammo.find((r) => r.name.toLowerCase().includes(word))) || ammo[0] || null;
+}
+const isConsumableRow = (row, item) => (item ? ["P", "SC"].includes(item.type) : false) || /potion|elixir|philter|oil of|scroll of|antitoxin|holy water|alchemist's fire|acid \(vial\)|tanglefoot/i.test(row.name);
+const HEALING_TIERS = [[/supreme/i, { n: 10, sides: 4, plus: 20 }], [/superior/i, { n: 8, sides: 4, plus: 8 }], [/greater/i, { n: 4, sides: 4, plus: 4 }], [/./, { n: 2, sides: 4, plus: 2 }]];
+const healingDiceFor = (name) => (/potion of.*healing|healing potion/i.test(name) ? HEALING_TIERS.find(([re]) => re.test(name))[1] : null);
+/* A potion named after a catalog effect raises that effect when drunk — and potions never
+   require concentration, so the effect rides the ally/held-for-you flag */
+const POTION_EFFECT_ALIAS = { speed: "haste", flying: "fly", growth: "enlarge", diminution: "reduce" };
+function consumableEffectKey(name) {
+  const m = name.match(/^\s*(?:potion|philter|elixir|oil)\s+of\s+(.+?)\s*(?:\(.*\))?\s*$/i);
+  if (!m) return null;
+  const base = m[1].trim().toLowerCase();
+  if (POTION_EFFECT_ALIAS[base]) return POTION_EFFECT_ALIAS[base];
+  const hit = EFFECT_LIB.find((e) => e.name.toLowerCase() === base);
+  return hit ? hit.key : null;
 }
 
 /* ============ LORE LIBRARY (long-press anything to read it) ============ */
@@ -3247,7 +3272,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
 
 /* ============ GRIMOIRE (SPELL MANAGEMENT) ============ */
 /* ============ INVENTORY & EQUIPMENT ============ */
-function InventoryCard({ ch, customs, onUpdate }) {
+function InventoryCard({ ch, customs, onUpdate, onConsume }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [usableOnly, setUsableOnly] = useState(true);
@@ -3299,6 +3324,11 @@ function InventoryCard({ ch, customs, onUpdate }) {
                 </button>
               )
               : <span style={{ color: T.blood, fontSize: 11 }}>not proficient</span>)}
+            {onConsume && isConsumableRow(row, it) && (
+              <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0, borderColor: "#5eb1bf", color: "#5eb1bf" }} title="Spend one and apply what it does" onClick={() => onConsume(row)}>
+                {/potion|elixir|philter/i.test(row.name) ? "Drink" : "Use"}
+              </button>
+            )}
             <span style={{ color: T.blood, cursor: "pointer", fontWeight: 700, padding: "0 4px" }} onClick={() => save(inv.filter((r) => r.name !== row.name))}>✕</span>
           </div>
         );
@@ -3704,7 +3734,7 @@ function EffectsCard({ ch, customs, fx, onUpdate }) {
                     {name}{def?.stacks ? ` · level ${e.stacks || 1}` : e.val != null && def?.input ? ` (${def.input.unit === "+" ? "+" + e.val : `${def.input.unit} ${e.val}`})` : ""}
                   </span>
                   <span style={{ color: FX_KIND_COLOR[kind], fontSize: 10.5, marginLeft: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>{kind}</span>
-                  {isConcDef(e) && <span title={e.ally ? "An ally concentrates on this — it doesn't hold your concentration" : "Concentration — one at a time; Con save when you take damage"} style={{ color: "#b48ead", fontSize: 12, marginLeft: 6 }}>{e.ally ? "◉ ally conc" : "◉ conc"}</span>}
+                  {isConcDef(e) && <span title={e.ally ? "An ally's spell or a potion sustains this — it doesn't hold your concentration" : "Concentration — one at a time; Con save when you take damage"} style={{ color: "#b48ead", fontSize: 12, marginLeft: 6 }}>{e.ally ? "◉ held for you" : "◉ conc"}</span>}
                   <div style={{ color: T.dim, fontSize: 12, marginTop: 2, lineHeight: 1.5 }}>{brief}{dur ? ` — ${dur}` : ""}</div>
                 </div>
                 {def?.stacks && (
@@ -4042,7 +4072,27 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
       ...(hp2 ? [hp2] : []),
     ];
   };
-  const rollIt = (title, parts, kind, abil, proficient) => setRollSpec({ title, parts, kind, abil, proficient });
+  const rollIt = (title, parts, kind, abil, proficient, extra) => setRollSpec({ title, parts, kind, abil, proficient, extra });
+  /* Loosing a shot from an ammunition weapon spends a piece from the pack — and says so */
+  const fireAmmo = (it) => {
+    if (!usesAmmo(it)) return null;
+    const row = ammoRowFor(ch, customs, it);
+    if (!row) return `${it.name}: no ammunition in your pack — the quiver is empty!`;
+    const left = (row.qty || 1) - 1;
+    onUpdate({ inventory: left > 0 ? (ch.inventory || []).map((r) => (r.name === row.name ? { ...r, qty: left } : r)) : (ch.inventory || []).filter((r) => r.name !== row.name) });
+    return `${row.name} spent — ${left > 0 ? `${left} left` : "that was the last one!"}`;
+  };
+  /* Consumables: drinking/using decrements the row; healing potions roll their dice first */
+  const [drinkRoll, setDrinkRoll] = useState(null); // { row, title, dice, bonus }
+  const decremented = (row) => (ch.inventory || []).flatMap((r) => (r.name === row.name ? ((r.qty || 1) > 1 ? [{ ...r, qty: (r.qty || 1) - 1 }] : []) : [r]));
+  const consume = (row) => {
+    const heal = healingDiceFor(row.name);
+    if (heal) { setDrinkRoll({ row, title: row.name, dice: Array.from({ length: heal.n }, () => ({ sides: heal.sides, value: roll(heal.sides) })), bonus: heal.plus }); return; }
+    const key = consumableEffectKey(row.name);
+    const patch = { inventory: decremented(row), log: [...(ch.log || []), `Consumed ${row.name}.`] };
+    if (key && EFFECT_BY_KEY[key] && !hasEffect(ch, key)) patch.effects = [...effectsOf(ch), { id: uid(), key, name: EFFECT_BY_KEY[key].name, ally: true }];
+    onUpdate(patch);
+  };
   const acInfo = armorClass(ch, customs, fx);
   const [dmgRoll, setDmgRoll] = useState(null); // { title, dice, bonus, bonusLabel, note }
   /* Active-effect attack/damage bonuses, filtered to the attack being made: its scope
@@ -4224,8 +4274,9 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
               return (
                 <span key={it.name} style={{ display: "inline-flex", border: `1px solid ${T.edge}`, borderRadius: 10, overflow: "hidden" }}>
                   <button {...lorePress(it.name)} style={{ ...btn(false), border: "none", borderRadius: 0, padding: "8px 12px" }}
-                    onClick={() => rollIt(`${it.name} attack`, atkParts, "attack", abil)}>
+                    onClick={() => rollIt(`${it.name} attack`, atkParts, "attack", abil, undefined, [fireAmmo(it)].filter(Boolean))}>
                     <Icon name={it.type === "R" ? "bow" : "sword"} /> {it.name} {fmtMod(atkMod)}{shillTarget(it) ? " ✦" : ""}
+                    {usesAmmo(it) && <span style={{ color: T.dim, fontSize: 11 }}> ▸{(ammoRowFor(ch, customs, it) || {}).qty || 0}</span>}
                   </button>
                   <button style={{ ...btn(false), border: "none", borderLeft: `1px solid ${T.edge}`, borderRadius: 0, padding: "8px 12px", color: T.blood }}
                     onClick={() => rollWeaponDamage(it)}>
@@ -4241,7 +4292,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         </div>
       </div>
 
-      <InventoryCard ch={ch} customs={customs} onUpdate={onUpdate} />
+      <InventoryCard ch={ch} customs={customs} onUpdate={onUpdate} onConsume={consume} />
 
       {(slots || pact) && (
         <div style={{ ...card, padding: 16, marginTop: 14 }}>
@@ -4391,11 +4442,19 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
 
       {rollSpec && (
         <RollTray key={JSON.stringify(rollSpec) + advMode} title={rollSpec.title} mode={advMode} parts={rollSpec.parts}
-          kind={rollSpec.kind} abil={rollSpec.abil} proficient={rollSpec.proficient} ch={ch} onClose={() => setRollSpec(null)} />
+          kind={rollSpec.kind} abil={rollSpec.abil} proficient={rollSpec.proficient} extra={rollSpec.extra} ch={ch} onClose={() => setRollSpec(null)} />
       )}
       {dmgRoll && (
         <DiceTray title={dmgRoll.title} dice={dmgRoll.dice} note={dmgRoll.note} bonus={dmgRoll.bonus} bonusLabel={dmgRoll.bonusLabel}
           acceptLabel="Done" onAccept={() => setDmgRoll(null)} />
+      )}
+      {drinkRoll && (
+        <DiceTray title={drinkRoll.title} dice={drinkRoll.dice} bonus={drinkRoll.bonus} bonusLabel="healing"
+          note="Drink to apply the healing and spend the potion" acceptLabel="Drink"
+          onAccept={(total) => {
+            onUpdate({ dmg: Math.max(0, dmgRaw - total), inventory: decremented(drinkRoll.row), log: [...(ch.log || []), `Drank ${drinkRoll.row.name} — healed ${Math.min(total, dmgRaw)} HP.`] });
+            setDrinkRoll(null);
+          }} />
       )}
     </div>
   );
