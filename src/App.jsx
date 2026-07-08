@@ -31,6 +31,64 @@ const RACE_LANGS = {
 const ANCESTRIES = { Black: "Acid", Blue: "Lightning", Brass: "Fire", Bronze: "Lightning", Copper: "Acid", Gold: "Fire", Green: "Poison", Red: "Fire", Silver: "Cold", White: "Cold" };
 const ALL_SKILLS = ["Acrobatics","Animal Handling","Arcana","Athletics","Deception","History","Insight","Intimidation","Investigation","Medicine","Nature","Perception","Performance","Persuasion","Religion","Sleight of Hand","Stealth","Survival"];
 
+/* ---- Backgrounds: two granted skills, bonus languages, tool proficiencies (kept as a
+   reminder — the sheet doesn't track tools), a signature feature, and the purse that
+   comes with the standard starting kit ---- */
+const BACKGROUNDS = {
+  Acolyte: { skills: ["Insight", "Religion"], langs: 2, tools: null, gold: 15,
+    flavor: "A life given over to the service of a temple, its rites, and its god.",
+    feature: "Shelter of the Faithful",
+    featureText: "You and your companions can expect free healing and care at temples and shrines of your faith, and you may call on its priests for aid. You also keep ties to a home temple where you could reside in exchange for offerings and service." },
+  Charlatan: { skills: ["Deception", "Sleight of Hand"], langs: 0, tools: "disguise kit, forgery kit", gold: 15,
+    flavor: "You have always had a way with people — and with their money.",
+    feature: "False Identity",
+    featureText: "You maintain a second identity — documents, established acquaintances, disguises — that you can slip into at need. You can also forge documents, including official papers and personal letters, as long as you have seen an example." },
+  Criminal: { skills: ["Deception", "Stealth"], langs: 0, tools: "one gaming set, thieves' tools", gold: 15,
+    flavor: "A past of breaking the law — and contacts still in the business.",
+    feature: "Criminal Contact",
+    featureText: "You have a reliable and trustworthy contact who acts as your liaison to a network of other criminals. You know how to get messages to and from your contact, even over great distances." },
+  Entertainer: { skills: ["Acrobatics", "Performance"], langs: 0, tools: "disguise kit, one musical instrument", gold: 15,
+    flavor: "You thrive in front of an audience — music, dance, drama, spectacle.",
+    feature: "By Popular Demand",
+    featureText: "You can always find a place to perform. There you receive free lodging and food of a modest or comfortable standard, and your performances make you something of a local figure." },
+  "Folk Hero": { skills: ["Animal Handling", "Survival"], langs: 0, tools: "one type of artisan's tools, vehicles (land)", gold: 10,
+    flavor: "You come from humble stock, and your people count you their champion.",
+    feature: "Rustic Hospitality",
+    featureText: "Common folk will happily shelter you: they will hide you, let you rest, or assist your escape from the law — though they will not risk their lives for you." },
+  "Guild Artisan": { skills: ["Insight", "Persuasion"], langs: 1, tools: "one type of artisan's tools", gold: 15,
+    flavor: "A skilled maker, and a member of a guild that protects its own.",
+    feature: "Guild Membership",
+    featureText: "Your guild offers lodging and food when necessary, will pay for your funeral, and wields political influence on your behalf — including access to powerful figures, if you are a member in good standing. Dues are 5 gp a month." },
+  Hermit: { skills: ["Medicine", "Religion"], langs: 1, tools: "herbalism kit", gold: 5,
+    flavor: "Years of seclusion, spent in search of quiet, solitude, or answers.",
+    feature: "Discovery",
+    featureText: "Your seclusion granted you a unique and powerful discovery — a great truth, a hidden site, a long-forgotten fact. Work out its exact nature with your DM." },
+  Noble: { skills: ["History", "Persuasion"], langs: 1, tools: "one gaming set", gold: 25,
+    flavor: "Wealth, power, and privilege — your family name opens doors.",
+    feature: "Position of Privilege",
+    featureText: "People are inclined to think the best of you. You are welcome in high society, common folk make every effort to accommodate you, and you can secure an audience with local nobility if needed." },
+  Outlander: { skills: ["Athletics", "Survival"], langs: 1, tools: "one musical instrument", gold: 10,
+    flavor: "You grew up in the wilds, far from cities and their comforts.",
+    feature: "Wanderer",
+    featureText: "You have an excellent memory for maps and geography and can always recall the general layout of the land around you. You can also find food and fresh water for yourself and up to five other people each day, where the land allows." },
+  Sage: { skills: ["Arcana", "History"], langs: 2, tools: null, gold: 10,
+    flavor: "Years among books and scrolls, chasing the lore of the multiverse.",
+    feature: "Researcher",
+    featureText: "When you attempt to learn or recall a piece of lore and fail, you often know where and from whom you could obtain it — a library, scriptorium, university, sage, or other learned creature." },
+  Sailor: { skills: ["Athletics", "Perception"], langs: 0, tools: "navigator's tools, vehicles (water)", gold: 10,
+    flavor: "Years crewing ships: storms weathered, ports brawled in.",
+    feature: "Ship's Passage",
+    featureText: "You can secure free passage on a sailing ship for yourself and your companions. In return the crew expects a hand with the work, and the route is up to the captain." },
+  Soldier: { skills: ["Athletics", "Intimidation"], langs: 0, tools: "one gaming set, vehicles (land)", gold: 10,
+    flavor: "Trained, drilled, and blooded in an army, militia, or mercenary company.",
+    feature: "Military Rank",
+    featureText: "Soldiers loyal to your former organization still recognize your rank. You can invoke it to influence them, requisition simple equipment or horses, and gain entrance to friendly military encampments and fortresses." },
+  Urchin: { skills: ["Sleight of Hand", "Stealth"], langs: 0, tools: "disguise kit, thieves' tools", gold: 10,
+    flavor: "Raised poor and alone on city streets, surviving on wit and speed.",
+    feature: "City Secrets",
+    featureText: "You know the secret patterns and flow of cities. When not in combat, you and companions you lead can travel between any two locations in a city twice as fast as your speed would otherwise allow." },
+};
+
 const ALIGNMENTS = ["Lawful Good","Neutral Good","Chaotic Good","Lawful Neutral","True Neutral","Chaotic Neutral","Lawful Evil","Neutral Evil","Chaotic Evil"];
 const FIGHTING_STYLES = {
   Fighter: ["Archery", "Defense", "Dueling", "Great Weapon Fighting", "Protection", "Two-Weapon Fighting"],
@@ -1867,6 +1925,19 @@ function infoFor(rawName, customs) {
     return { title: strip, meta: `${CLASSES[sl.cls].subName} · ${sl.cls}`, body: lines.join("\n"), foot: SRD_FOOT };
   }
   if (SUB_FEATS[strip]) return { title: strip, meta: "Subclass", body: Object.entries(SUB_FEATS[strip]).map(([l, fx]) => `Level ${l}: ${fx.join(", ")}`).join("\n") };
+  /* Backgrounds resolve ahead of the feature-text sweep so the meta line carries their
+     mechanics; the compendium's fuller prose (when imported) still supplies the body */
+  const bgd = BACKGROUNDS[name] || BACKGROUNDS[strip];
+  if (bgd) {
+    const bgTitle = BACKGROUNDS[name] ? name : strip;
+    const ftx = (customs?.featureTexts || {})[bgTitle];
+    return {
+      title: bgTitle,
+      meta: ["Background", `Skills: ${bgd.skills.join(" & ")}`, bgd.langs ? `${bgd.langs} extra language${bgd.langs > 1 ? "s" : ""}` : null, bgd.tools ? `Tools: ${bgd.tools}` : null].filter(Boolean).join(" · "),
+      body: ftx || `${bgd.flavor}\n${bgd.feature}. ${bgd.featureText}`,
+      foot: ftx ? sourceOf(ftx) : null,
+    };
+  }
   const ft = customs?.featureTexts || {};
   let key = ft[name] ? name : ft[strip] ? strip : Object.keys(ft).find((k) => baseSubName(k) === strip || k.startsWith(strip + " ("));
   if (!key) { const cp = name.match(/^([^:]+):/); if (cp && ft[cp[1].trim()]) key = cp[1].trim(); }
@@ -1876,6 +1947,8 @@ function infoFor(rawName, customs) {
   if (CORE_FEATURE_INFO[strip]) return { title: strip, meta: "Feature", body: CORE_FEATURE_INFO[strip] };
   const eff = EFFECT_LIB.find((x) => x.name === name || x.name === strip);
   if (eff) return { title: eff.name, meta: [eff.kind === "Condition" ? "Condition" : `${eff.kind} · trackable effect`, eff.conc && "Concentration", eff.dur].filter(Boolean).join(" · "), body: [eff.brief, eff.desc].filter(Boolean).join("\n") };
+  const bgFeat = Object.entries(BACKGROUNDS).find(([, b]) => b.feature === name || b.feature === strip);
+  if (bgFeat) return { title: bgFeat[1].feature, meta: `Background feature · ${bgFeat[0]}`, body: bgFeat[1].featureText };
   return null;
 }
 
@@ -2229,11 +2302,13 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const hp = clsData.die + conMod + (race === "Hill Dwarf" ? 1 : 0);
 
   const steps = ["Identity", "Race", "Origins", "Class", "Abilities", "Spells", "Gear", "Confirm"];
-  const langNeed = (RACE_LANGS[race].choose || 0) + 2; // race choice + Acolyte's two
+  const bgData = BACKGROUNDS[bg] || null; // null = Custom
+  const bgLangs = bgData ? bgData.langs : 2; // customized backgrounds take the two-language default
+  const langNeed = (RACE_LANGS[race].choose || 0) + bgLangs;
   const wizCantrips = (customs?.spells || []).filter((x) => x.level === 0 && spellFitsClass(x, "Wizard"));
   // Skills granted by one source shouldn't be selectable from another
   const heSkillsEff = race === "Half-Elf" ? heSkills : [];
-  const bgGrantSkills = bg === "Acolyte" ? ["Insight", "Religion"] : bgSkills;
+  const bgGrantSkills = bgData ? bgData.skills : bgSkills;
   const skillsElsewhere = [...bgGrantSkills, ...heSkillsEff];
   let clsSkillOpts = clsData.skills.filter((s) => !skillsElsewhere.includes(s));
   if (clsSkillOpts.length < clsData.nSkills) // all overlapping — open up the remaining skills (PHB duplicate-proficiency rule)
@@ -2280,7 +2355,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
     const inventory = gearMode === "standard" ? standardItems() : purchases.map(({ name: nm, qty }) => ({ name: nm, qty }));
     onDone({
       id: uid(), name: name.trim(), photo, race, background: bg, alignment,
-      gold: gearMode === "standard" ? 10 : Math.max(0, goldLeft),
+      gold: gearMode === "standard" ? (bgData ? bgData.gold : 10) : Math.max(0, goldLeft),
       inventory,
       styles: style ? [style] : [], notes: "", persona,
       expertise: rogueExp, metamagic: [], pactBoon: null, invocations: [],
@@ -2358,12 +2433,36 @@ function CreateWizard({ onDone, onCancel, customs }) {
       {step === 2 && (
         <div style={{ display: "grid", gap: 12 }}>
           <div style={{ ...card, padding: 14 }}>
-            <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>Background</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-              <button style={{ ...btn(bg === "Acolyte"), padding: "6px 14px" }} onClick={() => { setBg("Acolyte"); setBgSkills([]); const granted = (s) => s !== "Insight" && s !== "Religion"; setHeSkills(heSkills.filter(granted)); setSkills(skills.filter(granted)); setRogueExp(rogueExp.filter(granted)); }}>Acolyte (SRD)</button>
-              <button style={{ ...btn(bg === "Custom"), padding: "6px 14px" }} onClick={() => setBg("Custom")}>Custom</button>
+            <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>Background <span style={{ color: T.dim, fontSize: 11 }}>· long-press one to read its feature in full</span></div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8, marginBottom: 10 }}>
+              {[...Object.keys(BACKGROUNDS), "Custom"].map((b) => {
+                const d = BACKGROUNDS[b];
+                const pickBg = () => {
+                  setBg(b); setBgSkills([]);
+                  // skills this background grants can't also be picked elsewhere; language quota may shrink
+                  const keep = (s) => !(d ? d.skills : []).includes(s);
+                  setHeSkills(heSkills.filter(keep)); setSkills(skills.filter(keep)); setRogueExp(rogueExp.filter(keep));
+                  setLangPicks(langPicks.slice(0, (RACE_LANGS[race].choose || 0) + (d ? d.langs : 2)));
+                };
+                return (
+                  <div key={b} {...(d ? lorePress(b) : {})} onClick={pickBg}
+                    style={{ ...card, padding: "10px 12px", cursor: "pointer", borderColor: bg === b ? T.gold : T.edge, background: bg === b ? T.panel2 : T.panel }}>
+                    <div style={{ color: bg === b ? T.gold : T.ink, fontWeight: 700, fontSize: 14 }}>{b}</div>
+                    <div style={{ color: T.dim, fontSize: 11.5, marginTop: 2, lineHeight: 1.5 }}>
+                      {d
+                        ? <>{d.skills.join(" & ")}{d.langs ? ` · ${d.langs} language${d.langs > 1 ? "s" : ""}` : ""}{d.tools ? ` · ${d.tools}` : ""}<div style={{ color: "#b48ead" }}>{d.feature}</div></>
+                        : <>Any two skills · 2 languages<div style={{ color: "#b48ead" }}>Your own story</div></>}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            {bg === "Acolyte" && <div style={{ color: T.dim, fontSize: 12 }}>Skills: Insight & Religion · two extra languages · Shelter of the Faithful.</div>}
+            {bgData && (
+              <div style={{ color: T.dim, fontSize: 12, lineHeight: 1.6 }}>
+                <span style={{ color: T.ink }}>{bgData.flavor}</span> <span style={{ color: "#b48ead" }}>{bgData.feature}.</span> {bgData.featureText}
+                {bgData.tools && <div style={{ marginTop: 4 }}>Tool proficiencies — {bgData.tools} — ride along as a note; the sheet doesn't track tools.</div>}
+              </div>
+            )}
             {bg === "Custom" && (
               <div>
                 <div style={{ color: T.dim, fontSize: 12, marginBottom: 6 }}>Per background customization rules: choose any two skills ({bgSkills.length}/2) and two languages (below).</div>
@@ -2378,15 +2477,21 @@ function CreateWizard({ onDone, onCancel, customs }) {
           </div>
           <div style={{ ...card, padding: 14 }}>
             <div style={{ color: T.gold, fontSize: 14, marginBottom: 6 }}>Languages</div>
-            <div style={{ color: T.dim, fontSize: 12, marginBottom: 8 }}>
-              {race} grants {RACE_LANGS[race].fixed.join(" & ")}. Choose {langNeed} more ({RACE_LANGS[race].choose || 0} racial + 2 from your background). ({langPicks.length}/{langNeed})
-            </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {LANGS.filter((l) => !RACE_LANGS[race].fixed.includes(l)).map((l) => (
-                <button key={l} {...lorePress(l)} style={{ ...btn(langPicks.includes(l)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
-                  onClick={() => setLangPicks(langPicks.includes(l) ? langPicks.filter((x) => x !== l) : langPicks.length < langNeed ? [...langPicks, l] : langPicks)}>{l}</button>
-              ))}
-            </div>
+            {langNeed > 0 ? (
+              <>
+                <div style={{ color: T.dim, fontSize: 12, marginBottom: 8 }}>
+                  {race} grants {RACE_LANGS[race].fixed.join(" & ")}. Choose {langNeed} more ({RACE_LANGS[race].choose || 0} racial + {bgLangs} from your background). ({langPicks.length}/{langNeed})
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {LANGS.filter((l) => !RACE_LANGS[race].fixed.includes(l)).map((l) => (
+                    <button key={l} {...lorePress(l)} style={{ ...btn(langPicks.includes(l)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
+                      onClick={() => setLangPicks(langPicks.includes(l) ? langPicks.filter((x) => x !== l) : langPicks.length < langNeed ? [...langPicks, l] : langPicks)}>{l}</button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div style={{ color: T.dim, fontSize: 12 }}>{race} grants {RACE_LANGS[race].fixed.join(" & ")}; {bg} adds no extra language choices.</div>
+            )}
           </div>
           {race === "Dragonborn" && (
             <div style={{ ...card, padding: 14 }}>
@@ -2565,7 +2670,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
             <div onClick={() => setGearMode("standard")}
               style={{ ...card, padding: 14, cursor: "pointer", borderColor: gearMode === "standard" ? T.gold : T.edge, background: gearMode === "standard" ? T.panel2 : T.panel }}>
               <div style={{ color: gearMode === "standard" ? T.gold : T.ink, fontFamily: "Georgia, serif", fontSize: 16 }}><Icon name="shield" /> Standard issue</div>
-              <div style={{ color: T.dim, fontSize: 12, marginTop: 4 }}>The classic {cls} loadout — make your either/or picks below. Comes with a modest 10 gp pouch.</div>
+              <div style={{ color: T.dim, fontSize: 12, marginTop: 4 }}>The classic {cls} loadout — make your either/or picks below. Comes with your background's purse of {bgData ? bgData.gold : 10} gp.</div>
             </div>
             <div onClick={() => setGearMode("gold")}
               style={{ ...card, padding: 14, cursor: "pointer", borderColor: gearMode === "gold" ? T.gold : T.edge, background: gearMode === "gold" ? T.panel2 : T.panel }}>
@@ -2708,7 +2813,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
           </div>
           <div style={{ marginTop: 14 }}>
             <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 16 }}>
-              Gold: {gearMode === "standard" ? 10 : Math.max(0, goldLeft)} gp
+              Gold: {gearMode === "standard" ? (bgData ? bgData.gold : 10) : Math.max(0, goldLeft)} gp
             </div>
             <div style={{ color: T.dim, fontSize: 13, marginTop: 4 }}>
               {(() => {
