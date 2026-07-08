@@ -1516,11 +1516,15 @@ function parseLimitedUse(text, ch) {
   return { max: Math.max(1, Math.min(20, max)), per };
 }
 function derivedTrackers(ch, customs) {
-  const curated = new Set(USE_TRACKERS.map((t) => t.name.toLowerCase()));
+  // compare with trailing parentheticals stripped: "Bardic Inspiration (d6)" and its (d8)
+  // sibling are the same feature as the curated "Bardic Inspiration", not three trackers
+  const normFeatName = (s) => baseSubName(String(s || "").trim()).toLowerCase();
+  const curated = new Set(USE_TRACKERS.map((t) => normFeatName(t.name)));
   const names = [], seen = new Set();
   const add = (raw) => {
     const n = String(raw || "").trim();
-    if (n && !seen.has(n.toLowerCase()) && !curated.has(n.toLowerCase())) { seen.add(n.toLowerCase()); names.push(n); }
+    const k = normFeatName(n);
+    if (n && k && !seen.has(k) && !curated.has(k)) { seen.add(k); names.push(n); }
   };
   ch.classes.forEach((c) => {
     for (let l = 1; l <= c.level; l++) {
