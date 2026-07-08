@@ -1881,6 +1881,47 @@ async function saveChars(chars) {
 /* ============ CUSTOM (HOMEBREW) CONTENT ============ */
 const CKEY = "dnd-custom-content-v1";
 const EMPTY_CUSTOM = { subs: {}, feats: [], spells: [], items: [], featureTexts: {} };
+
+/* ---- the built-in compendium: baked to JSON at build time, fetched once, never "imported" ----
+   The base layer lives in the deploy (public/compendium.json, generated from the source XML by
+   scripts/bake-compendium.cjs). Stored customs hold ONLY the user's own content; the two layers
+   merge in memory at boot, and anything identical to the base is stripped before every save —
+   which also shrinks legacy stores that still carry a full imported copy. */
+let __BASE = null;
+async function fetchBaseCompendium() {
+  if (__BASE) return __BASE;
+  try {
+    const res = await fetch("compendium.json");
+    if (!res.ok) return null;
+    __BASE = await res.json();
+    if (typeof window !== "undefined") window.__ledgerBase = __BASE;
+    return __BASE;
+  } catch { return null; /* offline first visit or no bundled data — stored customs stand alone */ }
+}
+function stripBase(c, base) {
+  if (!base) return c;
+  const sig = (x) => JSON.stringify(x);
+  const bSpells = new Map((base.spells || []).map((x) => [x.name, sig(x)]));
+  const bItems = new Map((base.items || []).map((x) => [x.name, sig(x)]));
+  const bFeats = new Map((base.feats || []).map((x) => [x.name, sig(x)]));
+  const subs = {};
+  Object.entries(c.subs || {}).forEach(([cls, arr]) => {
+    const bSubs = new Map(((base.subs || {})[cls] || []).map((s) => [s.name, sig(s)]));
+    const keep = arr.filter((s) => bSubs.get(s.name) !== sig(s));
+    if (keep.length) subs[cls] = keep;
+  });
+  const bTexts = base.featureTexts || {};
+  const featureTexts = {};
+  Object.entries(c.featureTexts || {}).forEach(([k, v]) => { if (bTexts[k] !== v) featureTexts[k] = v; });
+  return {
+    subs,
+    feats: (c.feats || []).filter((x) => bFeats.get(x.name) !== sig(x)),
+    spells: (c.spells || []).filter((x) => bSpells.get(x.name) !== sig(x)),
+    items: (c.items || []).filter((x) => bItems.get(x.name) !== sig(x)),
+    featureTexts,
+  };
+}
+
 async function loadCustom() {
   try { const r = await window.storage.get(CKEY); return r ? JSON.parse(r.value) : EMPTY_CUSTOM; } catch { return EMPTY_CUSTOM; }
 }
@@ -4703,6 +4744,8 @@ function parseCompendiumXML(text) {
   });
   return out;
 }
+/* scripts/bake-compendium.cjs drives the app's own parser to regenerate public/compendium.json */
+if (typeof window !== "undefined") window.__parseCompendium = parseCompendiumXML;
 
 /* ============ HOMEBREW FORGE ============ */
 function HomebrewForge({ customs, onSave, onBack }) {
@@ -4948,26 +4991,25 @@ export default function App() {
   const [ioMsg, setIoMsg] = useState("");
 
   useEffect(() => {
-    loadChars().then(setChars);
-    loadCustom().then((c) => { setCustoms(c); autoCompendium(c); });
+    (async () => {
+      const [cs, stored, base] = await Promise.all([loadChars(), loadCustom(), fetchBaseCompendium()]);
+      let effective = stored;
+      if (base) {
+        // stored customs layer over the built-in compendium; the user's versions win
+        effective = mergeCompendium(stored, base).customs;
+        const slim = stripBase(stored, base);
+        // legacy stores carried a full imported copy of the base — shed it once
+        const shrunk = (stored.spells || []).length !== slim.spells.length || (stored.items || []).length !== slim.items.length
+          || (stored.feats || []).length !== slim.feats.length || Object.keys(stored.featureTexts || {}).length !== Object.keys(slim.featureTexts).length
+          || Object.values(stored.subs || {}).flat().length !== Object.values(slim.subs).flat().length;
+        if (shrunk) saveCustom(slim);
+      }
+      setCustoms(effective);
+      setChars(cs);
+    })();
   }, []);
-  const persistCustom = (next) => { setCustoms(next); saveCustom(next); };
+  const persistCustom = (next) => { setCustoms(next); saveCustom(stripBase(next, __BASE)); };
   const persist = (next) => { setChars(next); saveChars(next); };
-  /* A compendium.xml shipped with the deploy imports itself: fetched at boot, folded in
-     once, and re-folded only when the file actually changes. No file, no fuss. */
-  const autoCompendium = async (current) => {
-    try {
-      const res = await fetch("compendium.xml", { cache: "no-cache" });
-      if (!res.ok || !/xml|text/.test(res.headers.get("content-type") || "")) return;
-      const text = await res.text();
-      const mark = `${text.length}:${text.slice(0, 400)}`;
-      const seen = await window.storage.get("dnd-bundled-compendium-v1").catch(() => null);
-      if (seen?.value === mark) return;
-      const merged = mergeCompendium(current, parseCompendiumXML(text));
-      if (merged.changed) { persistCustom(merged.customs); setIoMsg("Bundled compendium loaded."); }
-      await window.storage.set("dnd-bundled-compendium-v1", mark);
-    } catch { /* offline or no bundled compendium — the Forge import still works */ }
-  };
 
   if (chars === null) return (
     <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", color: T.dim, fontFamily: "Georgia, serif" }}>
@@ -5004,7 +5046,7 @@ export default function App() {
             <button style={{ ...btn(false), flex: 1, padding: 14 }} onClick={() => setView("forge")}><Icon name="hammer" /> Homebrew Forge</button>
           </div>
           <div style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "center" }}>
-            <button style={{ ...btn(false), fontSize: 13 }} onClick={() => exportLedger(chars, customs)} disabled={chars.length === 0 && customs.feats.length === 0 && customs.spells.length === 0}><Icon name="down" size={13} /> Export ledger</button>
+            <button style={{ ...btn(false), fontSize: 13 }} onClick={() => exportLedger(chars, stripBase(customs, __BASE))} disabled={chars.length === 0 && customs.feats.length === 0 && customs.spells.length === 0}><Icon name="down" size={13} /> Export ledger</button>
             <label style={{ ...btn(false), fontSize: 13, display: "inline-block" }}>
               <Icon name="up" size={13} /> Import ledger
               <input type="file" accept="application/json,.json" style={{ display: "none" }}
