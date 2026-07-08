@@ -4333,6 +4333,23 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onClose }) {
   const concEnding = eff?.conc ? concNow.filter((e) => e.key !== eff.key) : spConc ? concNow.filter((e) => !(e.key === "custom" && e.name === sp.name)) : [];
   const verb = sp ? "Cast" : tracker ? "Use" : "Declare";
   const freeToggle = options.length === 0 && !!activeInst; // a stance already held, nothing to spend
+  /* the confirm button wears the color of whatever pays for the act: the tracker's class,
+     pact violet, the casting class's hue for slots and cantrips, the effect's kind otherwise */
+  const spellClassOf = () => {
+    if (!sp) return null;
+    for (const c of ch.classes) {
+      const b = (ch.spells || {})[c.name];
+      if (b && (["cantrips", "spells"].some((k) => (b[k] || []).includes(sp.name)) || Object.values(b.arcanum || {}).includes(sp.name))) return c.name;
+    }
+    if ((ch.tomeCantrips || []).includes(sp.name) || (ch.boasRituals || []).includes(sp.name)) return "Warlock";
+    return ch.classes.find((c) => CLASSES[c.name].caster && spellFitsClass(sp, c.name, c.subclass))?.name || null;
+  };
+  const accent =
+    chosen?.type === "pact" || chosen?.type === "arcanum" ? CLASS_THEMES.Warlock.color
+    : chosen?.type === "tracker" ? (tracker.cls && CLASS_THEMES[tracker.cls]?.color) || T.gold
+    : sp ? (CLASS_THEMES[spellClassOf()]?.color || FX_KIND_COLOR.Spell)
+    : (eff && FX_KIND_COLOR[eff.kind]) || T.gold;
+  const primaryBtn = { ...btn(true), background: accent, borderColor: accent, color: T.bg };
   const meta = sp
     ? [sp.level === 0 ? "Cantrip" : `Level ${sp.level}`, schoolName(sp.school), sp.time && `Cast: ${sp.time}`, sp.range && `Range: ${sp.range}`, sp.duration && `Duration: ${sp.duration}`].filter(Boolean).join(" · ")
     : [eff && eff.kind, eff?.dur && `lasts ${eff.dur}`, tracker && (tracker.per === "short" ? "recharges on any rest" : "recharges on a long rest")].filter(Boolean).join(" · ");
@@ -4374,7 +4391,7 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onClose }) {
     onClose();
   };
 
-  const pillOpt = (on, dead) => ({ ...btn(false), padding: "7px 12px", minHeight: 0, fontSize: 12.5, fontFamily: "inherit", fontWeight: on ? 700 : 400, borderColor: on ? T.gold : T.edge, color: dead ? T.dim : on ? T.gold : T.ink, opacity: dead ? 0.5 : 1 });
+  const pillOpt = (on, dead) => ({ ...btn(false), padding: "7px 12px", minHeight: 0, fontSize: 12.5, fontFamily: "inherit", fontWeight: on ? 700 : 400, borderColor: on ? accent : T.edge, color: dead ? T.dim : on ? accent : T.ink, opacity: dead ? 0.5 : 1 });
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
       <div style={{ ...card, width: "min(620px, 100%)", maxHeight: "80vh", overflowY: "auto", borderRadius: "16px 16px 0 0", padding: 20, paddingBottom: "calc(20px + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
@@ -4432,16 +4449,16 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onClose }) {
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 18 }}>
           {freeToggle ? (
             <>
-              <button style={btn(true)} onClick={endIt}>End {recipe.name}</button>
+              <button style={primaryBtn} onClick={endIt}>End {recipe.name}</button>
               <button style={btn(false)} onClick={() => commit(false)}>Refresh it</button>
             </>
           ) : blocked ? (
             <>
-              <button style={{ ...btn(true), opacity: 0.4, cursor: "default" }} disabled>{verb}</button>
+              <button style={{ ...primaryBtn, opacity: 0.4, cursor: "default" }} disabled>{verb}</button>
               <button style={btn(false)} onClick={() => commit(true)}>{verb} anyway — mark nothing</button>
             </>
           ) : (
-            <button style={btn(true)} onClick={() => commit(false)}>{verb}{chosen && chosen.type !== "ritual" && chosen.type !== "tracker" ? " — spend the slot" : ""}</button>
+            <button style={primaryBtn} onClick={() => commit(false)}>{verb}</button>
           )}
           <button style={{ ...btn(false), borderColor: T.edge, color: T.dim, fontFamily: "inherit", fontWeight: 400, fontSize: 13 }} onClick={() => __showLore && __showLore(recipe.name)}>Read the full text</button>
         </div>
