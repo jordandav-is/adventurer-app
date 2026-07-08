@@ -4359,9 +4359,11 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
             })}
           </div>
         )}
-        <div style={{ color: T.dim, fontSize: 11, marginTop: 8 }}>
-          {feats.critRange < 20 ? `Champion: attacks crit on ${feats.critRange}–20 · ` : ""}{feats.archery ? "Archery: +2 to ranged attacks · " : ""}{feats.lucky ? "Lucky: natural 1s reroll themselves · " : ""}the toggle applies to every roll — attacks, saves, checks, and skills{equippedWeapons.length ? " · weapon buttons: left rolls to-hit, right rolls damage" : " · equip weapons in your Inventory for attack & damage buttons"}
-        </div>
+        {(feats.critRange < 20 || feats.archery > 0 || feats.lucky) && (
+          <div style={{ color: T.dim, fontSize: 11, marginTop: 8 }}>
+            {[feats.critRange < 20 ? `Champion: attacks crit on ${feats.critRange}–20` : null, feats.archery ? "Archery: +2 to ranged attacks" : null, feats.lucky ? "Lucky: natural 1s reroll themselves" : null].filter(Boolean).join(" · ")}
+          </div>
+        )}
       </div>
 
       <InventoryCard ch={ch} customs={customs} onUpdate={onUpdate} onConsume={consume} />
