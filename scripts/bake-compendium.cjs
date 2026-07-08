@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* Regenerate public/compendium.json from data/Complete.xml using the app's OWN parser
+/* Regenerate public/compendium.json from a source XML using the app's OWN parser
    (parseCompendiumXML needs a real DOM, so this drives a headless Chromium through the
    built app rather than reimplementing the intricate subclass inference in Node).
 
@@ -8,7 +8,8 @@
      node scripts/bake-compendium.cjs     # needs playwright-core + a Chromium
    Environment:
      CHROMIUM=/path/to/chrome            # defaults to the Playwright cache locations
-   Run this whenever data/Complete.xml changes, then commit public/compendium.json. */
+   To update the compendium: drop the new source XML at data/Complete.xml, run this,
+   commit the refreshed public/compendium.json, and delete the XML again. */
 const { createServer } = require("http");
 const { readFileSync, writeFileSync, existsSync } = require("fs");
 const { join, extname } = require("path");
