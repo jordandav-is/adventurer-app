@@ -3109,14 +3109,15 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
             <div style={{ color: T.ink, marginBottom: 14 }}>Hit points for {pick} level {newClsLevel} — d{pickData.die} {fmtMod(conM)} CON{dwarfBonus ? " +1" : ""}</div>
             <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
               <button style={btn(false)} onClick={() => { setHpGain(avg); setStage(extrasNeeded ? "extras" : "confirm"); }}>
-                Take average ({avg})
+                Take average — {avg + conM + dwarfBonus} HP{conM + dwarfBonus !== 0 ? ` (${avg} ${fmtMod(conM + dwarfBonus)})` : ""}
               </button>
               <button style={btn(true)} onClick={() => setRollingHp(true)}><Icon name="d20" /> Roll the d{pickData.die}</button>
             </div>
             {rollingHp && (
               <DiceTray title={`Rolling 1d${pickData.die} for hit points`} dice={[{ sides: pickData.die, value: roll(pickData.die) }]}
+                bonus={conM + dwarfBonus} bonusLabel={dwarfBonus ? "CON, Hill Dwarf" : "CON"}
                 note="No rerolls. The bones do not negotiate." acceptLabel="Accept fate"
-                onAccept={(total) => { setHpGain(total); setRollingHp(false); setStage(extrasNeeded ? "extras" : "confirm"); }} />
+                onAccept={(total, values) => { setHpGain(values[0]); setRollingHp(false); setStage(extrasNeeded ? "extras" : "confirm"); }} />
             )}
           </div>
         )}
@@ -4158,6 +4159,13 @@ function AddEffectSheet({ ch, customs, existing, onAdd, onClose }) {
   const [ally, setAlly] = useState(false); // concentration effect held by an ally, not this character
   const [concAsk, setConcAsk] = useState(null); // a picked concentration effect awaiting "whose concentration?"
   const [custom, setCustom] = useState(null);
+  /* the page beneath holds still while the sheet is up — only the sheet's own list scrolls */
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+  const sheetField = { ...fieldStyle, fontSize: 16 }; // 16px keeps mobile Safari from zooming into focused inputs
   const known = knownSpellNames(ch, customs);
   const have = new Set(existing.map((e) => e.key));
   const concActive = existing.filter(isConcInst).map((e) => e.name);
@@ -4188,16 +4196,33 @@ function AddEffectSheet({ ch, customs, existing, onAdd, onClose }) {
   const numField = (label, f) => (
     <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: T.dim, flex: "1 1 96px" }}>
       {label}
-      <input type="number" value={custom[f]} placeholder="0" onChange={(e) => setCustom({ ...custom, [f]: e.target.value })} style={fieldStyle} />
+      <input type="number" value={custom[f]} placeholder="0" onChange={(e) => setCustom({ ...custom, [f]: e.target.value })} style={sheetField} />
     </label>
   );
+  /* Browsing the catalog fills a steady share of the screen — the sheet doesn't jump around
+     as search narrows the list. The focused sub-views (value, concentration, custom forge)
+     shrink to hug their content at the bottom, like a proper bottom sheet detent. */
+  const browsing = !concAsk && !pending && !custom;
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
-      <div style={{ ...card, width: "min(680px, 100%)", maxHeight: "82vh", overflowY: "auto", borderRadius: "16px 16px 0 0", padding: 20, paddingBottom: "calc(20px + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
-          <div style={{ fontFamily: "Georgia, serif", fontSize: 21, color: T.gold }}>Bestow an Effect</div>
-          <span style={{ color: T.dim, cursor: "pointer", fontSize: 20, lineHeight: 1 }} onClick={onClose}>✕</span>
+    <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center", animation: "sheetVeil 200ms ease" }} onClick={onClose}>
+      <div className={browsing ? "sheet-tall" : "sheet-cap"}
+        style={{ ...card, width: "min(680px, 100%)", borderRadius: "16px 16px 0 0", display: "flex", flexDirection: "column", overflow: "hidden", animation: "sheetRise 300ms cubic-bezier(0.32, 0.72, 0, 1)" }}
+        onClick={(e) => e.stopPropagation()}>
+        <div style={{ flex: "none", padding: "8px 20px 0" }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: T.edge, margin: "0 auto 10px" }} />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <div style={{ fontFamily: "Georgia, serif", fontSize: 21, color: T.gold }}>Bestow an Effect</div>
+            <button aria-label="Close" onClick={onClose}
+              style={{ background: "none", border: "none", color: T.dim, cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "10px 4px 10px 14px", margin: "-10px -4px", WebkitTapHighlightColor: "transparent" }}>✕</button>
+          </div>
+          {browsing && (
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <input value={q} placeholder="Search — mage armor, rage, poisoned…" onChange={(e) => setQ(e.target.value)} style={sheetField} />
+              <button style={{ ...btn(false), whiteSpace: "nowrap", fontSize: 13 }} onClick={() => setCustom(blankCustom)}><Icon name="hammer" size={13} /> Custom</button>
+            </div>
+          )}
         </div>
+        <div className="sheet-body" style={{ flex: browsing ? 1 : "0 1 auto", minHeight: 0, overflowY: "auto", padding: "0 20px calc(20px + env(safe-area-inset-bottom))" }}>
         {concAsk ? (
           <div style={{ marginTop: 14 }}>
             <div style={{ color: T.ink, fontWeight: 700 }}>{concAsk.name} <span style={{ color: "#b48ead", fontSize: 12 }}>◉ concentration</span></div>
@@ -4225,11 +4250,11 @@ function AddEffectSheet({ ch, customs, existing, onAdd, onClose }) {
           </div>
         ) : custom ? (
           <div style={{ marginTop: 14 }}>
-            <label style={{ display: "block", color: T.dim, fontSize: 12 }}>Name<input value={custom.name} autoFocus placeholder="Potion of Heroism, DM's mysterious blessing…" onChange={(e) => setCustom({ ...custom, name: e.target.value })} style={{ ...fieldStyle, marginTop: 4 }} /></label>
+            <label style={{ display: "block", color: T.dim, fontSize: 12 }}>Name<input value={custom.name} autoFocus placeholder="Potion of Heroism, DM's mysterious blessing…" onChange={(e) => setCustom({ ...custom, name: e.target.value })} style={{ ...sheetField, marginTop: 4 }} /></label>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
               {numField("AC bonus", "ac")}{numField("Attack bonus", "atk")}{numField("Save bonus", "save")}{numField("Weapon damage", "dmg")}{numField("Speed (ft)", "speed")}{numField("Max HP", "maxHp")}{numField("Temp HP granted", "tempHp")}
             </div>
-            <label style={{ display: "block", color: T.dim, fontSize: 12, marginTop: 10 }}>Reminder note (shown with the effect)<input value={custom.note} placeholder="advantage on stealth checks in dim light…" onChange={(e) => setCustom({ ...custom, note: e.target.value })} style={{ ...fieldStyle, marginTop: 4 }} /></label>
+            <label style={{ display: "block", color: T.dim, fontSize: 12, marginTop: 10 }}>Reminder note (shown with the effect)<input value={custom.note} placeholder="advantage on stealth checks in dim light…" onChange={(e) => setCustom({ ...custom, note: e.target.value })} style={{ ...sheetField, marginTop: 4 }} /></label>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
               <label style={{ color: T.dim, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}><input type="checkbox" checked={custom.conc} onChange={(e) => setCustom({ ...custom, conc: e.target.checked })} /> Concentration</label>
               <label style={{ color: T.dim, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>Expires:
@@ -4237,7 +4262,7 @@ function AddEffectSheet({ ch, customs, existing, onAdd, onClose }) {
                   <option value="short">on any rest</option><option value="long">on a long rest</option><option value="manual">only when removed</option>
                 </select>
               </label>
-              <input value={custom.dur} placeholder="duration, e.g. 1 hour" onChange={(e) => setCustom({ ...custom, dur: e.target.value })} style={{ ...fieldStyle, width: 150 }} />
+              <input value={custom.dur} placeholder="duration, e.g. 1 hour" onChange={(e) => setCustom({ ...custom, dur: e.target.value })} style={{ ...sheetField, width: 150 }} />
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
               <button style={btn(true)} onClick={submitCustom}>Bestow it</button>
@@ -4246,26 +4271,25 @@ function AddEffectSheet({ ch, customs, existing, onAdd, onClose }) {
           </div>
         ) : (
           <>
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <input value={q} placeholder="Search — mage armor, rage, poisoned…" onChange={(e) => setQ(e.target.value)} style={fieldStyle} />
-              <button style={{ ...btn(false), whiteSpace: "nowrap", fontSize: 13 }} onClick={() => setCustom(blankCustom)}><Icon name="hammer" size={13} /> Custom</button>
-            </div>
-            {concActive.length > 0 && <div style={{ color: "#b48ead", fontSize: 12, marginTop: 8 }}>◉ Concentrating on {concActive.join(", ")} — adding another concentration effect will end it.</div>}
+            {concActive.length > 0 && <div style={{ color: "#b48ead", fontSize: 12, marginTop: 10 }}>◉ Concentrating on {concActive.join(", ")} — adding another concentration effect will end it.</div>}
             {groups.length === 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 14 }}>Nothing in the catalog matches — forge it as a custom effect instead.</div>}
             {groups.map(([title, defs]) => (
               <div key={title} style={{ marginTop: 14 }}>
                 <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 15 }}>{title}</div>
-                <div style={{ display: "grid", gap: 4, marginTop: 6 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 4, marginTop: 6 }}>
                   {defs.map((d) => {
                     const active = have.has(d.key);
                     const disabled = active && !d.stacks;
                     return (
                       <div key={d.key} data-fx-row={d.key} onClick={() => !disabled && pick(d)}
-                        style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "7px 9px", borderRadius: 8, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.45 : 1, background: T.panel2, border: `1px solid ${T.edge}` }}>
-                        <span style={{ color: T.ink, fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap" }}>{d.name}</span>
-                        {d.conc && <span style={{ color: "#b48ead", fontSize: 11 }}>◉</span>}
-                        <span style={{ color: T.dim, fontSize: 12, flex: 1 }}>{d.brief}</span>
-                        <span style={{ color: FX_KIND_COLOR[d.kind], fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" }}>{active ? (d.stacks ? "worsen" : "active") : d.dur}</span>
+                        style={{ minWidth: 0, minHeight: 44, boxSizing: "border-box", padding: "8px 10px", borderRadius: 8, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.45 : 1, background: T.panel2, border: `1px solid ${T.edge}`, WebkitTapHighlightColor: "transparent" }}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "baseline", minWidth: 0 }}>
+                          <span style={{ color: T.ink, fontWeight: 700, fontSize: 13.5 }}>{d.name}</span>
+                          {d.conc && <span style={{ color: "#b48ead", fontSize: 11 }}>◉</span>}
+                          <span style={{ flex: 1 }} />
+                          <span style={{ color: FX_KIND_COLOR[d.kind], fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, textAlign: "right" }}>{active ? (d.stacks ? "worsen" : "active") : d.dur}</span>
+                        </div>
+                        <div style={{ color: T.dim, fontSize: 12, marginTop: 2, lineHeight: 1.45 }}>{d.brief}</div>
                       </div>
                     );
                   })}
@@ -4274,6 +4298,7 @@ function AddEffectSheet({ ch, customs, existing, onAdd, onClose }) {
             ))}
           </>
         )}
+        </div>
       </div>
     </div>
   );
@@ -4546,6 +4571,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     onUpdate({ usedPact: 0, effects: restEffects("short"), usedFeatures: resetUses("short"), ...(refund ? { dmg: Math.max(0, dmgRaw - refund) } : {}) });
   };
   const [prepOpen, setPrepOpen] = useState(false);
+  const [restAsk, setRestAsk] = useState(null); // "short" | "long" — a rest waits for a confirming word
   const longRest = () => {
     onUpdate({ dmg: 0, usedSlots: [], usedPact: 0, usedArcanum: [], tempHp: 0, effects: restEffects("long"), usedFeatures: {} });
     if (canPrep) setPrepOpen(true); // dawn — swap your prepared spells
@@ -4755,9 +4781,29 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           <button style={{ ...btn(false), borderColor: T.green, color: T.green, flex: "1 1 auto", whiteSpace: "nowrap" }} onClick={() => applyHp(hpAmt)} disabled={dmgRaw === 0}>+ Heal</button>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flex: "1 1 300px", minWidth: 0, flexWrap: "wrap" }}>
-          <button style={{ ...btn(false), flex: "1 1 120px", whiteSpace: "nowrap" }} onClick={shortRest} disabled={!shortWould} title="Recover pact slots; short-lived effects expire"><Icon name="moon" /> Short Rest</button>
-          <button style={{ ...btn(false), flex: "1 1 120px", whiteSpace: "nowrap" }} onClick={longRest} disabled={!longWould} title="Full HP, all slots recovered, temp HP and expiring effects cleared, exhaustion eases"><Icon name="sun" /> Long Rest</button>
+          <button style={{ ...btn(false), flex: "1 1 120px", whiteSpace: "nowrap" }} onClick={() => setRestAsk("short")} disabled={!shortWould} title="Recover pact slots; short-lived effects expire"><Icon name="moon" /> Short Rest</button>
+          <button style={{ ...btn(false), flex: "1 1 120px", whiteSpace: "nowrap" }} onClick={() => setRestAsk("long")} disabled={!longWould} title="Full HP, all slots recovered, temp HP and expiring effects cleared, exhaustion eases"><Icon name="sun" /> Long Rest</button>
         </div>
+        {restAsk && (
+          <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => setRestAsk(null)}>
+            <div style={{ ...card, padding: 24, maxWidth: 380, width: "100%", textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold }}>
+                <Icon name={restAsk === "short" ? "moon" : "sun"} /> {restAsk === "short" ? "Take a short rest?" : "Take a long rest?"}
+              </div>
+              <div style={{ color: T.dim, fontSize: 13, lineHeight: 1.6, marginTop: 10 }}>
+                {restAsk === "short"
+                  ? "An hour to catch your breath. Pact slots and short-rest features recover; short-lived effects expire."
+                  : "A full night's sleep. HP restored to full, every slot and feature recovered, temp HP fades, expiring effects end, exhaustion eases."}
+              </div>
+              <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 18 }}>
+                <button style={{ ...btn(false), flex: 1 }} onClick={() => setRestAsk(null)}>Not yet</button>
+                <button style={{ ...btn(true), flex: 1, whiteSpace: "nowrap" }} onClick={() => { (restAsk === "short" ? shortRest : longRest)(); setRestAsk(null); }}>
+                  {restAsk === "short" ? "Rest an hour" : "Rest the night"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {concNote && (
           <div style={{ width: "100%", color: "#b48ead", fontSize: 12.5, lineHeight: 1.5 }}>
             ⚠ {concNote} <span style={{ color: T.dim, cursor: "pointer", textDecoration: "underline dotted" }} onClick={() => setConcNote(null)}>dismiss</span>
@@ -5438,6 +5484,12 @@ export default function App() {
         }
         @keyframes diceTumbleA { from { transform: rotate3d(1, 0.7, 0.35, -1620deg); } to { transform: rotate3d(1, 0.7, 0.35, 0deg); } }
         @keyframes diceTumbleB { from { transform: rotate3d(0.6, 1, 0.45, 1440deg); } to { transform: rotate3d(0.6, 1, 0.45, 0deg); } }
+        @keyframes sheetVeil { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes sheetRise { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        /* dvh tracks the true visible viewport on mobile (vh hides under browser chrome); the vh line is the fallback */
+        .sheet-tall { height: min(82vh, 700px); height: min(82dvh, 700px); }
+        .sheet-cap { max-height: min(88vh, 700px); max-height: min(88dvh, 700px); }
+        .sheet-body { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
         [data-lore] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
         .lore-lock, .lore-lock * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
       `}</style>
