@@ -1143,6 +1143,14 @@ function characterChoiceGroups(ch, customs) {
   }
   return out;
 }
+/* Every cantrip the character knows, from any source: class lists, Pact of the Tome, racial pick */
+function allKnownCantrips(ch) {
+  return [
+    ...Object.values(ch.spells || {}).flatMap((b) => b.cantrips || []),
+    ...(ch.tomeCantrips || []),
+    ...(ch.racialChoices?.cantrip ? [ch.racialChoices.cantrip] : []),
+  ];
+}
 
 /* ============ GEAR: types, sources, armor class ============ */
 const ITEM_TYPES = { LA: "Light armor", MA: "Medium armor", HA: "Heavy armor", S: "Shield", M: "Melee weapon", R: "Ranged weapon", A: "Ammunition", G: "Adventuring gear", W: "Wondrous item", P: "Potion", RG: "Ring", WD: "Wand", ST: "Staff", SC: "Scroll", RD: "Rod", "$": "Currency" };
@@ -2159,6 +2167,14 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const steps = ["Identity", "Race", "Origins", "Class", "Abilities", "Spells", "Gear", "Confirm"];
   const langNeed = (RACE_LANGS[race].choose || 0) + 2; // race choice + Acolyte's two
   const wizCantrips = (customs?.spells || []).filter((x) => x.level === 0 && spellFitsClass(x, "Wizard"));
+  // Skills granted by one source shouldn't be selectable from another
+  const heSkillsEff = race === "Half-Elf" ? heSkills : [];
+  const bgGrantSkills = bg === "Acolyte" ? ["Insight", "Religion"] : bgSkills;
+  const skillsElsewhere = [...bgGrantSkills, ...heSkillsEff];
+  let clsSkillOpts = clsData.skills.filter((s) => !skillsElsewhere.includes(s));
+  if (clsSkillOpts.length < clsData.nSkills) // all overlapping — open up the remaining skills (PHB duplicate-proficiency rule)
+    clsSkillOpts = [...clsSkillOpts, ...ALL_SKILLS.filter((s) => !skillsElsewhere.includes(s) && !clsData.skills.includes(s))];
+  const racialCantrip = race === "High Elf" ? heCantrip.trim() : "";
   const castsAt1 = !!CLASSES[cls].caster && CLASSES[cls].caster !== "half";
   const canCap1 = CANTRIPS_KNOWN[cls] ? CANTRIPS_KNOWN[cls](1) : 0;
   const spellCap1 = castsAt1 ? spellCapacity(cls, 1, finalScores).n : 0;
@@ -2208,7 +2224,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
       spells: castsAt1 && (spellPicks.cantrips.length || spellPicks.spells.length) ? { [cls]: spellPicks } : {},
       abilities: finalScores, method,
       classes: [{ name: cls, level: 1, subclass: clsData.subLvl === 1 ? subclass : null }],
-      skills: [...skills, ...heSkills, ...(bg === "Acolyte" ? ["Insight", "Religion"] : bgSkills)].filter((v, i, a) => a.indexOf(v) === i),
+      skills: [...skills, ...heSkillsEff, ...bgGrantSkills].filter((v, i, a) => a.indexOf(v) === i),
       languages: [...RACE_LANGS[race].fixed, ...langPicks],
       racialChoices: { ancestry: race === "Dragonborn" ? ancestry : null, cantrip: race === "High Elf" ? heCantrip.trim() : null },
       maxHp: hp, hpLog: [{ cls, gained: hp, how: "1st level (max)" }],
@@ -2250,7 +2266,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
       {step === 1 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 10 }}>
           {Object.entries(RACES).map(([r, d]) => (
-            <div key={r} onClick={() => { setRace(r); setHalfElfPicks([]); }}
+            <div key={r} onClick={() => { setRace(r); setHalfElfPicks([]); setHeSkills([]); setHeCantrip(""); setAncestry(null); setLangPicks(langPicks.filter((l) => !RACE_LANGS[r].fixed.includes(l))); }}
               style={{ ...card, padding: 14, cursor: "pointer", borderColor: race === r ? T.gold : T.edge, background: race === r ? T.panel2 : T.panel }}>
               <div style={{ fontFamily: "Georgia, serif", fontSize: 17, color: race === r ? T.gold : T.ink }}>{r}</div>
               <div style={{ color: T.dim, fontSize: 12, marginTop: 4 }}>
@@ -2280,7 +2296,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
           <div style={{ ...card, padding: 14 }}>
             <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>Background</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-              <button style={{ ...btn(bg === "Acolyte"), padding: "6px 14px" }} onClick={() => { setBg("Acolyte"); setBgSkills([]); }}>Acolyte (SRD)</button>
+              <button style={{ ...btn(bg === "Acolyte"), padding: "6px 14px" }} onClick={() => { setBg("Acolyte"); setBgSkills([]); const granted = (s) => s !== "Insight" && s !== "Religion"; setHeSkills(heSkills.filter(granted)); setSkills(skills.filter(granted)); setRogueExp(rogueExp.filter(granted)); }}>Acolyte (SRD)</button>
               <button style={{ ...btn(bg === "Custom"), padding: "6px 14px" }} onClick={() => setBg("Custom")}>Custom</button>
             </div>
             {bg === "Acolyte" && <div style={{ color: T.dim, fontSize: 12 }}>Skills: Insight & Religion · two extra languages · Shelter of the Faithful.</div>}
@@ -2288,7 +2304,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
               <div>
                 <div style={{ color: T.dim, fontSize: 12, marginBottom: 6 }}>Per background customization rules: choose any two skills ({bgSkills.length}/2) and two languages (below).</div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {ALL_SKILLS.map((sk) => (
+                  {ALL_SKILLS.filter((sk) => !heSkillsEff.includes(sk) && !skills.includes(sk)).map((sk) => (
                     <button key={sk} style={{ ...btn(bgSkills.includes(sk)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
                       onClick={() => setBgSkills(bgSkills.includes(sk) ? bgSkills.filter((x) => x !== sk) : bgSkills.length < 2 ? [...bgSkills, sk] : bgSkills)}>{sk}</button>
                   ))}
@@ -2322,7 +2338,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
             <div style={{ ...card, padding: 14 }}>
               <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>Skill Versatility — choose two ({heSkills.length}/2)</div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {ALL_SKILLS.map((sk) => (
+                {ALL_SKILLS.filter((sk) => !bgGrantSkills.includes(sk) && !skills.includes(sk)).map((sk) => (
                   <button key={sk} style={{ ...btn(heSkills.includes(sk)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
                     onClick={() => setHeSkills(heSkills.includes(sk) ? heSkills.filter((x) => x !== sk) : heSkills.length < 2 ? [...heSkills, sk] : heSkills)}>{sk}</button>
                 ))}
@@ -2336,7 +2352,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
                 <select value={heCantrip} onChange={(e) => setHeCantrip(e.target.value)}
                   style={{ background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 16, width: "100%" }}>
                   <option value="">Choose…</option>
-                  {wizCantrips.map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}
+                  {wizCantrips.filter((x) => !spellPicks.cantrips.includes(x.name)).map((x) => <option key={x.name} value={x.name}>{x.name}</option>)}
                 </select>
               ) : (
                 <input value={heCantrip} onChange={(e) => setHeCantrip(e.target.value)} placeholder="Cantrip name (import spells to get a picker)"
@@ -2388,7 +2404,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
           <div style={{ ...card, padding: 14 }}>
             <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>Choose {clsData.nSkills} skills ({skills.length}/{clsData.nSkills})</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {clsData.skills.map((s) => (
+              {clsSkillOpts.map((s) => (
                 <button key={s} {...lorePress(s)} style={{ ...btn(skills.includes(s)), padding: "5px 10px", fontSize: 13 }}
                   onClick={() => setSkills(skills.includes(s) ? skills.filter((x) => x !== s) : skills.length < clsData.nSkills ? [...skills, s] : skills)}>{s}</button>
               ))}
@@ -2450,7 +2466,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
                 <div>
                   <div style={{ color: T.gold, fontSize: 14, marginBottom: 6 }}>Cantrips ({spellPicks.cantrips.length}/{canCap1})</div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxHeight: 180, overflowY: "auto" }}>
-                    {pool1.filter((x) => x.level === 0).sort((a, b) => a.name.localeCompare(b.name)).map((x) => (
+                    {pool1.filter((x) => x.level === 0 && x.name !== racialCantrip).sort((a, b) => a.name.localeCompare(b.name)).map((x) => (
                       <button key={x.name} {...lorePress(x.name)} style={{ ...btn(spellPicks.cantrips.includes(x.name)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
                         onClick={() => setSpellPicks(spellPicks.cantrips.includes(x.name)
                           ? { ...spellPicks, cantrips: spellPicks.cantrips.filter((n) => n !== x.name) }
@@ -2897,7 +2913,8 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const cantripTarget = CANTRIPS_KNOWN[pick] ? CANTRIPS_KNOWN[pick](newClsLevel) : 0;
   const cantripPrev = entry && CANTRIPS_KNOWN[pick] ? CANTRIPS_KNOWN[pick](newClsLevel - 1) : 0;
   const cantripAllow = Math.max(0, cantripTarget - (book.cantrips || []).length);
-  const cantripPool = pick ? pool.filter((sp) => sp.level === 0 && fits(sp) && !(book.cantrips || []).includes(sp.name)).sort(sortSp) : [];
+  const knownCans = allKnownCantrips(ch);
+  const cantripPool = pick ? pool.filter((sp) => sp.level === 0 && fits(sp) && !knownCans.includes(sp.name) && !tomePicks.includes(sp.name)).sort(sortSp) : [];
   const cantripReq = Math.min(Math.max(0, cantripTarget - cantripPrev), cantripAllow, cantripPool.length);
   const gainsCantrips = cantripAllow > 0 && cantripPool.length > 0;
 
@@ -2923,8 +2940,9 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     ? pool.filter((sp) => sp.level === 1 && sp.ritual && !boasPicks.includes(sp.name)).sort(sortSp) : [];
   const gainsBoAS = boasPool.length > 0 || boasPicks.length > 0;
 
-  // Pact of the Tome — three cantrips from any class's list
-  const tomePool = boonPick === "Pact of the Tome" ? pool.filter((sp) => sp.level === 0).sort(sortSp) : [];
+  // Pact of the Tome — three cantrips from any class's list (excluding any already known)
+  const tomePool = boonPick === "Pact of the Tome"
+    ? pool.filter((sp) => sp.level === 0 && !knownCans.includes(sp.name) && !cantripPicks.includes(sp.name)).sort(sortSp) : [];
   const gainsTome = tomePool.length > 0;
 
   // Magical Secrets — Bard 10/14/18 (counted in spells known) and College of Lore 6 (extra)
@@ -3610,7 +3628,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate }) {
         .filter((sp) => sp.name.toLowerCase().includes(q.toLowerCase())).sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
     }
     if (kind === "tome") {
-      return pool.filter((sp) => sp.level === 0 && !(ch.tomeCantrips || []).includes(sp.name))
+      return pool.filter((sp) => sp.level === 0 && !allKnownCantrips(ch).includes(sp.name))
         .filter((sp) => sp.name.toLowerCase().includes(q.toLowerCase())).sort((a, b) => a.name.localeCompare(b.name));
     }
     const entry = ch.classes.find((c) => c.name === clsName);
@@ -3618,6 +3636,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate }) {
     const extra = kind === "spells" ? expandedFor(clsName).filter((x) => !pool.some((sp) => sp.name === x.name && spellFitsClass(sp, clsName, entry.subclass))) : [];
     const taken = kind === "arcanum"
       ? Object.values(book[clsName]?.arcanum || {})
+      : kind === "cantrips" ? allKnownCantrips(ch)
       : (book[clsName]?.[kind]) || [];
     return [...pool, ...extra]
       .filter((sp) => spellFitsClass(sp, clsName, entry.subclass) || extra.includes(sp))
