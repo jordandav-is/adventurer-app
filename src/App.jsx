@@ -4747,14 +4747,17 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
 
       <div style={{ ...card, padding: 14, marginTop: 14, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginRight: 4 }}>In Play</div>
-        <button style={{ ...btn(false), borderColor: T.blood, color: "#d76a76" }} onClick={() => applyHp(-hpAmt)} disabled={curHp <= 0 && tempHp <= 0}>− Damage</button>
-        <input type="number" min={1} value={hpAmt}
-          onChange={(e) => setHpAmt(Math.max(1, parseInt(e.target.value, 10) || 1))}
-          style={{ width: 58, textAlign: "center", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 4px", fontSize: 16 }} />
-        <button style={{ ...btn(false), borderColor: T.green, color: T.green }} onClick={() => applyHp(hpAmt)} disabled={dmgRaw === 0}>+ Heal</button>
-        <div style={{ flex: 1 }} />
-        <button style={btn(false)} onClick={shortRest} disabled={!shortWould} title="Recover pact slots; short-lived effects expire"><Icon name="moon" /> Short Rest</button>
-        <button style={btn(false)} onClick={longRest} disabled={!longWould} title="Full HP, all slots recovered, temp HP and expiring effects cleared, exhaustion eases"><Icon name="sun" /> Long Rest</button>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flex: "1 1 auto", minWidth: 0, flexWrap: "wrap" }}>
+          <button style={{ ...btn(false), borderColor: T.blood, color: "#d76a76", flex: "1 1 auto", whiteSpace: "nowrap" }} onClick={() => applyHp(-hpAmt)} disabled={curHp <= 0 && tempHp <= 0}>− Damage</button>
+          <input type="number" min={1} value={hpAmt}
+            onChange={(e) => setHpAmt(Math.max(1, parseInt(e.target.value, 10) || 1))}
+            style={{ width: 58, flex: "0 0 auto", textAlign: "center", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 4px", fontSize: 16, minHeight: 42, boxSizing: "border-box" }} />
+          <button style={{ ...btn(false), borderColor: T.green, color: T.green, flex: "1 1 auto", whiteSpace: "nowrap" }} onClick={() => applyHp(hpAmt)} disabled={dmgRaw === 0}>+ Heal</button>
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flex: "1 1 300px", minWidth: 0, flexWrap: "wrap" }}>
+          <button style={{ ...btn(false), flex: "1 1 120px", whiteSpace: "nowrap" }} onClick={shortRest} disabled={!shortWould} title="Recover pact slots; short-lived effects expire"><Icon name="moon" /> Short Rest</button>
+          <button style={{ ...btn(false), flex: "1 1 120px", whiteSpace: "nowrap" }} onClick={longRest} disabled={!longWould} title="Full HP, all slots recovered, temp HP and expiring effects cleared, exhaustion eases"><Icon name="sun" /> Long Rest</button>
+        </div>
         {concNote && (
           <div style={{ width: "100%", color: "#b48ead", fontSize: 12.5, lineHeight: 1.5 }}>
             ⚠ {concNote} <span style={{ color: T.dim, cursor: "pointer", textDecoration: "underline dotted" }} onClick={() => setConcNote(null)}>dismiss</span>
