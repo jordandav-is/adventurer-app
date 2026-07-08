@@ -1444,6 +1444,26 @@ const instMaxHp = (e, ch) => {
 /* One readable line for a custom effect's numbers */
 const describeCustomFx = (m) => [m.ac && `AC ${fmtMod(m.ac)}`, m.atk && `attacks ${fmtMod(m.atk)}`, m.save && `saves ${fmtMod(m.save)}`, m.dmg && `weapon damage ${fmtMod(m.dmg)}`, m.speed && `speed ${fmtMod(m.speed)} ft`, m.maxHp && `max HP ${fmtMod(m.maxHp)}`].filter(Boolean).join(" · ");
 
+/* Raising an effect is the same bargain everywhere: your own concentration evicts its rival
+   (refunding any max-HP grant the loser carried), duplicates refresh rather than stack,
+   stacking conditions deepen, and temp HP keeps the larger pool. One patch, shared by the
+   Effects card and the use prompt. */
+function applyEffectPatch(ch, inst, grantTemp) {
+  const effects = effectsOf(ch);
+  let next = effects, dropped = [];
+  const def = effDefOf(inst);
+  if (isConcInst(inst)) { dropped = next.filter(isConcInst); next = next.filter((e) => !isConcInst(e)); }
+  if (def?.stacks && next.some((e) => e.key === inst.key)) next = next.map((e) => (e.key === inst.key ? { ...e, stacks: Math.min(def.stacks, (e.stacks || 1) + 1) } : e));
+  else if (inst.key !== "custom" && next.some((e) => e.key === inst.key)) { /* refreshed, not stacked */ }
+  else next = [...next, inst];
+  const refund = dropped.reduce((s, e) => s + instMaxHp(e, ch), 0);
+  return {
+    effects: next,
+    ...(grantTemp ? { tempHp: Math.max(Math.max(0, ch.tempHp || 0), grantTemp) } : {}),
+    ...(refund ? { dmg: Math.max(0, Math.max(0, ch.dmg || 0) - refund) } : {}),
+  };
+}
+
 /* Aggregate every active effect into the numbers and reminders the sheet consumes */
 function fxMods(ch) {
   const out = { ac: [], acBase: null, acFloor: null, maxHp: 0, halveMaxHp: false, speedAdd: [], speedMult: 1, speedZero: false, atk: [], save: [], dmg: [], shillelagh: null, conc: [], notes: { attack: [], save: [], check: [], dmg: [] } };
@@ -1506,10 +1526,10 @@ function speedOf(ch, customs, fx = fxMods(ch)) {
    Unlimited-at-20 features (Rage, Wild Shape) simply stop tracking at that level. */
 const USE_TRACKERS = [
   { key: "rage-uses", name: "Rage", cls: "Barbarian", when: (ch) => classLevel(ch, "Barbarian") >= 1 && classLevel(ch, "Barbarian") < 20, max: (ch) => { const l = classLevel(ch, "Barbarian"); return l >= 17 ? 6 : l >= 12 ? 5 : l >= 6 ? 4 : l >= 3 ? 3 : 2; }, per: "long", effect: "rage" },
-  { key: "second-wind", name: "Second Wind", cls: "Fighter", when: (ch) => classLevel(ch, "Fighter") >= 1, max: () => 1, per: "short" },
+  { key: "second-wind", name: "Second Wind", cls: "Fighter", when: (ch) => classLevel(ch, "Fighter") >= 1, max: () => 1, per: "short", die: () => 10, dieBonus: (ch) => classLevel(ch, "Fighter"), dieLabel: "healing", heal: true },
   { key: "action-surge", name: "Action Surge", cls: "Fighter", when: (ch) => classLevel(ch, "Fighter") >= 2, max: (ch) => (classLevel(ch, "Fighter") >= 17 ? 2 : 1), per: "short" },
   { key: "indomitable", name: "Indomitable", cls: "Fighter", when: (ch) => classLevel(ch, "Fighter") >= 9, max: (ch) => { const l = classLevel(ch, "Fighter"); return l >= 17 ? 3 : l >= 13 ? 2 : 1; }, per: "long" },
-  { key: "superiority-dice", name: "Superiority Dice", cls: "Fighter", when: (ch) => hasSub(ch, "Battle Master") && classLevel(ch, "Fighter") >= 3, max: (ch) => { const l = classLevel(ch, "Fighter"); return l >= 15 ? 6 : l >= 7 ? 5 : 4; }, per: "short" },
+  { key: "superiority-dice", name: "Superiority Dice", cls: "Fighter", when: (ch) => hasSub(ch, "Battle Master") && classLevel(ch, "Fighter") >= 3, max: (ch) => { const l = classLevel(ch, "Fighter"); return l >= 15 ? 6 : l >= 7 ? 5 : 4; }, per: "short", die: (ch) => { const l = classLevel(ch, "Fighter"); return l >= 18 ? 12 : l >= 10 ? 10 : 8; }, dieLabel: "superiority" },
   { key: "bardic-inspiration-uses", name: "Bardic Inspiration", cls: "Bard", when: (ch) => classLevel(ch, "Bard") >= 1, max: (ch) => Math.max(1, mod(ch.abilities.cha)), per: (ch) => (classLevel(ch, "Bard") >= 5 ? "short" : "long") },
   { key: "channel-divinity", name: "Channel Divinity", when: (ch) => classLevel(ch, "Cleric") >= 2 || classLevel(ch, "Paladin") >= 3, max: (ch) => { const c = classLevel(ch, "Cleric"); return c >= 18 ? 3 : c >= 6 ? 2 : 1; }, per: "short" },
   { key: "wild-shape-uses", name: "Wild Shape", cls: "Druid", when: (ch) => classLevel(ch, "Druid") >= 2 && classLevel(ch, "Druid") < 20, max: () => 2, per: "short", effect: "wild-shape" },
@@ -1579,9 +1599,26 @@ function derivedTrackers(ch, customs) {
 }
 /* The trackers a character actually owns right now: curated, text-derived, and hand-forged */
 function useTrackersFor(ch, customs) {
-  const built = USE_TRACKERS.filter((t) => t.when(ch)).map((t) => ({ ...t, max: t.max(ch), per: typeof t.per === "function" ? t.per(ch) : t.per }));
+  const built = USE_TRACKERS.filter((t) => t.when(ch)).map((t) => ({ ...t, max: t.max(ch), per: typeof t.per === "function" ? t.per(ch) : t.per, die: typeof t.die === "function" ? t.die(ch) : t.die, dieBonus: typeof t.dieBonus === "function" ? t.dieBonus(ch) : t.dieBonus }));
   const custom = (Array.isArray(ch.customTrackers) ? ch.customTrackers : []).map((t) => ({ key: `custom-${t.id}`, name: t.name, max: Math.max(1, t.max || 1), per: t.per === "short" ? "short" : "long", pool: (t.max || 1) > 12, custom: true, id: t.id }));
   return [...built, ...derivedTrackers(ch, customs), ...custom];
+}
+
+/* ============ TAP TO ACT — resolve a tapped name into its use recipe ============ */
+/* A tap on a spell, feature, feat, or trait gathers everything the sheet knows about USING
+   it: the spell entry (slot level, ritual flag, concentration in the duration text), any
+   catalog effects it raises (Enlarge/Reduce yields two — the prompt offers the choice), and
+   the limited-use tracker that pays for it. A name that resolves nothing stays a lore tap. */
+function useRecipe(name, ch, customs) {
+  const n = String(name || "").trim();
+  if (!n) return null;
+  const strip = baseSubName(n);
+  const sp = (customs?.spells || []).find((s) => s.name === n || s.name === strip) || null;
+  const effs = EFFECT_LIB.filter((d) => d.kind !== "Condition" && [d.name, d.match].some((m) => m && (m === n || m === strip)));
+  const norm = (s) => baseSubName(String(s || "").trim()).toLowerCase();
+  const tracker = useTrackersFor(ch, customs).find((t) => norm(t.name) === norm(n)) || null;
+  if (!sp && !effs.length && !tracker) return null;
+  return { name: sp?.name || effs[0]?.name || tracker.name, sp, effs, tracker };
 }
 
 /* ============ CONSUMABLES — arrows fly away, potions go down the hatch ============ */
@@ -3679,7 +3716,7 @@ function PrepareSpells({ ch, customs, onSpells, onClose }) {
   );
 }
 
-function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare }) {
+function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse }) {
   const casters = ch.classes.filter((c) => CLASSES[c.name].caster);
   const wl = ch.classes.find((c) => c.name === "Warlock");
   const hasBoAS = (ch.invocations || []).includes("Book of Ancient Secrets");
@@ -3731,6 +3768,22 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare }) {
 
   /* Everything held, regrouped by spell level, then by where it came from */
   const spLvl = (n) => pool.find((sp) => sp.name === n)?.level ?? SPELL_LVL_HINT[n] ?? 1;
+  /* Can any resource pay for this spell right now? Cantrips and rituals always cast; leveled
+     spells need a slot of their level or higher, a big-enough pact slot, or their arcanum. */
+  const slotsAll = spellSlots(ch.classes) || [];
+  const usedSlotsArr = ch.usedSlots || [];
+  const pactAll = wl ? PACT(wl.level) : null;
+  const pactLeft = pactAll ? pactAll.n - Math.min(ch.usedPact || 0, pactAll.n) : 0;
+  const canPay = (n) => {
+    const lvl = spLvl(n);
+    if (lvl === 0) return true;
+    if (pool.find((s) => s.name === n)?.ritual) return true;
+    if (Object.entries(book.Warlock?.arcanum || {}).some(([l, an]) => an === n && !(ch.usedArcanum || []).includes(+l))) return true;
+    for (let L = lvl; L <= slotsAll.length; L++) if ((slotsAll[L - 1] || 0) - Math.min(usedSlotsArr[L - 1] || 0, slotsAll[L - 1] || 0) > 0) return true;
+    return !!(pactAll && pactAll.lvl >= lvl && pactLeft > 0);
+  };
+  /* an active catalog effect marks its spell chip, so buffs read at a glance from the Grimoire */
+  const activeFxNames = new Set(effectsOf(ch).map((e) => { const d = effDefOf(e); return d ? d.match || d.name : e.name; }));
   const groups = new Map(); // level -> [{ source, names, tint }]
   const addGroup = (lvl, source, names, tint) => {
     if (!names.length) return;
@@ -3833,14 +3886,18 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare }) {
                   <div style={{ color: g.tint || T.dim, fontSize: 11, letterSpacing: 0.5, textTransform: "uppercase" }}>{g.source}</div>
                   <div>
                     {g.names.map((n) => (
-                      <span key={n} {...lorePress(n)} style={{ display: "inline-block", background: T.panel2, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13, color: g.tint || T.ink }}>{n}</span>
+                      <span key={n} {...lorePress(n)} onClick={() => onUse && onUse(n)}
+                        title={canPay(n) ? undefined : "No slot can pay for this right now"}
+                        style={{ display: "inline-block", background: T.panel2, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13, color: g.tint || T.ink, cursor: "pointer", opacity: canPay(n) ? 1 : 0.45 }}>
+                        {n}{activeFxNames.has(n) && <span style={{ color: T.gold }}> ✦</span>}
+                      </span>
                     ))}
                   </div>
                 </div>
               ))}
             </div>
           ))}
-          <div style={{ color: T.dim, fontSize: 11 }}>Long-press any spell to read it.</div>
+          <div style={{ color: T.dim, fontSize: 11 }}>Tap a spell to cast it — the prompt spends the slot and raises its effect. Long-press to read. ✦ marks a spell whose effect is active; a dimmed spell has no slot left to pay for it.</div>
         </div>
       )}
 
@@ -3954,17 +4011,7 @@ function EffectsCard({ ch, customs, fx, onUpdate }) {
   const remove = (id) => onUpdate(withRefund(effects.filter((e) => e.id === id), { effects: effects.filter((e) => e.id !== id) }));
   const bumpStacks = (id, d, max) => onUpdate({ effects: effects.map((e) => (e.id === id ? { ...e, stacks: Math.max(1, Math.min(max, (e.stacks || 1) + d)) } : e)) });
   const addEffect = (inst, grantTemp) => {
-    let next = effects;
-    let dropped = [];
-    const def = effDefOf(inst);
-    // concentration is a jealous god: starting a new concentration effect of YOUR OWN
-    // drops the one you were holding (ally-held effects don't touch your concentration)
-    if (isConcInst(inst)) { dropped = next.filter(isConcInst); next = next.filter((e) => !isConcInst(e)); }
-    if (def?.stacks && next.some((e) => e.key === inst.key)) next = next.map((e) => (e.key === inst.key ? { ...e, stacks: Math.min(def.stacks, (e.stacks || 1) + 1) } : e));
-    else if (inst.key !== "custom" && next.some((e) => e.key === inst.key)) { /* refreshed, not stacked */ }
-    else next = [...next, inst];
-    // temp HP never stacks — you keep the larger pool
-    onUpdate(withRefund(dropped, { effects: next, ...(grantTemp ? { tempHp: Math.max(tempHp, grantTemp) } : {}) }));
+    onUpdate(applyEffectPatch(ch, inst, grantTemp));
     setAdding(false);
   };
   const acTotal = fx.ac.reduce((s, b) => s + b.value, 0);
@@ -4031,7 +4078,7 @@ function EffectsCard({ ch, customs, fx, onUpdate }) {
 }
 
 /* ============ FEATURE USES CARD — pips for every daily heroic ============ */
-function FeatureUsesCard({ ch, customs, onUpdate }) {
+function FeatureUsesCard({ ch, customs, onUpdate, onUse }) {
   const trackers = useTrackersFor(ch, customs);
   const used = ch.usedFeatures || {};
   const [forging, setForging] = useState(false);
@@ -4076,7 +4123,7 @@ function FeatureUsesCard({ ch, customs, onUpdate }) {
             const themed = (t.cls && (CLASS_THEMES[t.cls] || {}).color) || T.gold;
             return (
               <div key={t.key} data-use-tracker={t.key} style={{ textAlign: "center", padding: "8px 12px", background: T.panel2, borderRadius: 8, border: `1px solid ${T.edge}` }}>
-                <div {...lorePress(t.name)} style={{ color: T.dim, fontSize: 11 }}>
+                <div {...lorePress(t.name)} onClick={() => onUse && onUse(t.name)} style={{ color: T.dim, fontSize: 11, cursor: "pointer" }}>
                   <span style={{ color: themed }}>{t.name}</span> · {t.per === "short" ? "any rest" : "long rest"}
                   {t.custom && <span title="Remove tracker" style={{ color: T.dim, cursor: "pointer", marginLeft: 6 }} onClick={(e) => { e.stopPropagation(); removeCustom(t.id); }}>✕</span>}
                 </div>
@@ -4232,6 +4279,177 @@ function AddEffectSheet({ ch, customs, existing, onAdd, onClose }) {
   );
 }
 
+/* ============ USE PROMPT — tap a spell or feature, confirm, the sheet does the rest ============ */
+/* The front door for casting and feature use: name, cost, consequences, one confirming tap.
+   Slots and tracked uses are spent here; catalog effects raise through the same patch the
+   Effects card uses; concentration states its eviction before it happens. Pips everywhere
+   stay hand-tappable — this sheet is the front door, not the only door. */
+function UsePrompt({ name, ch, customs, onUpdate, onDice, onClose }) {
+  const recipe = useRecipe(name, ch, customs);
+  const sp = recipe?.sp || null, tracker = recipe?.tracker || null, effs = recipe?.effs || [];
+  const [variant, setVariant] = useState(0);
+  const eff = effs[Math.min(variant, Math.max(0, effs.length - 1))] || null;
+
+  /* ---- every way this could be paid for ---- */
+  const slots = spellSlots(ch.classes) || [];
+  const usedSlots = ch.usedSlots || [];
+  const wl = ch.classes.find((c) => c.name === "Warlock");
+  const pact = wl ? PACT(wl.level) : null;
+  const usedPact = pact ? Math.min(ch.usedPact || 0, pact.n) : 0;
+  const usedArc = ch.usedArcanum || [];
+  const arcanum = ch.spells?.Warlock?.arcanum || {};
+  const usedFeats = ch.usedFeatures || {};
+  // a Book of Ancient Secrets ritual the character doesn't otherwise know casts ONLY as a ritual
+  const boasOnly = sp ? (ch.boasRituals || []).includes(sp.name) && !knownSpellNames(ch, customs).has(sp.name) : false;
+  const options = [];
+  if (sp && sp.level >= 1 && !boasOnly) {
+    for (let L = sp.level; L <= slots.length; L++) if ((slots[L - 1] || 0) > 0)
+      options.push({ id: `slot:${L}`, type: "slot", lvl: L, left: (slots[L - 1] || 0) - Math.min(usedSlots[L - 1] || 0, slots[L - 1] || 0), label: L === sp.level ? `Level ${L} slot` : `Upcast · level ${L}` });
+    if (pact && pact.lvl >= sp.level) options.push({ id: "pact", type: "pact", lvl: pact.lvl, left: pact.n - usedPact, label: `Pact slot · level ${pact.lvl}` });
+    Object.entries(arcanum).forEach(([l, an]) => { if (an === sp.name) options.push({ id: `arc:${l}`, type: "arcanum", lvl: +l, left: usedArc.includes(+l) ? 0 : 1, label: `Mystic Arcanum ${l}th` }); });
+  }
+  if (sp && sp.level >= 1 && sp.ritual) options.push({ id: "ritual", type: "ritual", lvl: sp.level, left: Infinity, label: "Ritual — no slot, +10 minutes" });
+  const trackerLeft = tracker ? tracker.max - Math.min(usedFeats[tracker.key] || 0, tracker.max) : 0;
+  if (tracker) options.push({ id: "use", type: "tracker", left: trackerLeft, label: tracker.pool ? `From the pool · ${trackerLeft}/${tracker.max}${tracker.unit ? ` ${tracker.unit}` : ""} left` : `${trackerLeft} of ${tracker.max} left` });
+
+  const [pick, setPick] = useState(() => (options.find((o) => o.left > 0) || options[0] || {}).id || null);
+  const chosen = options.find((o) => o.id === pick) || null;
+  const blocked = options.length > 0 && (!chosen || chosen.left <= 0);
+  const [poolAmt, setPoolAmt] = useState(1);
+  const [manual, setManual] = useState(eff?.input && eff.input.unit !== "slot" ? eff.input.def : 1);
+  if (!recipe) return null;
+
+  /* effects that scale with the slot read it straight off the chosen cost */
+  const slotVal = chosen && chosen.lvl != null && chosen.type !== "ritual" && chosen.type !== "tracker" ? chosen.lvl : null;
+  const clampIn = (v) => (eff?.input ? Math.max(eff.input.min, Math.min(eff.input.max, parseInt(v, 10) || eff.input.def)) : undefined);
+  const effVal = eff?.input ? (eff.input.unit === "slot" ? clampIn(slotVal ?? eff.input.def) : clampIn(manual)) : undefined;
+  const grantTemp = eff?.tempHp ? eff.tempHp(effVal, ch) : 0;
+
+  const activeInst = effs.map((d) => effectsOf(ch).find((e) => e.key === d.key)).find(Boolean) || null;
+  const concNow = effectsOf(ch).filter(isConcInst);
+  /* a concentration spell with no catalog entry still holds concentration — it rides
+     as a bare custom instance so the jealousy rule and rest sweeps see it */
+  const spConc = !eff && sp ? /concentration/i.test(sp.duration || "") : false;
+  const concEnding = eff?.conc ? concNow.filter((e) => e.key !== eff.key) : spConc ? concNow.filter((e) => !(e.key === "custom" && e.name === sp.name)) : [];
+  const verb = sp ? "Cast" : tracker ? "Use" : "Declare";
+  const freeToggle = options.length === 0 && !!activeInst; // a stance already held, nothing to spend
+  const meta = sp
+    ? [sp.level === 0 ? "Cantrip" : `Level ${sp.level}`, schoolName(sp.school), sp.time && `Cast: ${sp.time}`, sp.range && `Range: ${sp.range}`, sp.duration && `Duration: ${sp.duration}`].filter(Boolean).join(" · ")
+    : [eff && eff.kind, eff?.dur && `lasts ${eff.dur}`, tracker && (tracker.per === "short" ? "recharges on any rest" : "recharges on a long rest")].filter(Boolean).join(" · ");
+
+  const commit = (free) => {
+    const patch = {}; const bits = [];
+    if (!free && chosen && chosen.left > 0) {
+      if (chosen.type === "slot") { patch.usedSlots = Array.from({ length: slots.length }, (_, j) => Math.min(slots[j] || 0, Math.min(usedSlots[j] || 0, slots[j] || 0) + (j === chosen.lvl - 1 ? 1 : 0))); bits.push(`level-${chosen.lvl} slot spent, ${chosen.left - 1} left`); }
+      else if (chosen.type === "pact") { patch.usedPact = Math.min(pact.n, usedPact + 1); bits.push(`pact slot spent, ${pact.n - usedPact - 1} left`); }
+      else if (chosen.type === "arcanum") { patch.usedArcanum = [...usedArc, chosen.lvl]; bits.push("arcanum spent until dawn"); }
+      else if (chosen.type === "ritual") bits.push("cast as a ritual — no slot");
+      else if (chosen.type === "tracker") {
+        const amt = tracker.pool ? Math.max(1, Math.min(trackerLeft, parseInt(poolAmt, 10) || 1)) : 1;
+        patch.usedFeatures = { ...usedFeats, [tracker.key]: Math.min(tracker.max, Math.min(usedFeats[tracker.key] || 0, tracker.max) + amt) };
+        bits.push(tracker.pool ? `${trackerLeft - amt}/${tracker.max}${tracker.unit ? ` ${tracker.unit}` : ""} left` : `${trackerLeft - 1} of ${tracker.max} left`);
+      }
+    } else if (free && options.length > 0) bits.push("by the table's grace — nothing marked");
+    if (eff) {
+      if (concEnding.length) bits.push(`concentration moves — ${concEnding.map((e) => e.name).join(", ")} ends`);
+      if (activeInst && activeInst.key === eff.key && !eff.stacks) bits.push("already active — refreshed");
+      const inst = { id: uid(), key: eff.key, name: eff.name, ...(effVal != null ? { val: effVal } : {}), ...(eff.stacks ? { stacks: 1 } : {}) };
+      Object.assign(patch, applyEffectPatch(ch, inst, grantTemp));
+      if (grantTemp) bits.push(`${grantTemp} temp HP`);
+    } else if (spConc) {
+      if (concEnding.length) bits.push(`concentration moves — ${concEnding.map((e) => e.name).join(", ")} ends`);
+      const inst = { id: uid(), key: "custom", name: sp.name, conc: true, dur: (sp.duration || "").replace(/^concentration,?\s*(up to\s*)?/i, ""), ends: "short", note: "Concentration held", mods: {} };
+      const base = { ...ch, effects: effectsOf(ch).filter((e) => !(e.key === "custom" && e.name === sp.name)) };
+      Object.assign(patch, applyEffectPatch(base, inst, 0));
+    }
+    patch.log = [...(ch.log || []), `${verb === "Cast" ? "Cast" : "Used"} ${recipe.name}${bits.length ? " — " + bits.join("; ") : ""}.`];
+    onUpdate(patch);
+    if (!free && chosen?.type === "tracker" && tracker.die && onDice)
+      onDice({ title: `${tracker.name} — d${tracker.die}${tracker.dieBonus ? ` + ${tracker.dieBonus}` : ""}`, dice: [{ sides: tracker.die, value: roll(tracker.die) }], bonus: tracker.dieBonus || 0, bonusLabel: tracker.dieBonus ? tracker.dieLabel || "" : "", note: tracker.heal ? "Accept to heal yourself." : "Add it where the feature calls for it.", heal: !!tracker.heal });
+    onClose();
+  };
+  const endIt = () => {
+    const refund = instMaxHp(activeInst, ch);
+    onUpdate({ effects: effectsOf(ch).filter((e) => e.id !== activeInst.id), ...(refund ? { dmg: Math.max(0, Math.max(0, ch.dmg || 0) - refund) } : {}), log: [...(ch.log || []), `${activeInst.name || recipe.name} ended.`] });
+    onClose();
+  };
+
+  const pillOpt = (on, dead) => ({ ...btn(false), padding: "7px 12px", minHeight: 0, fontSize: 12.5, fontFamily: "inherit", fontWeight: on ? 700 : 400, borderColor: on ? T.gold : T.edge, color: dead ? T.dim : on ? T.gold : T.ink, opacity: dead ? 0.5 : 1 });
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
+      <div style={{ ...card, width: "min(620px, 100%)", maxHeight: "80vh", overflowY: "auto", borderRadius: "16px 16px 0 0", padding: 20, paddingBottom: "calc(20px + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+          <div style={{ fontFamily: "Georgia, serif", fontSize: 21, color: T.gold }}>
+            {recipe.name}
+            {eff && <span style={{ color: FX_KIND_COLOR[eff.kind] || T.dim, fontSize: 11, marginLeft: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>{sp ? "Spell" : eff.kind}</span>}
+          </div>
+          <span style={{ color: T.dim, cursor: "pointer", fontSize: 20, lineHeight: 1 }} onClick={onClose}>✕</span>
+        </div>
+        {meta && <div style={{ color: "#b48ead", fontSize: 13, marginTop: 4 }}>{meta}</div>}
+        {(eff?.brief || eff?.desc) && <div style={{ color: T.ink, fontSize: 14, lineHeight: 1.6, marginTop: 10 }}>{eff.brief}{eff.desc ? ` ${eff.desc}` : ""}</div>}
+
+        {effs.length > 1 && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+            {effs.map((d, i) => <button key={d.key} style={pillOpt(i === variant)} onClick={() => setVariant(i)}>{d.name}</button>)}
+          </div>
+        )}
+
+        {options.length > 0 ? (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ color: T.dim, fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>Cost</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+              {options.map((o) => (
+                <button key={o.id} style={pillOpt(o.id === pick, o.left <= 0)} onClick={() => setPick(o.id)}>
+                  {o.label}{o.type !== "ritual" && !tracker?.pool && Number.isFinite(o.left) && o.type !== "tracker" ? ` · ${o.left} left` : ""}{o.left <= 0 ? " · spent" : ""}
+                </button>
+              ))}
+            </div>
+            {chosen?.type === "tracker" && tracker.pool && (
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, color: T.dim, fontSize: 13 }}>
+                Spend
+                <input type="number" min={1} max={trackerLeft} value={poolAmt} onChange={(e) => setPoolAmt(e.target.value)} style={{ ...fieldStyle, width: 74, textAlign: "center" }} />
+                {tracker.unit || "uses"}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ marginTop: 14, color: T.dim, fontSize: 13 }}>{sp && sp.level === 0 ? "No cost — cantrips are cast at will." : "No cost — a stance you declare."}</div>
+        )}
+
+        {eff?.input && eff.input.unit !== "slot" && (
+          <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12, color: T.dim, fontSize: 13 }}>
+            {eff.input.label} ({eff.input.min}–{eff.input.max})
+            <input type="number" min={eff.input.min} max={eff.input.max} value={manual} onChange={(e) => setManual(e.target.value)} style={{ ...fieldStyle, width: 84, textAlign: "center" }} />
+          </label>
+        )}
+        {eff?.input && eff.input.unit === "slot" && slotVal != null && <div style={{ color: T.dim, fontSize: 12.5, marginTop: 10 }}>Scales with the slot: applied at level {effVal}.</div>}
+        {grantTemp > 0 && <div style={{ color: "#5eb1bf", fontSize: 12.5, marginTop: 10 }}>Grants {grantTemp} temporary hit points{Math.max(0, ch.tempHp || 0) > 0 ? " — temp HP doesn't stack; you keep the larger pool" : ""}.</div>}
+        {concEnding.length > 0 && <div style={{ color: "#b48ead", fontSize: 13, marginTop: 10 }}>◉ You're concentrating on {concEnding.map((e) => e.name).join(", ")} — this {verb.toLowerCase()} ends it.</div>}
+        {(eff?.conc || spConc) && !concEnding.length && <div style={{ color: "#b48ead", fontSize: 13, marginTop: 10 }}>◉ Concentration — one at a time; Con save when you take damage.</div>}
+        {activeInst && !freeToggle && <div style={{ color: T.dim, fontSize: 12.5, marginTop: 10 }}>Already active — {verb.toLowerCase()}ing again refreshes it rather than stacking.</div>}
+        {blocked && <div style={{ color: "#d76a76", fontSize: 13, marginTop: 10 }}>{tracker && chosen?.type === "tracker" ? `Spent — recharges on a ${chosen && tracker.per === "short" ? "short or long" : "long"} rest.` : "No slot can pay for this right now."}</div>}
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 18 }}>
+          {freeToggle ? (
+            <>
+              <button style={btn(true)} onClick={endIt}>End {recipe.name}</button>
+              <button style={btn(false)} onClick={() => commit(false)}>Refresh it</button>
+            </>
+          ) : blocked ? (
+            <>
+              <button style={{ ...btn(true), opacity: 0.4, cursor: "default" }} disabled>{verb}</button>
+              <button style={btn(false)} onClick={() => commit(true)}>{verb} anyway — mark nothing</button>
+            </>
+          ) : (
+            <button style={btn(true)} onClick={() => commit(false)}>{verb}{chosen && chosen.type !== "ritual" && chosen.type !== "tracker" ? " — spend the slot" : ""}</button>
+          )}
+          <button style={{ ...btn(false), borderColor: T.edge, color: T.dim, fontFamily: "inherit", fontWeight: 400, fontSize: 13 }} onClick={() => __showLore && __showLore(recipe.name)}>Read the full text</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, onInvocations, onUpdate, customs }) {
   const lvl = totalLevel(ch);
   const pb = profBonus(lvl);
@@ -4319,6 +4537,17 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   /* ---- the bones: d20 rolls with every modifier the sheet knows about ---- */
   const [rollSpec, setRollSpec] = useState(null);
   const [advMode, setAdvMode] = useState("normal");
+  /* ---- tap to act: a name that resolves to a use recipe opens the prompt; the rest read ---- */
+  const [useTarget, setUseTarget] = useState(null);
+  const openUse = (n) => {
+    if (useRecipe(n, ch, customs)) setUseTarget(n);
+    else if (__showLore) __showLore(n);
+  };
+  const trackerByName = new Map(trackers.map((t) => [baseSubName(t.name).toLowerCase(), t]));
+  const featureSpent = (f) => {
+    const t = trackerByName.get(baseSubName(String(f)).toLowerCase());
+    return t ? Math.min(usedFeats[t.key] || 0, t.max) >= t.max : false;
+  };
   const feats = rollFeatures(ch);
   const saveProfFor = (a) => CLASSES[ch.classes[0].name].saves.includes(a) || feats.diamondSoul || (feats.slipperyMind && a === "wis");
   const saveProfLabel = (a) => (CLASSES[ch.classes[0].name].saves.includes(a) ? "proficiency" : feats.diamondSoul ? "Diamond Soul" : "Slippery Mind");
@@ -4616,9 +4845,9 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
                 <span {...lorePress("Pact Magic")} style={{ textDecoration: "underline dotted", cursor: "help" }}>Pact Magic</span> is separate from spell slots · all pact slots recharge on a short rest
                 <div style={{ color: T.dim, fontSize: 12, marginTop: 4 }}>
                   {(ch.spells?.Warlock?.spells || []).length > 0
-                    ? <>Cast with pact slots (always at level {pact.lvl}): {(ch.spells?.Warlock?.spells || []).map((n, i) => <span key={n} {...lorePress(n)} style={{ color: T.ink }}>{i > 0 ? ", " : ""}{n}</span>)}</>
+                    ? <>Cast with pact slots (always at level {pact.lvl}): {(ch.spells?.Warlock?.spells || []).map((n, i) => <span key={n} {...lorePress(n)} onClick={() => openUse(n)} style={{ color: T.ink, cursor: "pointer" }}>{i > 0 ? ", " : ""}{n}</span>)}</>
                     : "No warlock spells known yet — add them in the Grimoire below to have something to cast with these slots."}
-                  {(ch.spells?.Warlock?.cantrips || []).length > 0 && <> · cantrips are cast at will: {(ch.spells?.Warlock?.cantrips || []).map((n, i) => <span key={n} {...lorePress(n)} style={{ color: T.ink }}>{i > 0 ? ", " : ""}{n}</span>)}</>}
+                  {(ch.spells?.Warlock?.cantrips || []).length > 0 && <> · cantrips are cast at will: {(ch.spells?.Warlock?.cantrips || []).map((n, i) => <span key={n} {...lorePress(n)} onClick={() => openUse(n)} style={{ color: T.ink, cursor: "pointer" }}>{i > 0 ? ", " : ""}{n}</span>)}</>}
                 </div>
               </div>
               {arcLevels.map((aLvl) => (
@@ -4634,9 +4863,9 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         </div>
       )}
 
-      <FeatureUsesCard ch={ch} customs={customs} onUpdate={onUpdate} />
+      <FeatureUsesCard ch={ch} customs={customs} onUpdate={onUpdate} onUse={openUse} />
 
-      <SpellManager ch={ch} customs={customs} onSpells={onSpells} onUpdate={onUpdate} onPrepare={canPrep ? () => setPrepOpen(true) : undefined} />
+      <SpellManager ch={ch} customs={customs} onSpells={onSpells} onUpdate={onUpdate} onPrepare={canPrep ? () => setPrepOpen(true) : undefined} onUse={openUse} />
       {prepOpen && <PrepareSpells ch={ch} customs={customs} onSpells={onSpells} onClose={() => setPrepOpen(false)} />}
       <ChoiceManager ch={ch} customs={customs} onUpdate={onUpdate} />
       <InvocationManager ch={ch} onInvocations={onInvocations} />
@@ -4656,8 +4885,8 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
                     .concat(CLASSES[c.name].asi.includes(l) ? [ASI] : [])
                     .map((f) => ({ l, f })));
                 return items.length ? items.map(({ l, f }, i) => (
-                  <span key={i} {...lorePress(f)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel2, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "3px 9px", fontSize: 12.5, color: T.ink }}>
-                    <span style={{ color: themed, fontSize: 10.5, fontWeight: 700, opacity: 0.9 }}>{l}</span>{f}
+                  <span key={i} {...lorePress(f)} onClick={() => openUse(f)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel2, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "3px 9px", fontSize: 12.5, color: T.ink, cursor: "pointer", opacity: featureSpent(f) ? 0.45 : 1 }}>
+                    <span style={{ color: themed, fontSize: 10.5, fontWeight: 700, opacity: 0.9 }}>{l}</span>{f}{featureSpent(f) ? <span style={{ color: T.dim, fontSize: 10.5 }}>◇ spent</span> : ""}
                   </span>
                 )) : <span style={{ color: T.dim }}>—</span>;
               })()}
@@ -4666,7 +4895,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
             </div>
           </div>
         ))}
-        <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>Note: Extra Attack from multiple classes doesn't stack; Unarmored Defense can only be gained once.</div>
+        <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>Tap a feature to use it — long-press to read. Note: Extra Attack from multiple classes doesn't stack; Unarmored Defense can only be gained once.</div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14, marginTop: 14 }}>
@@ -4687,8 +4916,8 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
             })}
           </div>
           <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>● proficient · ★ expertise (double proficiency) · tap any skill to roll it{feats.jack ? " · Jack of All Trades adds +" + feats.jack + " to the rest" : ""}{feats.reliable ? " · Reliable Talent floors proficient checks at 10" : ""}</div>
-          {ch.feats?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Feats: {ch.feats.map((f, i) => <span key={f} {...lorePress(f)}>{i > 0 ? ", " : ""}{f}</span>)}</div>}
-          {ch.metamagic?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Metamagic: {ch.metamagic.map((m, i) => <span key={m} {...lorePress(m)}>{i > 0 ? ", " : ""}{m}</span>)}</div>}
+          {ch.feats?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Feats: {ch.feats.map((f, i) => <span key={f} {...lorePress(f)} onClick={() => openUse(f)} style={{ cursor: "pointer" }}>{i > 0 ? ", " : ""}{f}</span>)}</div>}
+          {ch.metamagic?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Metamagic: {ch.metamagic.map((m, i) => <span key={m} {...lorePress(m)} onClick={() => openUse(m)} style={{ cursor: "pointer" }}>{i > 0 ? ", " : ""}{m}</span>)}</div>}
           {ch.rangerChoices && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Favored Enemy: {[ch.rangerChoices.favEnemy, ...(ch.rangerChoices.extraEnemies || [])].filter(Boolean).join(", ")} · Natural Explorer: {[ch.rangerChoices.natTerrain, ...(ch.rangerChoices.extraTerrains || [])].filter(Boolean).join(", ")}</div>}
           {ch.choices && Object.entries(ch.choices).filter(([k]) => !CHOICE_KEYS.has(k)).map(([k, v]) => (
             <div key={k} style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>{k}: {v.map((n, i) => <span key={n} {...lorePress(n)}>{i > 0 ? ", " : ""}{n}</span>)}</div>
@@ -4696,7 +4925,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           {ch.styles?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Fighting Styles: {ch.styles.map((f) => `${f} (${STYLE_DESC[f]})`).join(" · ")}</div>}
           <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Proficiencies ({ch.classes[0].name}): {PROF_TEXT[ch.classes[0].name]}{ch.classes.length > 1 ? " — plus multiclass grants (see Chronicle)" : ""}</div>
           {ch.languages?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Languages: {ch.languages.map((l, i) => <span key={l + i} {...lorePress(l)}>{i > 0 ? ", " : ""}{l}</span>)}</div>}
-          <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Racial traits: {RACES[ch.race].traits.map((t, i) => <span key={t} {...lorePress(t.replace(/\s*\(.*$/, ""))}>{i > 0 ? " · " : ""}{t}</span>)}{ch.racialChoices?.ancestry ? ` · ${ch.racialChoices.ancestry} dragon ancestry (${ANCESTRIES[ch.racialChoices.ancestry]})` : ""}{ch.racialChoices?.cantrip ? ` · Cantrip: ${ch.racialChoices.cantrip}` : ""}</div>
+          <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Racial traits: {RACES[ch.race].traits.map((t, i) => <span key={t} {...lorePress(t.replace(/\s*\(.*$/, ""))} onClick={() => openUse(t.replace(/\s*\(.*$/, ""))} style={{ cursor: "pointer" }}>{i > 0 ? " · " : ""}{t}</span>)}{ch.racialChoices?.ancestry ? ` · ${ch.racialChoices.ancestry} dragon ancestry (${ANCESTRIES[ch.racialChoices.ancestry]})` : ""}{ch.racialChoices?.cantrip ? ` · Cantrip: ${ch.racialChoices.cantrip}` : ""}</div>
         </div>
         <div style={{ ...card, padding: 16 }}>
           <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>Notes & Inventory</div>
@@ -4726,7 +4955,14 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
       )}
       {dmgRoll && (
         <DiceTray title={dmgRoll.title} dice={dmgRoll.dice} note={dmgRoll.note} bonus={dmgRoll.bonus} bonusLabel={dmgRoll.bonusLabel}
-          acceptLabel="Done" onAccept={() => setDmgRoll(null)} />
+          acceptLabel={dmgRoll.heal ? "Apply healing" : "Done"}
+          onAccept={(total) => {
+            if (dmgRoll.heal && total > 0 && dmgRaw > 0) onUpdate({ dmg: Math.max(0, dmgRaw - total), log: [...(ch.log || []), `${dmgRoll.title}: healed ${Math.min(total, dmgRaw)} HP.`] });
+            setDmgRoll(null);
+          }} />
+      )}
+      {useTarget && (
+        <UsePrompt key={useTarget} name={useTarget} ch={ch} customs={customs} onUpdate={onUpdate} onDice={setDmgRoll} onClose={() => setUseTarget(null)} />
       )}
       {drinkRoll && (
         <DiceTray title={drinkRoll.title} dice={drinkRoll.dice} bonus={drinkRoll.bonus} bonusLabel="healing"
