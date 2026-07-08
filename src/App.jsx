@@ -54,6 +54,123 @@ const PROF_TEXT = {
 };
 const START_GOLD = { Barbarian: [2, 10], Bard: [5, 10], Cleric: [5, 10], Druid: [2, 10], Fighter: [5, 10], Monk: [5, 1], Paladin: [5, 10], Ranger: [5, 10], Rogue: [4, 10], Sorcerer: [3, 10], Warlock: [4, 10], Wizard: [4, 10] }; // [n]d4 × mult
 
+/* PHB starting equipment. Each slot is an either/or choice; `pick` options open
+   a weapon/focus picker from the named list, choosing `n` of them. `fixed` gear
+   always comes along. */
+const GEAR_LISTS = {
+  simpleMelee: ["Club", "Dagger", "Greatclub", "Handaxe", "Javelin", "Light Hammer", "Mace", "Quarterstaff", "Sickle", "Spear"],
+  simpleRanged: ["Light Crossbow", "Dart", "Shortbow", "Sling"],
+  martialMelee: ["Battleaxe", "Flail", "Glaive", "Greataxe", "Greatsword", "Halberd", "Lance", "Longsword", "Maul", "Morningstar", "Pike", "Rapier", "Scimitar", "Shortsword", "Trident", "War Pick", "Warhammer", "Whip"],
+  martialRanged: ["Blowgun", "Hand Crossbow", "Heavy Crossbow", "Longbow", "Net"],
+  instrument: ["Bagpipes", "Drum", "Dulcimer", "Flute", "Horn", "Lute", "Lyre", "Pan Flute", "Viol"],
+  arcaneFocus: ["Crystal", "Orb", "Rod", "Staff", "Wand"],
+  holySymbol: ["Amulet", "Emblem", "Reliquary"],
+  druidFocus: ["Sprig of Mistletoe", "Totem", "Wooden Staff", "Yew Wand"],
+};
+GEAR_LISTS.simple = [...GEAR_LISTS.simpleMelee, ...GEAR_LISTS.simpleRanged];
+GEAR_LISTS.martial = [...GEAR_LISTS.martialMelee, ...GEAR_LISTS.martialRanged];
+const STARTING_GEAR = {
+  Barbarian: {
+    fixed: [["Explorer's Pack", 1], ["Javelin", 4]],
+    slots: [
+      { name: "Weapon", options: [{ label: "Greataxe", items: [["Greataxe", 1]] }, { label: "Any martial melee weapon", pick: "martialMelee", n: 1 }] },
+      { name: "Backup", options: [{ label: "Two handaxes", items: [["Handaxe", 2]] }, { label: "Any simple weapon", pick: "simple", n: 1 }] },
+    ],
+  },
+  Bard: {
+    fixed: [["Leather Armor", 1], ["Dagger", 1]],
+    slots: [
+      { name: "Weapon", options: [{ label: "Rapier", items: [["Rapier", 1]] }, { label: "Longsword", items: [["Longsword", 1]] }, { label: "Any simple weapon", pick: "simple", n: 1 }] },
+      { name: "Pack", options: [{ label: "Diplomat's Pack", items: [["Diplomat's Pack", 1]] }, { label: "Entertainer's Pack", items: [["Entertainer's Pack", 1]] }] },
+      { name: "Instrument", options: [{ label: "Lute", items: [["Lute", 1]] }, { label: "Any other instrument", pick: "instrument", n: 1 }] },
+    ],
+  },
+  Cleric: {
+    fixed: [["Shield", 1]],
+    slots: [
+      { name: "Weapon", options: [{ label: "Mace", items: [["Mace", 1]] }, { label: "Warhammer (if proficient)", items: [["Warhammer", 1]] }] },
+      { name: "Armor", options: [{ label: "Scale Mail", items: [["Scale Mail", 1]] }, { label: "Leather Armor", items: [["Leather Armor", 1]] }, { label: "Chain Mail (if proficient)", items: [["Chain Mail", 1]] }] },
+      { name: "Ranged", options: [{ label: "Light crossbow + 20 bolts", items: [["Light Crossbow", 1], ["Crossbow Bolts", 20]] }, { label: "Any simple weapon", pick: "simple", n: 1 }] },
+      { name: "Pack", options: [{ label: "Priest's Pack", items: [["Priest's Pack", 1]] }, { label: "Explorer's Pack", items: [["Explorer's Pack", 1]] }] },
+      { name: "Holy symbol", options: [{ label: "A holy symbol", pick: "holySymbol", n: 1 }] },
+    ],
+  },
+  Druid: {
+    fixed: [["Leather Armor", 1], ["Explorer's Pack", 1]],
+    slots: [
+      { name: "Off hand", options: [{ label: "Wooden shield", items: [["Shield", 1]] }, { label: "Any simple weapon", pick: "simple", n: 1 }] },
+      { name: "Weapon", options: [{ label: "Scimitar", items: [["Scimitar", 1]] }, { label: "Any simple melee weapon", pick: "simpleMelee", n: 1 }] },
+      { name: "Druidic focus", options: [{ label: "A druidic focus", pick: "druidFocus", n: 1 }] },
+    ],
+  },
+  Fighter: {
+    fixed: [],
+    slots: [
+      { name: "Armor", options: [{ label: "Chain Mail", items: [["Chain Mail", 1]] }, { label: "Leather + longbow + 20 arrows", items: [["Leather Armor", 1], ["Longbow", 1], ["Arrows", 20]] }] },
+      { name: "Weapons", options: [{ label: "Martial weapon + shield", pick: "martial", n: 1, extra: [["Shield", 1]] }, { label: "Two martial weapons", pick: "martial", n: 2 }] },
+      { name: "Ranged", options: [{ label: "Light crossbow + 20 bolts", items: [["Light Crossbow", 1], ["Crossbow Bolts", 20]] }, { label: "Two handaxes", items: [["Handaxe", 2]] }] },
+      { name: "Pack", options: [{ label: "Dungeoneer's Pack", items: [["Dungeoneer's Pack", 1]] }, { label: "Explorer's Pack", items: [["Explorer's Pack", 1]] }] },
+    ],
+  },
+  Monk: {
+    fixed: [["Dart", 10]],
+    slots: [
+      { name: "Weapon", options: [{ label: "Shortsword", items: [["Shortsword", 1]] }, { label: "Any simple weapon", pick: "simple", n: 1 }] },
+      { name: "Pack", options: [{ label: "Dungeoneer's Pack", items: [["Dungeoneer's Pack", 1]] }, { label: "Explorer's Pack", items: [["Explorer's Pack", 1]] }] },
+    ],
+  },
+  Paladin: {
+    fixed: [["Chain Mail", 1]],
+    slots: [
+      { name: "Weapons", options: [{ label: "Martial weapon + shield", pick: "martial", n: 1, extra: [["Shield", 1]] }, { label: "Two martial weapons", pick: "martial", n: 2 }] },
+      { name: "Backup", options: [{ label: "Five javelins", items: [["Javelin", 5]] }, { label: "Any simple melee weapon", pick: "simpleMelee", n: 1 }] },
+      { name: "Pack", options: [{ label: "Priest's Pack", items: [["Priest's Pack", 1]] }, { label: "Explorer's Pack", items: [["Explorer's Pack", 1]] }] },
+      { name: "Holy symbol", options: [{ label: "A holy symbol", pick: "holySymbol", n: 1 }] },
+    ],
+  },
+  Ranger: {
+    fixed: [["Longbow", 1], ["Arrows", 20]],
+    slots: [
+      { name: "Armor", options: [{ label: "Scale Mail", items: [["Scale Mail", 1]] }, { label: "Leather Armor", items: [["Leather Armor", 1]] }] },
+      { name: "Weapons", options: [{ label: "Two shortswords", items: [["Shortsword", 2]] }, { label: "Two simple melee weapons", pick: "simpleMelee", n: 2 }] },
+      { name: "Pack", options: [{ label: "Dungeoneer's Pack", items: [["Dungeoneer's Pack", 1]] }, { label: "Explorer's Pack", items: [["Explorer's Pack", 1]] }] },
+    ],
+  },
+  Rogue: {
+    fixed: [["Leather Armor", 1], ["Dagger", 2], ["Thieves' Tools", 1]],
+    slots: [
+      { name: "Weapon", options: [{ label: "Rapier", items: [["Rapier", 1]] }, { label: "Shortsword", items: [["Shortsword", 1]] }] },
+      { name: "Ranged", options: [{ label: "Shortbow + 20 arrows", items: [["Shortbow", 1], ["Arrows", 20]] }, { label: "Shortsword", items: [["Shortsword", 1]] }] },
+      { name: "Pack", options: [{ label: "Burglar's Pack", items: [["Burglar's Pack", 1]] }, { label: "Dungeoneer's Pack", items: [["Dungeoneer's Pack", 1]] }, { label: "Explorer's Pack", items: [["Explorer's Pack", 1]] }] },
+    ],
+  },
+  Sorcerer: {
+    fixed: [["Dagger", 2]],
+    slots: [
+      { name: "Weapon", options: [{ label: "Light crossbow + 20 bolts", items: [["Light Crossbow", 1], ["Crossbow Bolts", 20]] }, { label: "Any simple weapon", pick: "simple", n: 1 }] },
+      { name: "Focus", options: [{ label: "Component Pouch", items: [["Component Pouch", 1]] }, { label: "An arcane focus", pick: "arcaneFocus", n: 1 }] },
+      { name: "Pack", options: [{ label: "Dungeoneer's Pack", items: [["Dungeoneer's Pack", 1]] }, { label: "Explorer's Pack", items: [["Explorer's Pack", 1]] }] },
+    ],
+  },
+  Warlock: {
+    fixed: [["Leather Armor", 1], ["Dagger", 2]],
+    slots: [
+      { name: "Weapon", options: [{ label: "Light crossbow + 20 bolts", items: [["Light Crossbow", 1], ["Crossbow Bolts", 20]] }, { label: "Any simple weapon", pick: "simple", n: 1 }] },
+      { name: "Focus", options: [{ label: "Component Pouch", items: [["Component Pouch", 1]] }, { label: "An arcane focus", pick: "arcaneFocus", n: 1 }] },
+      { name: "Pack", options: [{ label: "Scholar's Pack", items: [["Scholar's Pack", 1]] }, { label: "Dungeoneer's Pack", items: [["Dungeoneer's Pack", 1]] }] },
+      { name: "Backup", options: [{ label: "Any simple weapon", pick: "simple", n: 1 }] },
+    ],
+  },
+  Wizard: {
+    fixed: [["Spellbook", 1]],
+    slots: [
+      { name: "Weapon", options: [{ label: "Quarterstaff", items: [["Quarterstaff", 1]] }, { label: "Dagger", items: [["Dagger", 1]] }] },
+      { name: "Focus", options: [{ label: "Component Pouch", items: [["Component Pouch", 1]] }, { label: "An arcane focus", pick: "arcaneFocus", n: 1 }] },
+      { name: "Pack", options: [{ label: "Scholar's Pack", items: [["Scholar's Pack", 1]] }, { label: "Explorer's Pack", items: [["Explorer's Pack", 1]] }] },
+    ],
+  },
+};
+
 /* Subclass-granted spells (SRD). type: granted = always prepared, free; expanded = added to class list options. Keys are class level. */
 const LAND_TERRAINS = {
   Arctic: { 3: ["Hold Person", "Spike Growth"], 5: ["Sleet Storm", "Slow"], 7: ["Freedom of Movement", "Ice Storm"], 9: ["Commune with Nature", "Cone of Cold"] },
@@ -1622,6 +1739,10 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const [natTerrain, setNatTerrain] = useState(null);
   const [persona, setPersona] = useState({ traits: "", ideals: "", bonds: "", flaws: "" });
   const [goldRoll, setGoldRoll] = useState(null);
+  const [gearMode, setGearMode] = useState(null); // 'standard' | 'gold'
+  const [gearPicks, setGearPicks] = useState({}); // slotIdx -> { opt, picks: [] }
+  const [purchases, setPurchases] = useState([]); // { name, qty, price }
+  const [shopQ, setShopQ] = useState("");
   const [langPicks, setLangPicks] = useState([]);
   const [ancestry, setAncestry] = useState(null);
   const [heSkills, setHeSkills] = useState([]);
@@ -1639,23 +1760,52 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const conMod = mod(finalScores.con);
   const hp = clsData.die + conMod + (race === "Hill Dwarf" ? 1 : 0);
 
-  const steps = ["Identity", "Race", "Origins", "Class", "Abilities", "Spells", "Confirm"];
+  const steps = ["Identity", "Race", "Origins", "Class", "Abilities", "Spells", "Gear", "Confirm"];
   const langNeed = (RACE_LANGS[race].choose || 0) + 2; // race choice + Acolyte's two
   const wizCantrips = (customs?.spells || []).filter((x) => x.level === 0 && spellFitsClass(x, "Wizard"));
   const castsAt1 = !!CLASSES[cls].caster && CLASSES[cls].caster !== "half";
   const canCap1 = CANTRIPS_KNOWN[cls] ? CANTRIPS_KNOWN[cls](1) : 0;
   const spellCap1 = castsAt1 ? spellCapacity(cls, 1, finalScores).n : 0;
   const pool1 = (customs?.spells || []).filter((x) => spellFitsClass(x, cls, subclass));
+  const gearPlan = STARTING_GEAR[cls];
+  const slotDone = (i) => {
+    const gp = gearPicks[i];
+    if (!gp) return false;
+    const o = gearPlan.slots[i].options[gp.opt];
+    return o.pick ? (gp.picks || []).length === o.n : true;
+  };
+  const standardReady = gearPlan.slots.every((_, i) => slotDone(i));
+  const spent = purchases.reduce((s, p) => s + p.price * p.qty, 0);
+  const goldLeft = Math.round(((gold ?? 0) - spent) * 100) / 100;
+  const standardItems = () => {
+    const rows = [];
+    const add = (nm, qty) => { const r = rows.find((x) => x.name === nm); if (r) r.qty += qty; else rows.push({ name: nm, qty }); };
+    gearPlan.fixed.forEach(([nm, q]) => add(nm, q));
+    gearPlan.slots.forEach((s, i) => {
+      const gp = gearPicks[i]; const o = s.options[gp.opt];
+      (o.items || []).forEach(([nm, q]) => add(nm, q));
+      (o.extra || []).forEach(([nm, q]) => add(nm, q));
+      (gp.picks || []).forEach((nm) => add(nm, 1));
+    });
+    return rows.map((r) => {
+      const it = findItem(r.name, customs);
+      return it && (isArmorType(it.type) || it.type === "S" || isWeaponType(it.type)) ? { ...r, equipped: true } : r;
+    });
+  };
   const canNext =
     step === 0 ? name.trim().length > 0 :
     step === 1 ? (race !== "Half-Elf" || halfElfPicks.length === 2) :
     step === 2 ? langPicks.length === langNeed && (bg !== "Custom" || bgSkills.length === 2) && (race !== "Dragonborn" || ancestry) && (race !== "Half-Elf" || heSkills.length === 2) && (race !== "High Elf" || heCantrip.trim()) :
     step === 3 ? skills.length === clsData.nSkills && (clsData.subLvl > 1 || subclass) && (cls !== "Fighter" || style) && (cls !== "Rogue" || rogueExp.length === 2) && (cls !== "Ranger" || (favEnemy && natTerrain)) :
+    step === 6 ? (gearMode === "standard" ? standardReady : gearMode === "gold" ? gold !== null : false) :
     true;
 
   const finish = () => {
+    const inventory = gearMode === "standard" ? standardItems() : purchases.map(({ name: nm, qty }) => ({ name: nm, qty }));
     onDone({
-      id: uid(), name: name.trim(), photo, race, background: bg, alignment, gold: gold ?? 0,
+      id: uid(), name: name.trim(), photo, race, background: bg, alignment,
+      gold: gearMode === "standard" ? 10 : Math.max(0, goldLeft),
+      inventory,
       styles: style ? [style] : [], notes: "", persona,
       expertise: rogueExp, metamagic: [], pactBoon: null, invocations: [],
       rangerChoices: cls === "Ranger" ? { favEnemy, natTerrain } : null,
@@ -1666,7 +1816,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
       languages: [...RACE_LANGS[race].fixed, ...langPicks],
       racialChoices: { ancestry: race === "Dragonborn" ? ancestry : null, cantrip: race === "High Elf" ? heCantrip.trim() : null },
       maxHp: hp, hpLog: [{ cls, gained: hp, how: "1st level (max)" }],
-      log: [`Created as ${race} ${cls} 1${style ? ` · ${style}` : ""} · ${bg} · ${alignment}`],
+      log: [`Created as ${race} ${cls} 1${style ? ` · ${style}` : ""} · ${bg} · ${alignment}${gearMode === "standard" ? " · standard gear" : ` · bought gear (${Math.max(0, goldLeft)} gp left)`}`],
     });
   };
 
@@ -1805,7 +1955,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
         <div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10, marginBottom: 16 }}>
             {Object.entries(CLASSES).map(([c, d]) => (
-              <div key={c} onClick={() => { setCls(c); setSkills([]); setSubclass(null); setStyle(null); setRogueExp([]); setFavEnemy(null); setNatTerrain(null); setSpellPicks({ cantrips: [], spells: [] }); }}
+              <div key={c} onClick={() => { setCls(c); setSkills([]); setSubclass(null); setStyle(null); setRogueExp([]); setFavEnemy(null); setNatTerrain(null); setSpellPicks({ cantrips: [], spells: [] }); setGearMode(null); setGearPicks({}); setPurchases([]); setGold(null); setGoldRoll(null); }}
                 style={{ ...card, padding: 12, cursor: "pointer", borderColor: cls === c ? T.gold : T.edge, background: cls === c ? T.panel2 : T.panel }}>
                 <div style={{ fontFamily: "Georgia, serif", fontSize: 16 }}><ClassTag name={c} size={15} /></div>
                 <div style={{ color: T.dim, fontSize: 11, marginTop: 4 }}>d{d.die} · saves {d.saves.map((s) => s.toUpperCase()).join("/")}{d.caster ? ` · ${d.caster} caster` : ""}</div>
@@ -1933,6 +2083,130 @@ function CreateWizard({ onDone, onCancel, customs }) {
 
       {step === 6 && (
         <div style={{ ...card, padding: 20 }}>
+          <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold, marginBottom: 4 }}>Provisions</div>
+          <div style={{ color: T.dim, fontSize: 13, marginBottom: 12 }}>Take the standard {cls} kit, or let fortune fill your purse and outfit yourself.</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginBottom: 14 }}>
+            <div onClick={() => setGearMode("standard")}
+              style={{ ...card, padding: 14, cursor: "pointer", borderColor: gearMode === "standard" ? T.gold : T.edge, background: gearMode === "standard" ? T.panel2 : T.panel }}>
+              <div style={{ color: gearMode === "standard" ? T.gold : T.ink, fontFamily: "Georgia, serif", fontSize: 16 }}><Icon name="shield" /> Standard issue</div>
+              <div style={{ color: T.dim, fontSize: 12, marginTop: 4 }}>The classic {cls} loadout — make your either/or picks below. Comes with a modest 10 gp pouch.</div>
+            </div>
+            <div onClick={() => setGearMode("gold")}
+              style={{ ...card, padding: 14, cursor: "pointer", borderColor: gearMode === "gold" ? T.gold : T.edge, background: gearMode === "gold" ? T.panel2 : T.panel }}>
+              <div style={{ color: gearMode === "gold" ? T.gold : T.ink, fontFamily: "Georgia, serif", fontSize: 16 }}><Icon name="d20" /> Roll for gold</div>
+              <div style={{ color: T.dim, fontSize: 12, marginTop: 4 }}>Fortune decides: {START_GOLD[cls][0]}d4{START_GOLD[cls][1] > 1 ? " × 10" : ""} gp, then buy whatever you can afford.</div>
+            </div>
+          </div>
+
+          {gearMode === "standard" && (
+            <div>
+              {gearPlan.fixed.length > 0 && (
+                <div style={{ color: T.dim, fontSize: 13, marginBottom: 10 }}>
+                  Always included: {gearPlan.fixed.map(([nm, q]) => (
+                    <span key={nm} {...lorePress(nm)} style={{ color: T.ink }}>{q > 1 ? `${nm} ×${q}` : nm}</span>
+                  )).reduce((acc, x, i) => (i === 0 ? [x] : [...acc, " · ", x]), [])}
+                </div>
+              )}
+              {gearPlan.slots.map((s, i) => {
+                const gp = gearPicks[i];
+                const chosen = gp ? s.options[gp.opt] : null;
+                return (
+                  <div key={s.name} style={{ marginBottom: 12 }}>
+                    <div style={{ color: T.gold, fontSize: 13, marginBottom: 6 }}>{s.name}{s.options.length > 1 ? " — choose one" : ""}</div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {s.options.map((o, j) => (
+                        <button key={o.label} style={{ ...btn(gp?.opt === j), padding: "6px 12px", fontSize: 13 }}
+                          onClick={() => setGearPicks({ ...gearPicks, [i]: { opt: j, picks: [] } })}>{o.label}</button>
+                      ))}
+                    </div>
+                    {chosen?.pick && (
+                      <div style={{ marginTop: 8 }}>
+                        <div style={{ color: T.dim, fontSize: 12, marginBottom: 4 }}>Pick {chosen.n} ({(gp.picks || []).length}/{chosen.n}) · long-press to inspect</div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {GEAR_LISTS[chosen.pick].map((nm) => {
+                            const on = (gp.picks || []).includes(nm);
+                            return (
+                              <button key={nm} {...lorePress(nm)} style={{ ...btn(on), padding: "4px 10px", fontSize: 12, minHeight: 0 }}
+                                onClick={() => setGearPicks({ ...gearPicks, [i]: { ...gp, picks: on ? gp.picks.filter((x) => x !== nm) : gp.picks.length < chosen.n ? [...gp.picks, nm] : gp.picks } })}>{nm}</button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {standardReady && (
+                <div style={{ color: T.green, fontSize: 13, marginTop: 4 }}>
+                  ✓ Kit complete: {standardItems().map((r) => (r.qty > 1 ? `${r.name} ×${r.qty}` : r.name)).join(" · ")} — armor and weapons arrive equipped.
+                </div>
+              )}
+            </div>
+          )}
+
+          {gearMode === "gold" && (
+            <div>
+              {gold === null ? (
+                <button style={btn(false)} onClick={() => {
+                  const [n] = START_GOLD[cls];
+                  setGoldRoll({ dice: Array.from({ length: n }, () => ({ sides: 4, value: roll(4) })) });
+                }}><Icon name="d20" /> Roll starting gold ({START_GOLD[cls][0]}d4{START_GOLD[cls][1] > 1 ? " × 10" : ""} gp)</button>
+              ) : (
+                <div>
+                  <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 18 }}>Purse: {goldLeft} gp</div>
+                  {purchases.length > 0 && (
+                    <div style={{ margin: "8px 0" }}>
+                      {purchases.map((p) => (
+                        <span key={p.name} {...lorePress(p.name)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel2, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13 }}>
+                          {p.name}{p.qty > 1 ? ` ×${p.qty}` : ""} <span style={{ color: T.dim, fontSize: 11 }}>{Math.round(p.price * p.qty * 100) / 100} gp</span>
+                          <span style={{ color: T.blood, cursor: "pointer", fontWeight: 700 }} onClick={() =>
+                            setPurchases(p.qty > 1 ? purchases.map((x) => (x.name === p.name ? { ...x, qty: x.qty - 1 } : x)) : purchases.filter((x) => x.name !== p.name))}>✕</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {(customs?.items || []).length > 0 ? (
+                    <div style={{ marginTop: 10 }}>
+                      <input value={shopQ} onChange={(e) => setShopQ(e.target.value)} placeholder="Browse the outfitter's stock…"
+                        style={{ width: "100%", boxSizing: "border-box", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 16 }} />
+                      <LazyList resetKey={shopQ} style={{ maxHeight: 260, marginTop: 6, border: `1px solid ${T.edge}`, borderRadius: 8 }}
+                        items={(customs?.items || []).filter((x) => x.type !== "$" && x.name.toLowerCase().includes(shopQ.toLowerCase()))
+                          .sort((a, b) => searchRank(a.name, shopQ) - searchRank(b.name, shopQ) || a.name.localeCompare(b.name))}
+                        empty={<div style={{ color: T.dim, fontSize: 13, padding: 8 }}>Nothing matches.</div>}
+                        render={(it) => {
+                          const price = parseFloat(it.value) || 0;
+                          const afford = price <= goldLeft;
+                          return (
+                            <div key={it.name} {...lorePress(it.name)} onClick={() => {
+                              if (!afford) return;
+                              const has = purchases.find((p) => p.name === it.name);
+                              setPurchases(has ? purchases.map((p) => (p.name === it.name ? { ...p, qty: p.qty + 1 } : p)) : [...purchases, { name: it.name, qty: 1, price }]);
+                            }} style={{ padding: "9px 8px", borderBottom: `1px solid ${T.edge}`, cursor: afford ? "pointer" : "default", opacity: afford ? 1 : 0.45 }}>
+                              <span style={{ color: T.ink }}>{it.name}</span>
+                              <span style={{ color: T.dim, fontSize: 12 }}> · {ITEM_TYPES[it.type] || it.type}{it.ac ? ` · AC ${it.type === "S" ? "+" : ""}${it.ac}` : ""}{it.dmg1 ? ` · ${it.dmg1}` : ""}</span>
+                              <span style={{ float: "right", color: afford ? T.gold : T.blood, fontSize: 13 }}>{price > 0 ? `${price} gp` : "—"}</span>
+                            </div>
+                          );
+                        }} />
+                      <div style={{ color: T.dim, fontSize: 12, marginTop: 6 }}>Buying is optional — your purse carries over, and the sheet's inventory is always open.</div>
+                    </div>
+                  ) : (
+                    <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>No compendium imported — pocket the coin and buy gear from your sheet's inventory later.</div>
+                  )}
+                </div>
+              )}
+              {goldRoll && (
+                <DiceTray title={`Starting wealth — ${START_GOLD[cls][0]}d4${START_GOLD[cls][1] > 1 ? " × 10" : ""}`} dice={goldRoll.dice}
+                  note="Your inheritance, such as it is." acceptLabel="Pocket it"
+                  onAccept={(total) => { setGold(total * START_GOLD[cls][1]); setGoldRoll(null); }} />
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {step === 7 && (
+        <div style={{ ...card, padding: 20 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <Portrait photo={photo} size={72} name={name} />
             <div>
@@ -1957,20 +2231,16 @@ function CreateWizard({ onDone, onCancel, customs }) {
             ))}
           </div>
           <div style={{ marginTop: 14 }}>
-            {gold === null ? (
-              <button style={btn(false)} onClick={() => {
-                const [n] = START_GOLD[cls];
-                setGoldRoll({ dice: Array.from({ length: n }, () => ({ sides: 4, value: roll(4) })) });
-              }}><Icon name="d20" /> Roll starting gold ({START_GOLD[cls][0]}d4{START_GOLD[cls][1] > 1 ? " × 10" : ""} gp)</button>
-            ) : (
-              <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 18 }}>Starting gold: {gold} gp</div>
-            )}
+            <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 16 }}>
+              Gold: {gearMode === "standard" ? 10 : Math.max(0, goldLeft)} gp
+            </div>
+            <div style={{ color: T.dim, fontSize: 13, marginTop: 4 }}>
+              {(() => {
+                const rows = gearMode === "standard" ? standardItems() : purchases;
+                return rows.length ? "Gear: " + rows.map((r) => (r.qty > 1 ? `${r.name} ×${r.qty}` : r.name)).join(" · ") : "Traveling light — no gear yet.";
+              })()}
+            </div>
           </div>
-          {goldRoll && (
-            <DiceTray title={`Starting wealth — ${START_GOLD[cls][0]}d4${START_GOLD[cls][1] > 1 ? " × 10" : ""}`} dice={goldRoll.dice}
-              note="Your inheritance, such as it is." acceptLabel="Pocket it"
-              onAccept={(total) => { setGold(total * START_GOLD[cls][1]); setGoldRoll(null); }} />
-          )}
           <div style={{ marginTop: 14, color: T.ink }}>HP <b style={{ color: T.gold }}>{hp}</b> (max d{clsData.die} + CON{race === "Hill Dwarf" ? " + Dwarven Toughness" : ""}) · Speed {raceData.speed} ft · Prof +2</div>
         </div>
       )}
@@ -1978,7 +2248,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20 }}>
         <button style={btn(false)} onClick={() => (step === 0 ? onCancel() : setStep(step - 1))}>{step === 0 ? "Cancel" : "Back"}</button>
         <button style={{ ...btn(true), opacity: canNext ? 1 : 0.4 }} disabled={!canNext}
-          onClick={() => (step === 6 ? finish() : setStep(step + 1))}>{step === 6 ? "Forge Character" : "Next"}</button>
+          onClick={() => (step === 7 ? finish() : setStep(step + 1))}>{step === 7 ? "Forge Character" : "Next"}</button>
       </div>
     </div>
   );
