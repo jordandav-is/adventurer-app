@@ -2283,6 +2283,169 @@ function shareCustomsFor(ch, customs) {
   };
 }
 
+/* ---- the share card: a hand-drawn banner worth its pixels ----
+   Link unfurlers never run JavaScript, and a static host serves every visitor
+   the same HTML — so a per-character link preview is physically impossible
+   here. This is better: the OWNER's device holds everything (even the portrait
+   that stays out of the link), so the share sheet paints a full 1200×630
+   character card and sends it through the native share tray as a real image,
+   beside the link. The recipient sees the character, not a favicon. */
+const SHARE_W = 1200, SHARE_H = 630;
+const CARD_SERIF = 'Georgia, "Liberation Serif", "Times New Roman", serif';
+const CARD_SANS = '-apple-system, "SF Pro Text", "DejaVu Sans", system-ui, sans-serif';
+const loadImg = (src) => new Promise((res, rej) => {
+  const img = new Image();
+  img.onload = () => res(img);
+  img.onerror = rej;
+  img.src = src;
+});
+/* ICON_PATHS holds JSX; walk the fragment's children back into SVG markup so
+   the class sigils can be stamped onto a canvas in their class colors */
+function iconDataUri(name, color) {
+  const frag = ICON_PATHS[name];
+  if (!frag) return null;
+  const inner = React.Children.toArray(frag.props.children)
+    .map((el) => `<${el.type} ${Object.entries(el.props).filter(([k]) => k !== "children").map(([k, v]) => `${k}="${v}"`).join(" ")}/>`)
+    .join("");
+  return `data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`
+  )}`;
+}
+const roundedRect = (ctx, x, y, w, h, r) => {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+};
+/* Shrink a line until it fits — a long name deserves the width, not a crop */
+const fitFont = (ctx, text, weight, px, family, maxW) => {
+  for (; px > 20; px -= 2) {
+    ctx.font = `${weight} ${px}px ${family}`;
+    if (ctx.measureText(text).width <= maxW) break;
+  }
+  return px;
+};
+const shareLine = (ch, customs) => {
+  const max = effMaxHp(ch);
+  const cur = Math.max(0, max - Math.max(0, ch.dmg || 0));
+  return `${ch.name} — ${ch.race} ${ch.classes.map((c) => `${c.name} ${c.level}`).join(" / ")} · HP ${cur}/${max} · AC ${armorClass(ch, customs).ac}`;
+};
+async function drawShareCard(ch, customs) {
+  const cv = document.createElement("canvas");
+  cv.width = SHARE_W; cv.height = SHARE_H;
+  const ctx = cv.getContext("2d");
+  const maxHp = effMaxHp(ch), curHp = Math.max(0, maxHp - Math.max(0, ch.dmg || 0));
+  const hpRatio = maxHp ? curHp / maxHp : 0;
+  const hpColor = hpRatio > 0.5 ? T.green : hpRatio > 0.25 ? T.gold : "#d76a76";
+  const lvl = totalLevel(ch), photo = ch.photo ? await loadImg(ch.photo).catch(() => null) : null;
+
+  // the ground, and the horizon sinking along the card's foot as it does on the roster
+  ctx.fillStyle = T.bg;
+  ctx.fillRect(0, 0, SHARE_W, SHARE_H);
+  const horizon = await loadImg("./horizon.jpg").catch(() => null);
+  if (horizon) {
+    const hh = 320;
+    const scale = Math.max(SHARE_W / horizon.width, hh / horizon.height);
+    const sw = SHARE_W / scale, sh = hh / scale;
+    ctx.globalAlpha = 0.8;
+    ctx.drawImage(horizon, (horizon.width - sw) / 2, Math.min(horizon.height - sh, horizon.height * 0.62 - sh / 2), sw, sh, 0, SHARE_H - hh, SHARE_W, hh);
+    ctx.globalAlpha = 1;
+    const veil = ctx.createLinearGradient(0, SHARE_H - hh, 0, SHARE_H);
+    veil.addColorStop(0, T.bg); veil.addColorStop(0.45, `${T.bg}cc`); veil.addColorStop(1, `${T.bg}22`);
+    ctx.fillStyle = veil;
+    ctx.fillRect(0, SHARE_H - hh, SHARE_W, hh);
+  }
+  // a double gold rule, like the cover of a good book
+  ctx.strokeStyle = `${T.gold}99`; ctx.lineWidth = 3;
+  ctx.strokeRect(16, 16, SHARE_W - 32, SHARE_H - 32);
+  ctx.strokeStyle = `${T.gold}40`; ctx.lineWidth = 1;
+  ctx.strokeRect(26, 26, SHARE_W - 52, SHARE_H - 52);
+
+  // masthead
+  const X = 64;
+  ctx.fillStyle = T.dim;
+  ctx.font = `24px ${CARD_SANS}`;
+  try { ctx.letterSpacing = "8px"; } catch { /* older engines: tighter, still fine */ }
+  ctx.fillText("THE ADVENTURER'S LEDGER", X, 92);
+  try { ctx.letterSpacing = "0px"; } catch { /* noop */ }
+
+  // the portrait, if one hangs in the hall — it never rides in the link, but this card is painted at home
+  let rightEdge = SHARE_W - X;
+  if (photo) {
+    const R = 92, cx = SHARE_W - X - R, cy = 168;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+    const pscale = Math.max((R * 2) / photo.width, (R * 2) / photo.height);
+    ctx.drawImage(photo, cx - (photo.width * pscale) / 2, cy - (photo.height * pscale) / 2, photo.width * pscale, photo.height * pscale);
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.strokeStyle = T.gold; ctx.lineWidth = 4; ctx.stroke();
+    rightEdge = cx - R - 40;
+  }
+
+  // the name, gold and as large as it can stand
+  ctx.fillStyle = T.gold;
+  fitFont(ctx, ch.name, 700, 88, CARD_SERIF, rightEdge - X);
+  ctx.fillText(ch.name, X, 196);
+
+  // race and classes, each class wearing its sigil and colors
+  let x = X;
+  const midY = 264;
+  ctx.font = `36px ${CARD_SERIF}`;
+  ctx.fillStyle = T.ink;
+  ctx.fillText(ch.race, x, midY);
+  x += ctx.measureText(ch.race).width + 18;
+  for (let i = 0; i < ch.classes.length; i++) {
+    const c = ch.classes[i];
+    const theme = CLASS_THEMES[c.name] || { color: T.ink, icon: "d20" };
+    if (i > 0) {
+      ctx.fillStyle = T.dim; ctx.font = `36px ${CARD_SERIF}`;
+      ctx.fillText("/", x, midY);
+      x += ctx.measureText("/").width + 14;
+    }
+    const sigil = await loadImg(iconDataUri(theme.icon, theme.color)).catch(() => null);
+    if (sigil) { ctx.drawImage(sigil, x, midY - 32, 38, 38); x += 48; }
+    ctx.fillStyle = theme.color; ctx.font = `36px ${CARD_SERIF}`;
+    const label = `${c.name} ${c.level}`;
+    ctx.fillText(label, x, midY);
+    x += ctx.measureText(label).width + 16;
+  }
+
+  // the vitals, as chips: level, hit points with their bar, armor class, proficiency
+  const chipY = 320, chipH = 128, gap = 20;
+  const chips = [
+    { label: "LEVEL", value: `${lvl}`, w: 170 },
+    { label: "HIT POINTS", value: `${curHp} / ${maxHp}`, w: 330, bar: true },
+    { label: "ARMOR CLASS", value: `${armorClass(ch, customs).ac}`, w: 250 },
+    { label: "PROFICIENCY", value: fmtMod(profBonus(lvl)), w: 250 },
+  ];
+  let cx2 = X;
+  for (const chip of chips) {
+    roundedRect(ctx, cx2, chipY, chip.w, chipH, 18);
+    ctx.fillStyle = `${T.panel}e6`; ctx.fill();
+    ctx.strokeStyle = T.edge; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = T.dim; ctx.font = `20px ${CARD_SANS}`;
+    ctx.fillText(chip.label, cx2 + 26, chipY + 40);
+    ctx.fillStyle = chip.bar ? hpColor : chip.label === "LEVEL" ? T.gold : T.ink;
+    ctx.font = `700 54px ${CARD_SERIF}`;
+    ctx.fillText(chip.value, cx2 + 26, chipY + 100);
+    if (chip.bar) {
+      const bw = chip.w - 52, bx = cx2 + 26, by = chipY + 112;
+      roundedRect(ctx, bx, by, bw, 8, 4); ctx.fillStyle = T.panel2; ctx.fill();
+      if (hpRatio > 0) { roundedRect(ctx, bx, by, Math.max(8, bw * hpRatio), 8, 4); ctx.fillStyle = hpColor; ctx.fill(); }
+    }
+    cx2 += chip.w + gap;
+  }
+
+  // the colophon
+  ctx.fillStyle = T.dim; ctx.font = `22px ${CARD_SANS}`;
+  ctx.fillText(`Read-only snapshot · shared ${new Date().toISOString().slice(0, 10)}`, X, SHARE_H - 58);
+  return cv;
+}
+
 /* The payload's first character names its wrapping: "1" deflate-raw, "0" plain.
    Bump `v` if the shape ever changes so old links fail loudly, not weirdly. */
 async function encodeShare(ch, customs) {
@@ -4989,15 +5152,22 @@ function GuideSheet({ onClose }) {
   );
 }
 
-/* The share scroll: forge the link, explain its nature, hand it over. Copying
-   is the primary road; the native share tray appears where the device offers one. */
+/* The share scroll: forge the link, paint the card, hand both over. Copying
+   is the primary road; the native share tray appears where the device offers
+   one, and carries the painted card as a real image beside the link — the
+   only way a static host can put the character's face on a message. */
 function ShareSheet({ ch, customs, onClose }) {
   const [url, setUrl] = useState(null);
   const [failed, setFailed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [card, setCard] = useState(null); // { src, blob } — the painted banner
   useEffect(() => {
     let live = true;
     encodeShare(ch, customs).then((u) => { if (live) setUrl(u); }, () => { if (live) setFailed(true); });
+    drawShareCard(ch, customs)
+      .then((cv) => new Promise((res) => cv.toBlob((b) => res({ src: cv.toDataURL("image/png"), blob: b }), "image/png")))
+      .then((c) => { if (live) setCard(c); })
+      .catch(() => {}); // no card is no tragedy — the link still carries everything
     return () => { live = false; };
   }, [ch, customs]);
   const copy = async () => {
@@ -5012,7 +5182,17 @@ function ShareSheet({ ch, customs, onClose }) {
     }
     setCopied(true);
   };
-  const nativeShare = () => navigator.share({ title: `${ch.name} — The Adventurer's Ledger`, url }).catch(() => {});
+  const nativeShare = async () => {
+    const line = shareLine(ch, customs);
+    // ride with the painted card when the tray accepts files; the link travels in
+    // the text so no app can drop it. Fall back to plain text + url otherwise.
+    if (card?.blob && navigator.canShare?.({ files: [new File([card.blob], "card.png", { type: "image/png" })] })) {
+      const file = new File([card.blob], `${(ch.name || "character").replace(/[^\w -]/g, "")} — character card.png`, { type: "image/png" });
+      try { await navigator.share({ files: [file], text: `${line}\n${url}` }); return; }
+      catch (e) { if (e?.name === "AbortError") return; /* some targets refuse files — send the plain form */ }
+    }
+    navigator.share({ title: `${ch.name} — The Adventurer's Ledger`, text: line, url }).catch(() => {});
+  };
   const point = (text, i) => (
     <div key={i} style={{ display: "flex", gap: 9, fontSize: 13.5, lineHeight: 1.55, marginTop: 8 }}>
       <span style={{ flex: "none", marginTop: 7, width: 5, height: 5, borderRadius: 5, background: T.gold, opacity: 0.75 }} />
@@ -5036,6 +5216,11 @@ function ShareSheet({ ch, customs, onClose }) {
           </div>
         </div>
         <div className="sheet-body" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "6px 20px calc(22px + env(safe-area-inset-bottom))" }}>
+          {card && (
+            <img src={card.src} alt={`${ch.name} — character card`}
+              style={{ width: "100%", display: "block", marginTop: 10, borderRadius: 12, border: `1px solid ${T.edge}` }} />
+          )}
+          {card && <div style={{ color: T.dim, fontSize: 12, marginTop: 6, textAlign: "center" }}>This card travels with the link when you share from here.</div>}
           {[
             "The whole sheet rides inside the link itself — stats, spells, gear, even your homebrew. Nothing is uploaded anywhere.",
             "Anyone holding the link can open it, no passphrase needed. It shows only this character, and nothing they do there can touch your ledger.",
@@ -6307,9 +6492,14 @@ export function SharedView({ token }) {
         const [payload, base] = await Promise.all([decodeShare(token), fetchBaseCompendium()]);
         // the traveling homebrew slice layers over the base compendium, exactly as the owner's does
         const customs = base ? mergeCompendium(payload.x, base).customs : payload.x;
-        if (live) setState({ status: "ok", ch: payload.c, customs, when: payload.t });
+        if (!live) return;
+        // the tab and any bookmark name the soul, not just the app
+        document.title = `${payload.c.name} · ${payload.c.classes.map((c) => `${c.name} ${c.level}`).join(" / ")} — The Adventurer's Ledger`;
+        setState({ status: "ok", ch: payload.c, customs, when: payload.t });
       } catch {
-        if (live) setState({ status: "error" });
+        if (!live) return;
+        document.title = "A faded link — The Adventurer's Ledger";
+        setState({ status: "error" });
       }
     })();
     return () => { live = false; };

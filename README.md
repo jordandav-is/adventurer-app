@@ -21,6 +21,8 @@ Every character sheet has a share button (top right, next to the **?**). It seal
 
 Whoever opens the link sees just that one character, pixel-identical to your sheet, **without needing the passphrase** — the fragment never even reaches GitHub's servers, and the gate stays shut on everything else. Dice and trackers work on the shared page for use at the table, but changes live only on the viewer's screen: your ledger is untouchable from there, and the link is frozen at the moment you shared it (share again after leveling up for a fresh one).
 
+The share sheet also paints a **character card** (name, class sigil, level, HP, AC — and the portrait, which never rides in the link itself) and attaches it as an image when you share from the tray, so the recipient sees the character, not a favicon. The link's own unfurl preview is necessarily the same for every character — messengers build previews without running JavaScript and never see the `#fragment`, so a static host cannot vary it — which is why the app serves a branded banner there (`public/share-banner.jpg`, baked once; `og:` tags in `index.html` point at the deployed Pages URL) and puts the per-character pixels in the attached card instead.
+
 ## Install on iPhone
 Open the Pages URL in **Safari** → Share → **Add to Home Screen**. Runs fullscreen, works offline. Characters live in the phone's localStorage — use **Export ledger** for backups before clearing Safari data.
 
