@@ -5136,12 +5136,12 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
 
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", padding: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "stretch", gap: 10, marginBottom: 16 }}>
         <button style={{ ...btn(false) }} onClick={onBack}>← Roster</button>
         <button aria-label="How this sheet works" title="How this sheet works" onClick={() => setHelpOpen(true)}
-          style={{ flex: "0 0 auto", width: 34, height: 34, borderRadius: 9, cursor: "pointer",
+          style={{ flex: "0 0 auto", width: 44, borderRadius: 12, cursor: "pointer", boxSizing: "border-box",
             border: `1px solid ${T.edge}`, background: T.panel,
-            color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, fontWeight: 700, lineHeight: 1,
+            color: T.gold, fontFamily: "Georgia, serif", fontSize: 18, fontWeight: 700, lineHeight: 1,
             display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.85,
             WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>?</button>
       </div>
