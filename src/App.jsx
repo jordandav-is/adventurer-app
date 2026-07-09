@@ -2258,6 +2258,52 @@ function AbilityStep({ scores, setScores, method, setMethod }) {
   );
 }
 
+/* ============ THE HORIZON — a promise of adventure at the page's foot ============
+   Inline SVG (the CSP admits no outside art): dusk glow, far peaks, a keep on the
+   ridge, wings against the sky. preserveAspectRatio="none" flattens the ranges
+   gracefully when the strip runs thin on phones. */
+function HorizonArt() {
+  return (
+    <div className="horizon" aria-hidden="true">
+      <svg width="100%" height="100%" viewBox="0 0 1440 300" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="hz-sky" x1="0" y1="1" x2="0" y2="0">
+            <stop offset="0" stopColor="#c9a44c" stopOpacity="0.34" />
+            <stop offset="0.45" stopColor="#8e3b46" stopOpacity="0.20" />
+            <stop offset="1" stopColor="#161219" stopOpacity="0" />
+          </linearGradient>
+          <radialGradient id="hz-sun" cx="0.5" cy="0.5" r="0.5">
+            <stop offset="0" stopColor="#e8cf8a" stopOpacity="0.9" />
+            <stop offset="0.55" stopColor="#c9a44c" stopOpacity="0.5" />
+            <stop offset="1" stopColor="#c9a44c" stopOpacity="0" />
+          </radialGradient>
+          <linearGradient id="hz-far" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#4a3c52" />
+            <stop offset="1" stopColor="#2b2330" />
+          </linearGradient>
+        </defs>
+        <rect width="1440" height="300" fill="url(#hz-sky)" />
+        <circle cx="1035" cy="205" r="95" fill="url(#hz-sun)" />
+        <circle cx="1035" cy="205" r="30" fill="#e8cf8a" opacity="0.55" />
+        {/* far range */}
+        <path d="M0 232 L120 152 L215 214 L340 128 L470 222 L600 158 L730 230 L870 138 L1000 216 L1150 158 L1290 220 L1380 178 L1440 205 V300 H0 Z" fill="url(#hz-far)" opacity="0.75" />
+        {/* wings on the wind */}
+        <path d="M368 96 q11 -13 22 0 M400 82 q9 -11 18 0 M428 100 q7 -9 14 0" stroke="#4a3c52" strokeWidth="4" strokeLinecap="round" fill="none" opacity="0.8" />
+        {/* mid ridge bearing the keep */}
+        <path d="M0 262 L170 208 L330 254 L520 214 L700 264 L890 212 L1080 256 L1260 222 L1440 250 V300 H0 Z" fill="#2b2330" />
+        {/* the keep: two towers on the ridge at 890 */}
+        <path d="M872 212 v-26 h5 v6 h5 v-6 h5 v6 h5 v-6 h5 v26 l8 4 v-34 h4 v-10 h3 v10 h4 v36 l6 4 v22 h-56 Z" fill="#221c26" />
+        <path d="M898 146 v36" stroke="#221c26" strokeWidth="2.5" />
+        <path d="M898 146 l13 5 -13 5 Z" fill="#8e3b46" />
+        <circle cx="886" cy="200" r="2.2" fill="#e8cf8a" opacity="0.9" />
+        <circle cx="903" cy="190" r="2.2" fill="#e8cf8a" opacity="0.75" />
+        {/* foreground ridge, darkest */}
+        <path d="M0 285 L240 258 L480 288 L760 262 L1040 290 L1290 268 L1440 282 V300 H0 Z" fill="#120e17" />
+      </svg>
+    </div>
+  );
+}
+
 /* ============ CREATION WIZARD ============ */
 function CreateWizard({ onDone, onCancel, customs }) {
   const [step, setStep] = useState(0);
@@ -5596,6 +5642,13 @@ export default function App() {
         .sheet-tall { height: min(82vh, 700px); height: min(82dvh, 700px); }
         .sheet-cap { max-height: min(88vh, 700px); max-height: min(88dvh, 700px); }
         .sheet-body { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+        /* the horizon: a landscape sliver rising from the page's foot, faded in on a diagonal */
+        .horizon { position: fixed; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 0;
+          height: max(44px, 4.8vh);
+          -webkit-mask-image: linear-gradient(168deg, transparent 10%, #000 60%); mask-image: linear-gradient(168deg, transparent 10%, #000 60%);
+          animation: horizonIn 1.8s ease both; }
+        @media (min-width: 700px) { .horizon { height: clamp(150px, 20vh, 260px); } }
+        @keyframes horizonIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
         [data-lore] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
         .lore-lock, .lore-lock * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
       `}</style>
@@ -5682,6 +5735,8 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {view === "roster" && <HorizonArt />}
 
       {view === "forge" && (
         <HomebrewForge customs={customs} onSave={persistCustom} onBack={() => setView("roster")} />
