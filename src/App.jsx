@@ -4702,6 +4702,156 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onC
   );
 }
 
+/* ---- The guided tour: every tap, hold, and hidden trick the sheet knows, laid out for
+   first-timers. Two gestures run the whole app — tap to act, long-press to read — so the
+   guide leads with that and then walks each panel top to bottom. ---- */
+const SHEET_GUIDE = [
+  {
+    icon: "book", title: "First, the one golden rule",
+    intro: "Nearly everything here is tappable, and two gestures do different things:",
+    items: [
+      ["Tap", "acts — rolls the dice, spends the slot, casts the spell, opens the prompt."],
+      ["Long-press (or right-click)", "reads — reveals the full rules text for any feature, spell, item, background, or trait."],
+      ["Dotted underline", "a quiet hint that there's lore to read underneath. Hold it."],
+    ],
+  },
+  {
+    icon: "up", title: "The header",
+    items: [
+      ["Portrait", "tap it to set a photo from your camera roll."],
+      ["Level Up", "advance a class — choose new features, take or roll HP, and the whole sheet re-derives itself."],
+      ["Proficiency +N", "your proficiency bonus, shown as its own stat card; it scales with total level and feeds every proficient roll."],
+      ["Delete", "asks once more before it's final."],
+    ],
+  },
+  {
+    icon: "d20", title: "Abilities & saving throws",
+    items: [
+      ["Tap an ability card", "rolls an ability check on that score."],
+      ["Tap the “save” line", "rolls that saving throw."],
+      ["● green dot", "marks a save you're proficient in — from your first class only, per multiclass rules."],
+    ],
+  },
+  {
+    icon: "shield", title: "The vital stats row",
+    items: [
+      ["Armor Class", "hold it to see exactly how it's built — armor, Dex, shields, and effects."],
+      ["Hit Points", "the bar tracks current vs. max; temporary HP shows in blue and soaks damage first."],
+      ["Initiative", "tap to roll it."],
+      ["Speed · Hit Dice · Gold · Passive Perception", "read at a glance; Speed turns gold when an effect changes it."],
+    ],
+  },
+  {
+    icon: "sun", title: "In Play — living numbers",
+    items: [
+      ["− Damage / + Heal", "type an amount and apply it; temp HP absorbs damage before real HP does."],
+      ["Short Rest", "recovers pact slots and short-rest features; fleeting effects end."],
+      ["Long Rest", "full HP, every slot and feature back, temp HP cleared, exhaustion eased."],
+      ["Concentration", "take damage while concentrating and a reminder surfaces right here."],
+    ],
+  },
+  {
+    icon: "flame", title: "Active Effects",
+    items: [
+      ["Bestow an effect", "Rage, Bless, Shield of Faith, exhaustion, poisoned — search the list or forge a custom one."],
+      ["They do the math", "an active effect automatically adjusts AC, saves, attack, damage, even max HP."],
+      ["They expire on cue", "each one ends on the right rest or duration, so you never track it by hand."],
+    ],
+  },
+  {
+    icon: "swords", title: "Roll the Bones — attacks & dice",
+    items: [
+      ["Advantage / Disadvantage", "the toggle rides along on every roll until you switch it back."],
+      ["Melee / Ranged / Spell", "quick attack rolls with the right ability and proficiency already baked in."],
+      ["Equipped weapons", "the left half rolls to hit, the blood-red half rolls damage. ▸N shows ammo and ticks down as you fire; ✦ marks a Shillelagh."],
+      ["The dice tray", "shows the d20, every modifier itemized, and the total — and flags a natural crit."],
+    ],
+  },
+  {
+    icon: "sparkles", title: "Spell slots & Pact Magic",
+    items: [
+      ["◆ / ◇ pips", "tap a filled ◆ to spend a slot, an empty ◇ to give one back."],
+      ["Pact Magic", "warlock slots are tracked separately and all return on a short rest."],
+      ["Mystic Arcanum", "each 6th–9th-level arcanum is a single casting per long rest."],
+    ],
+  },
+  {
+    icon: "zen", title: "Feature uses",
+    items: [
+      ["Trackers", "limited-use features — Channel Divinity, Ki, Rage, Bardic Inspiration — get pips you tap to spend and regain."],
+      ["Spent fades", "used-up features dim so you can see at a glance what's still in the tank."],
+    ],
+  },
+  {
+    icon: "book", title: "The Grimoire & choices",
+    items: [
+      ["Manage spells", "add what you know; tap a spell to cast it, spending a slot and rolling attack or damage when it has them."],
+      ["Prepare", "prepared casters get a screen to swap today's list."],
+      ["Metamagic · Invocations · choices", "sorcery points, warlock invocations, and other picks each get their own manager."],
+    ],
+  },
+  {
+    icon: "leaf", title: "Skills",
+    items: [
+      ["Tap any skill", "rolls it with the right ability and proficiency."],
+      ["● proficient · ★ expertise", "expertise doubles your proficiency bonus on that skill."],
+      ["Jack of All Trades · Reliable Talent", "these fold in automatically, noted in the fine print when you have them."],
+    ],
+  },
+  {
+    icon: "hammer", title: "Notes, Chronicle & backups",
+    items: [
+      ["Notes", "free-form scratch space — saved the moment you tap away."],
+      ["Chronicle", "an automatic log of every roll, rest, and change this soul has lived through."],
+      ["Backups", "from the Roster's ⋯ menu, export the whole ledger to a file and import it on any device."],
+    ],
+  },
+];
+
+function GuideSheet({ onClose }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 80, display: "flex", alignItems: "flex-end", justifyContent: "center", animation: "sheetVeil 200ms ease" }} onClick={onClose}>
+      <div className="sheet-cap"
+        style={{ ...card, width: "min(640px, 100%)", borderRadius: "16px 16px 0 0", display: "flex", flexDirection: "column", overflow: "hidden", animation: "sheetRise 300ms cubic-bezier(0.32, 0.72, 0, 1)" }}
+        onClick={(e) => e.stopPropagation()}>
+        <div style={{ flex: "none", padding: "8px 20px 0" }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: T.edge, margin: "0 auto 10px" }} />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+            <div>
+              <div style={{ fontFamily: "Georgia, serif", fontSize: 21, color: T.gold }}>How this sheet works</div>
+              <div style={{ color: T.dim, fontSize: 13, marginTop: 2 }}>Every tap, hold, and hidden trick — the full tour.</div>
+            </div>
+            <button aria-label="Close" onClick={onClose}
+              style={{ background: "none", border: "none", color: T.dim, cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "10px 4px 10px 14px", margin: "-10px -4px", WebkitTapHighlightColor: "transparent" }}>✕</button>
+          </div>
+        </div>
+        <div className="sheet-body" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "6px 20px calc(22px + env(safe-area-inset-bottom))" }}>
+          {SHEET_GUIDE.map((sec, i) => (
+            <div key={i} style={{ marginTop: 18 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
+                <span style={{ color: T.gold, display: "inline-flex" }}><Icon name={sec.icon} size={17} /></span>
+                <span style={{ fontFamily: "Georgia, serif", fontSize: 16.5, color: T.ink }}>{sec.title}</span>
+              </div>
+              {sec.intro && <div style={{ color: T.dim, fontSize: 13, lineHeight: 1.6, marginBottom: 8 }}>{sec.intro}</div>}
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                {sec.items.map(([term, desc], j) => (
+                  <div key={j} style={{ display: "flex", gap: 9, fontSize: 13.5, lineHeight: 1.55 }}>
+                    <span style={{ flex: "none", marginTop: 7, width: 5, height: 5, borderRadius: 5, background: T.gold, opacity: 0.75 }} />
+                    <span style={{ color: T.dim }}><span style={{ color: T.ink, fontWeight: 700 }}>{term}</span> — {desc}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div style={{ color: T.gold, fontSize: 12.5, lineHeight: 1.6, marginTop: 22, paddingTop: 14, borderTop: `1px solid ${T.edge}`, fontStyle: "italic", opacity: 0.85 }}>
+            When in doubt, long-press. Nearly everything on this sheet has its full rules text a hold away.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, onInvocations, onUpdate, customs }) {
   const lvl = totalLevel(ch);
   const pb = profBonus(lvl);
@@ -4781,6 +4931,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     onUpdate({ usedPact: 0, effects: restEffects("short"), usedFeatures: resetUses("short"), ...(refund ? { dmg: Math.max(0, dmgRaw - refund) } : {}) });
   };
   const [prepOpen, setPrepOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false); // the guided tour of every trick this sheet knows
   const [restAsk, setRestAsk] = useState(null); // "short" | "long" — a rest waits for a confirming word
   const longRest = () => {
     onUpdate({ dmg: 0, usedSlots: [], usedPact: 0, usedArcanum: [], tempHp: 0, effects: restEffects("long"), usedFeatures: {} });
@@ -4985,7 +5136,16 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
 
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", padding: 20 }}>
-      <button style={{ ...btn(false), marginBottom: 16 }} onClick={onBack}>← Roster</button>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 16 }}>
+        <button style={{ ...btn(false) }} onClick={onBack}>← Roster</button>
+        <button aria-label="How this sheet works" title="How this sheet works" onClick={() => setHelpOpen(true)}
+          style={{ flex: "0 0 auto", width: 46, height: 46, borderRadius: 13, cursor: "pointer",
+            border: `1px solid ${T.gold}`, background: "linear-gradient(150deg, #2f2635, #221c26)",
+            color: T.gold, fontFamily: "Georgia, serif", fontSize: 25, fontWeight: 700, fontStyle: "italic", lineHeight: 1,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "inset 0 1px 0 #c9a44c33, 0 2px 14px #c9a44c2e",
+            WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>?</button>
+      </div>
 
       <div style={{ ...card, padding: 20, display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
         <label style={{ cursor: "pointer" }} title="Click to change portrait">
@@ -5343,6 +5503,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
             setDrinkRoll(null);
           }} />
       )}
+      {helpOpen && <GuideSheet onClose={() => setHelpOpen(false)} />}
     </div>
   );
 }
