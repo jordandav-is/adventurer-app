@@ -5601,7 +5601,7 @@ export default function App() {
       `}</style>
       <div style={{ textAlign: "center", padding: "26px 14px 6px" }}>
         <div style={{ fontFamily: "Georgia, serif", fontSize: 30, color: T.gold, letterSpacing: 1 }}>The Adventurer's Ledger</div>
-        <div style={{ color: T.dim, fontSize: 13 }}>5e SRD character forge · full multiclass rules · the dice remember</div>
+        <div style={{ color: T.dim, fontSize: 13 }}>5e SRD character forge · full multiclass rules</div>
       </div>
 
       {view === "roster" && (
