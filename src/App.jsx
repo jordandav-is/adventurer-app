@@ -5519,6 +5519,7 @@ export default function App() {
   const [leveling, setLeveling] = useState(false);
   const [customs, setCustoms] = useState(EMPTY_CUSTOM);
   const [ioMsg, setIoMsg] = useState("");
+  const [toolsOpen, setToolsOpen] = useState(false); // the quiet drawer: homebrew, export, import
 
   useEffect(() => {
     (async () => {
@@ -5605,35 +5606,67 @@ export default function App() {
 
       {view === "roster" && (
         <div style={{ maxWidth: 760, margin: "0 auto", padding: 20 }}>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button style={{ ...btn(true), flex: 2, padding: 14, fontSize: 16 }} onClick={() => setView("create")}>＋ Forge a New Character</button>
-            <button style={{ ...btn(false), flex: 1, padding: 14 }} onClick={() => setView("forge")}><Icon name="hammer" /> Homebrew Forge</button>
+          <div style={{ display: "flex", gap: 10, alignItems: "stretch" }}>
+            <button onClick={() => setView("create")}
+              style={{
+                flex: 1, minWidth: 0, cursor: "pointer", textAlign: "center", padding: "15px 18px",
+                borderRadius: 14, border: "1px solid #c9a44c55",
+                background: `linear-gradient(150deg, #a44b57, ${T.blood} 46%, #612a33)`,
+                boxShadow: "0 6px 22px #8e3b4652, inset 0 1px 0 #e8dfd02e",
+                color: T.ink, fontFamily: "Georgia, serif",
+                WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
+              }}>
+              <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: 0.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                <Icon name="d20" size={19} /> Forge a New Character
+              </div>
+              <div style={{ color: "#e8dfd0ab", fontSize: 12, marginTop: 3, fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif' }}>
+                Race, class, and dice — the whole ritual
+              </div>
+            </button>
+            <button aria-label="Ledger tools" title="Homebrew, export & import" onClick={() => setToolsOpen(!toolsOpen)}
+              style={{ flex: "0 0 auto", width: 48, borderRadius: 14, border: `1px solid ${toolsOpen ? T.gold : T.edge}`, background: T.panel,
+                color: toolsOpen ? T.gold : T.dim, fontSize: 22, lineHeight: 1, cursor: "pointer", WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>⋯</button>
           </div>
-          <div style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "center" }}>
-            <button style={{ ...btn(false), fontSize: 13 }} onClick={() => exportLedger(chars, stripBase(customs, __BASE))} disabled={chars.length === 0 && customs.feats.length === 0 && customs.spells.length === 0}><Icon name="down" size={13} /> Export ledger</button>
-            <label style={{ ...btn(false), fontSize: 13, display: "inline-block" }}>
-              <Icon name="up" size={13} /> Import ledger
-              <input type="file" accept="application/json,.json" style={{ display: "none" }}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  e.target.value = "";
-                  if (!f) return;
-                  const r = new FileReader();
-                  r.onload = () => {
-                    try {
-                      const merged = mergeLedger(JSON.parse(r.result), chars, customs);
-                      persist(merged.chars);
-                      persistCustom(merged.customs);
-                      setIoMsg(`Imported ${merged.added} character${merged.added === 1 ? "" : "s"}.`);
-                    } catch (err) {
-                      setIoMsg("Import failed — that file is not a ledger export.");
-                    }
-                  };
-                  r.readAsText(f);
-                }} />
-            </label>
-            {ioMsg && <span style={{ color: T.dim, fontSize: 13 }}>{ioMsg}</span>}
-          </div>
+          {toolsOpen && (() => {
+            const toolRow = { display: "flex", gap: 10, alignItems: "center", width: "100%", boxSizing: "border-box", minHeight: 44, padding: "9px 12px",
+              background: "transparent", border: "none", borderRadius: 8, color: T.ink, fontSize: 14, fontFamily: "inherit", fontWeight: 400,
+              cursor: "pointer", textAlign: "left", WebkitTapHighlightColor: "transparent", touchAction: "manipulation" };
+            const hint = { color: T.dim, fontSize: 12, marginLeft: "auto", textAlign: "right", whiteSpace: "nowrap" };
+            const cantExport = chars.length === 0 && customs.feats.length === 0 && customs.spells.length === 0;
+            return (
+              <div style={{ ...card, marginTop: 8, padding: 6 }}>
+                <button style={{ ...toolRow, whiteSpace: "nowrap" }} onClick={() => { setToolsOpen(false); setView("forge"); }}>
+                  <Icon name="hammer" size={15} /> Homebrew Forge <span style={hint}>subclasses, feats & more</span>
+                </button>
+                <button style={{ ...toolRow, opacity: cantExport ? 0.45 : 1, cursor: cantExport ? "default" : "pointer" }} disabled={cantExport}
+                  onClick={() => exportLedger(chars, stripBase(customs, __BASE))}>
+                  <Icon name="down" size={15} /> Export ledger <span style={hint}>every soul, one file</span>
+                </button>
+                <label style={toolRow}>
+                  <Icon name="up" size={15} /> Import ledger <span style={hint}>merge a saved file</span>
+                  <input type="file" accept="application/json,.json" style={{ display: "none" }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!f) return;
+                      const r = new FileReader();
+                      r.onload = () => {
+                        try {
+                          const merged = mergeLedger(JSON.parse(r.result), chars, customs);
+                          persist(merged.chars);
+                          persistCustom(merged.customs);
+                          setIoMsg(`Imported ${merged.added} character${merged.added === 1 ? "" : "s"}.`);
+                        } catch (err) {
+                          setIoMsg("Import failed — that file is not a ledger export.");
+                        }
+                      };
+                      r.readAsText(f);
+                    }} />
+                </label>
+                {ioMsg && <div style={{ color: T.dim, fontSize: 13, padding: "4px 12px 8px" }}>{ioMsg}</div>}
+              </div>
+            );
+          })()}
           <div style={{ marginTop: 16, display: "grid", gap: 10 }}>
             {chars.length === 0 && <div style={{ ...card, padding: 24, textAlign: "center", color: T.dim }}>The ledger is empty. Forge your first soul above.</div>}
             {chars.map((c) => (
