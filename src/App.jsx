@@ -5619,9 +5619,6 @@ export default function App() {
               <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: 0.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
                 <Icon name="d20" size={19} /> Forge a New Character
               </div>
-              <div style={{ color: "#e8dfd0ab", fontSize: 12, marginTop: 3, fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif' }}>
-                Race, class, and dice — the whole ritual
-              </div>
             </button>
             <button aria-label="Ledger tools" title="Homebrew, export & import" onClick={() => setToolsOpen(!toolsOpen)}
               style={{ flex: "0 0 auto", width: 48, borderRadius: 14, border: `1px solid ${toolsOpen ? T.gold : T.edge}`, background: T.panel,
