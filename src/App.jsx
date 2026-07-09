@@ -1378,6 +1378,8 @@ const shillAbil = (ch) => {
   for (const [cls, book] of Object.entries(ch.spells || {})) {
     if (SPELL_ABILITY[cls] && ["cantrips", "spells"].some((k) => (book?.[k] || []).includes("Shillelagh"))) return SPELL_ABILITY[cls];
   }
+  // A Pact of the Tome warlock's Shillelagh lives in the Book of Shadows, cast with Charisma
+  if ((ch.tomeCantrips || []).includes("Shillelagh") && ch.classes.some((c) => c.name === "Warlock")) return SPELL_ABILITY.Warlock;
   return "wis";
 };
 
@@ -5071,6 +5073,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
                 )) : <span style={{ color: T.dim }}>—</span>;
               })()}
               {c.name === "Rogue" && <span style={{ color: T.gold }}> · Sneak Attack {Math.ceil(c.level / 2)}d6</span>}
+              {c.name === "Warlock" && ch.pactBoon && <span {...lorePress(ch.pactBoon)} style={{ color: "#b48ead", cursor: "pointer" }}> · {ch.pactBoon}</span>}
               {c.name === "Warlock" && INVOCATIONS(c.level) > 0 && <span style={{ color: "#b48ead" }}> · Invocations known: {INVOCATIONS(c.level)}</span>}
             </div>
           </div>
