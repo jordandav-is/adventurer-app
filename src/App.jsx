@@ -5139,11 +5139,10 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 16 }}>
         <button style={{ ...btn(false) }} onClick={onBack}>← Roster</button>
         <button aria-label="How this sheet works" title="How this sheet works" onClick={() => setHelpOpen(true)}
-          style={{ flex: "0 0 auto", width: 46, height: 46, borderRadius: 13, cursor: "pointer",
-            border: `1px solid ${T.gold}`, background: "linear-gradient(150deg, #2f2635, #221c26)",
-            color: T.gold, fontFamily: "Georgia, serif", fontSize: 25, fontWeight: 700, fontStyle: "italic", lineHeight: 1,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "inset 0 1px 0 #c9a44c33, 0 2px 14px #c9a44c2e",
+          style={{ flex: "0 0 auto", width: 34, height: 34, borderRadius: 9, cursor: "pointer",
+            border: `1px solid ${T.edge}`, background: T.panel,
+            color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, fontWeight: 700, lineHeight: 1,
+            display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.85,
             WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>?</button>
       </div>
 
