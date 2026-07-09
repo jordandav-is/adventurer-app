@@ -1099,7 +1099,7 @@ function rollNotes(ch, kind, abil) {
   return n;
 }
 
-function RollTray({ title, mode, parts, kind, abil, proficient, extra, ch, onClose }) {
+function RollTray({ title, mode, parts, kind, abil, proficient, extra, ch, onClose, onDamage }) {
   const f = rollFeatures(ch);
   // roll once, in the state initializer — re-renders must not re-throw the bones
   const [res] = useState(() => {
@@ -1153,8 +1153,15 @@ function RollTray({ title, mode, parts, kind, abil, proficient, extra, ch, onClo
             {notes.map((x, i) => <div key={i}>{x}</div>)}
           </div>
         )}
-        <div style={{ marginTop: 14 }}>
-          <button style={{ ...btn(true), opacity: done ? 1 : 0.4 }} disabled={!done} onClick={onClose}>Done</button>
+        <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 14, flexWrap: "wrap" }}>
+          {onDamage ? (
+            <>
+              <button style={btn(false)} onClick={onClose}>{kind === "attack" ? "Miss — done" : "Done"}</button>
+              <button style={{ ...btn(true), opacity: done ? 1 : 0.4 }} disabled={!done} onClick={onDamage}>Roll damage →</button>
+            </>
+          ) : (
+            <button style={{ ...btn(true), opacity: done ? 1 : 0.4 }} disabled={!done} onClick={onClose}>Done</button>
+          )}
         </div>
       </div>
     </div>
@@ -1674,6 +1681,40 @@ function useTrackersFor(ch, customs) {
    spell attack, so the strike uses the weapon's own attack and damage. */
 const isBladeCantrip = (name) => /(booming|green[- ]?flame)\s*blade/i.test(String(name || ""));
 const bladeRiderTier = (lvl) => (lvl >= 17 ? 3 : lvl >= 11 ? 2 : lvl >= 5 ? 1 : 0);
+
+/* ===== The strike framework: read a spell's own words to learn whether casting it wants an
+   attack roll, a saving throw, and/or a damage roll — and how the dice grow (cantrips with
+   character level at 5/11/17; leveled spells with the slot). Returns null for spells that
+   roll no damage, so buffs and utility keep their plain cast. A few projectile spells don't
+   describe their dice the usual way and are pinned by name. ===== */
+const DMG_WORD_CODE = { acid: "A", bludgeoning: "B", cold: "C", fire: "F", force: "FC", lightning: "L", necrotic: "N", piercing: "P", poison: "PS", psychic: "PSY", radiant: "R", slashing: "S", thunder: "T" };
+const SPELL_STRIKE_SPECIAL = {
+  "Magic Missile": { special: "missiles", attack: null, type: "FC", die: 4, plusEach: 1, count: (castLvl) => 3 + Math.max(0, castLvl - 1), what: "dart" },
+  "Eldritch Blast": { special: "beams", attack: "ranged", type: "FC", die: 10, n: 1, count: (castLvl, lvl) => bladeRiderTier(lvl) + 1, what: "beam" },
+  "Scorching Ray": { special: "rays", attack: "ranged", type: "F", die: 6, n: 2, count: (castLvl) => 3 + Math.max(0, castLvl - 2), what: "ray" },
+};
+function strikeProfile(sp) {
+  if (!sp) return null;
+  if (SPELL_STRIKE_SPECIAL[sp.name]) return { name: sp.name, level: sp.level, ...SPELL_STRIKE_SPECIAL[sp.name] };
+  const t = sp.text || "";
+  const dmgM = t.match(/(\d+)d(\d+)\s*(?:\+\s*(\d+)\s*)?(acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder)?\s*damage/i);
+  if (!dmgM) return null; // nothing to roll for damage
+  const atkM = t.match(/make a (ranged|melee) spell attack/i);
+  const saveM = t.match(/\b(strength|dexterity|constitution|intelligence|wisdom|charisma) saving throw/i);
+  // Only a spell attack or a saving throw makes casting a "roll now" strike. Without either, the
+  // dice belong to a rider (Hex, a smite), a summon's own attack, or a mishap — not the cast.
+  if (!atkM && !saveM) return null;
+  const up = t.match(/increases by (\d+)d(\d+) for each slot level above (\d+)/i);
+  return {
+    name: sp.name, level: sp.level,
+    attack: atkM ? atkM[1].toLowerCase() : null,
+    save: saveM ? saveM[1].slice(0, 3).toLowerCase() : null,
+    base: { n: +dmgM[1], sides: +dmgM[2], plus: +(dmgM[3] || 0) },
+    type: dmgM[4] ? DMG_WORD_CODE[dmgM[4].toLowerCase()] : null,
+    upcast: up ? { n: +up[1], sides: +up[2], above: +up[3] } : null,
+    cantripScale: sp.level === 0 && /increases by (?:one die|\d+d\d+) when you reach 5th level/i.test(t),
+  };
+}
 
 function useRecipe(name, ch, customs) {
   const n = String(name || "").trim();
@@ -4431,7 +4472,7 @@ function AddEffectSheet({ ch, customs, existing, onAdd, onClose }) {
    Slots and tracked uses are spent here; catalog effects raise through the same patch the
    Effects card uses; concentration states its eviction before it happens. Pips everywhere
    stay hand-tappable — this sheet is the front door, not the only door. */
-function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onClose }) {
+function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onClose }) {
   const recipe = useRecipe(name, ch, customs);
   const sp = recipe?.sp || null, tracker = recipe?.tracker || null, effs = recipe?.effs || [];
   const [variant, setVariant] = useState(0);
@@ -4442,6 +4483,10 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onClose }) {
   const meleeOptions = blade ? equippedOf(ch).map((r) => findItem(r.name, customs)).filter((x) => x && x.type === "M") : [];
   const bladeLvl = totalLevel(ch);
   const bladeTier = bladeRiderTier(bladeLvl);
+  /* Damaging spells (attack, save, or auto-hit) hand off to the strike flow after paying the
+     cost. A spell that's really a catalog effect (Hex, Armor of Agathys) keeps its effect flow. */
+  const strike = sp && !blade && !eff ? strikeProfile(sp) : null;
+  const damaging = !!strike;
 
   /* ---- every way this could be paid for ---- */
   const slots = spellSlots(ch.classes) || [];
@@ -4538,6 +4583,10 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onClose }) {
       onDice({ title: `${tracker.name} — d${tracker.die}${tracker.dieBonus ? ` + ${tracker.dieBonus}` : ""}`, dice: [{ sides: tracker.die, value: roll(tracker.die) }], bonus: tracker.dieBonus || 0, bonusLabel: tracker.dieBonus ? tracker.dieLabel || "" : "", note: tracker.heal ? "Accept to heal yourself." : "Add it where the feature calls for it.", heal: !!tracker.heal });
     onClose();
   };
+  /* Pay for a damaging spell, then hand its cast level to the strike flow (attack/damage). The
+     effective level scales upcasts: the chosen slot for leveled spells, the character for cantrips. */
+  const strikeCastLvl = sp ? (sp.level === 0 ? 0 : (slotVal || sp.level)) : 0;
+  const finishCast = (free) => { commit(free); if (damaging && onStrike) onStrike(sp, strikeCastLvl); };
   const endIt = () => {
     const refund = instMaxHp(activeInst, ch);
     onUpdate({ effects: effectsOf(ch).filter((e) => e.id !== activeInst.id), ...(refund ? { dmg: Math.max(0, Math.max(0, ch.dmg || 0) - refund) } : {}), log: [...(ch.log || []), `${activeInst.name || recipe.name} ended.`] });
@@ -4617,6 +4666,15 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onClose }) {
         {(eff?.conc || spConc) && !concEnding.length && <div style={{ color: "#b48ead", fontSize: 13, marginTop: 10 }}>◉ Concentration — one at a time; Con save when you take damage.</div>}
         {activeInst && !freeToggle && <div style={{ color: T.dim, fontSize: 12.5, marginTop: 10 }}>Already active — {verb.toLowerCase()}ing again refreshes it rather than stacking.</div>}
         {blocked && <div style={{ color: "#d76a76", fontSize: 13, marginTop: 10 }}>{tracker && chosen?.type === "tracker" ? `Spent — recharges on a ${chosen && tracker.per === "short" ? "short or long" : "long"} rest.` : "No slot can pay for this right now."}</div>}
+        {damaging && (
+          <div style={{ color: T.dim, fontSize: 12.5, marginTop: 10, lineHeight: 1.6 }}>
+            {strike.attack ? `A ${strike.attack} spell attack — roll it, then its damage on a hit.`
+              : strike.save ? `Your target rolls a ${ABIL_NAMES[strike.save]} save — casting rolls the damage.`
+              : strike.special === "missiles" ? "Auto-hit darts — casting rolls their damage together."
+              : "Casting rolls its damage."}
+            {strike.level === 0 && strike.cantripScale ? " Dice grow at levels 5, 11, and 17." : strike.upcast ? " Upcast in a higher slot for more dice." : ""}
+          </div>
+        )}
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 18 }}>
           {blade ? (
@@ -4632,10 +4690,10 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onClose }) {
           ) : blocked ? (
             <>
               <button style={{ ...primaryBtn, opacity: 0.4, cursor: "default" }} disabled>{verb}</button>
-              <button style={btn(false)} onClick={() => commit(true)}>{verb} anyway — mark nothing</button>
+              <button style={btn(false)} onClick={() => finishCast(true)}>{verb} anyway — mark nothing</button>
             </>
           ) : (
-            <button style={primaryBtn} onClick={() => commit(false)}>{verb}</button>
+            <button style={primaryBtn} onClick={() => finishCast(false)}>{damaging ? (strike.attack || strike.special === "beams" || strike.special === "rays" ? `${verb} & attack` : `${verb} & roll damage`) : verb}</button>
           )}
           <button style={{ ...btn(false), borderColor: T.edge, color: T.dim, fontFamily: "inherit", fontWeight: 400, fontSize: 13 }} onClick={() => __showLore && __showLore(recipe.name)}>Read the full text</button>
         </div>
@@ -4871,6 +4929,51 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
       bonusLabel: [weaponAbilLabel(it, abil), dueling ? "Dueling" : null, ...extras.map((b) => b.label)].filter(Boolean).join(" + "),
       note,
     });
+  };
+  /* Which class casts this spell (for the attack bonus, save DC, and scaling) and its ability */
+  const strikeClassOf = (sp) =>
+    ch.classes.find((c) => { const b = (ch.spells || {})[c.name]; return b && ["cantrips", "spells"].some((k) => (b[k] || []).includes(sp.name)); })?.name
+    || ((ch.tomeCantrips || []).includes(sp.name) ? "Warlock" : null)
+    || ch.classes.find((c) => CLASSES[c.name].caster && spellFitsClass(sp, c.name, c.subclass))?.name
+    || ch.classes.find((c) => CLASSES[c.name].caster)?.name || null;
+  const bestMentalMod = () => Math.max(mod(ch.abilities.int), mod(ch.abilities.wis), mod(ch.abilities.cha));
+  /* Casting a damaging spell: roll one d8 of thunder... no — read its profile, roll the spell
+     attack (if any) into pendingDmg, or drop straight to a damage tray for saves and auto-hits.
+     Dice scale by character level for cantrips, by the chosen slot for leveled spells. */
+  const castSpellStrike = (sp, castLvl) => {
+    const prof = strikeProfile(sp);
+    if (!prof) return;
+    const clsName = strikeClassOf(sp);
+    const abil = (clsName && SPELL_ABILITY[clsName]) || (bestMentalMod() === mod(ch.abilities.int) ? "int" : bestMentalMod() === mod(ch.abilities.wis) ? "wis" : "cha");
+    const cmod = mod(ch.abilities[abil]);
+    const dc = 8 + pb + cmod;
+    const rollN = (count, sides) => Array.from({ length: Math.max(0, count) }, () => ({ sides, value: roll(sides) }));
+    const typeWord = DMG_TYPES[prof.type] || "damage";
+    let dice, bonus = 0, bonusLabel = "", extraNote = [];
+    if (prof.special === "missiles") {
+      const darts = prof.count(castLvl);
+      dice = rollN(darts, prof.die); bonus = darts * prof.plusEach; bonusLabel = `${darts} × +${prof.plusEach}`;
+      extraNote.push(`auto-hit · ${darts} ${prof.what}s`);
+    } else if (prof.special === "beams" || prof.special === "rays") {
+      const count = prof.count(castLvl, lvl);
+      dice = rollN(prof.n, prof.die);
+      extraNote.push(`${count} ${prof.what}${count > 1 ? "s" : ""} — roll each ${prof.what}'s attack & this damage`);
+    } else {
+      let n = prof.base.n;
+      // upcast only scales the primary when its die matches (Ice Knife's +1d6 grows a separate burst)
+      if (prof.level === 0 && prof.cantripScale) n = prof.base.n * (1 + bladeRiderTier(lvl));
+      else if (prof.upcast && prof.upcast.sides === prof.base.sides && castLvl > prof.upcast.above) n = prof.base.n + (castLvl - prof.upcast.above) * prof.upcast.n;
+      dice = rollN(n, prof.base.sides); bonus = prof.base.plus || 0; bonusLabel = prof.base.plus ? "flat" : "";
+    }
+    if (prof.save) extraNote.unshift(`${ABIL_NAMES[prof.save]} save DC ${dc}`);
+    const dmgSpec = { title: `${sp.name} damage`, dice, bonus, bonusLabel, note: [typeWord, ...extraNote].filter(Boolean).join(" · ") };
+    if (prof.attack) {
+      const parts = [{ label: ABIL_NAMES[abil], value: cmod }, { label: "proficiency", value: pb }, ...fxAtk("spell", abil)];
+      setRollSpec({ title: `${sp.name} — ${prof.attack} spell attack`, parts, kind: "attack", abil, extra: [`${sp.name}: a ${prof.attack} spell attack — roll damage once it lands.`] });
+      setPendingDmg(dmgSpec);
+    } else {
+      setDmgRoll(dmgSpec); // saves and auto-hits have no attack roll
+    }
   };
   const equippedWeapons = equippedOf(ch).map((r) => findItem(r.name, customs)).filter((x) => x && isWeaponType(x.type));
   const casterClasses = ch.classes.filter((c) => CLASSES[c.name].caster);
@@ -5213,7 +5316,8 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
       {rollSpec && (
         <RollTray key={JSON.stringify(rollSpec) + advMode} title={rollSpec.title} mode={advMode} parts={rollSpec.parts}
           kind={rollSpec.kind} abil={rollSpec.abil} proficient={rollSpec.proficient} extra={rollSpec.extra} ch={ch}
-          onClose={() => { setRollSpec(null); if (pendingDmg) { setDmgRoll(pendingDmg); setPendingDmg(null); } }} />
+          onClose={() => { setRollSpec(null); setPendingDmg(null); }}
+          onDamage={pendingDmg ? () => { const d = pendingDmg; setPendingDmg(null); setRollSpec(null); setDmgRoll(d); } : undefined} />
       )}
       {dmgRoll && (
         <DiceTray title={dmgRoll.title} dice={dmgRoll.dice} note={dmgRoll.note} bonus={dmgRoll.bonus} bonusLabel={dmgRoll.bonusLabel}
@@ -5224,7 +5328,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           }} />
       )}
       {useTarget && (
-        <UsePrompt key={useTarget} name={useTarget} ch={ch} customs={customs} onUpdate={onUpdate} onDice={setDmgRoll} onBlade={castBlade} onClose={() => setUseTarget(null)} />
+        <UsePrompt key={useTarget} name={useTarget} ch={ch} customs={customs} onUpdate={onUpdate} onDice={setDmgRoll} onBlade={castBlade} onStrike={castSpellStrike} onClose={() => setUseTarget(null)} />
       )}
       {drinkRoll && (
         <DiceTray title={drinkRoll.title} dice={drinkRoll.dice} bonus={drinkRoll.bonus} bonusLabel="healing"
