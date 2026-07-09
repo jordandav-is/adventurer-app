@@ -5047,6 +5047,11 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Initiative <Icon name="d20" size={11} style={{ marginRight: 0 }} /></div>
           <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: T.ink }}>{fmtMod(checkPartsFor("dex").reduce((s, p) => s + p.value, 0))}</div>
         </div>
+        <div style={{ ...card, padding: 12, textAlign: "center" }} title={`+${pb} at character level ${lvl} — added to attack rolls, saving throws, and skills you're proficient with (doubled for Expertise)`}>
+          <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Proficiency</div>
+          <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: T.gold }}>{fmtMod(pb)}</div>
+          <div style={{ color: T.dim, fontSize: 10, lineHeight: 1.4 }}>character level {lvl}</div>
+        </div>
         <div style={{ ...card, padding: 12, textAlign: "center" }} title={spd.parts.join(" · ")}>
           <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Speed</div>
           <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: spd.v === 0 ? "#d76a76" : spd.modified ? T.gold : T.ink }}>{spd.v}</div>
