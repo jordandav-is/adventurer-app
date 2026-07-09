@@ -1669,6 +1669,12 @@ function useTrackersFor(ch, customs) {
    it: the spell entry (slot level, ritual flag, concentration in the duration text), any
    catalog effects it raises (Enlarge/Reduce yields two — the prompt offers the choice), and
    the limited-use tracker that pays for it. A name that resolves nothing stays a lore tap. */
+/* Booming Blade & Green-Flame Blade: cantrips cast AS a melee weapon attack whose on-hit
+   elemental rider (thunder / fire) grows at levels 5, 11, 17. They ride the weapon, not a
+   spell attack, so the strike uses the weapon's own attack and damage. */
+const isBladeCantrip = (name) => /(booming|green[- ]?flame)\s*blade/i.test(String(name || ""));
+const bladeRiderTier = (lvl) => (lvl >= 17 ? 3 : lvl >= 11 ? 2 : lvl >= 5 ? 1 : 0);
+
 function useRecipe(name, ch, customs) {
   const n = String(name || "").trim();
   if (!n) return null;
@@ -4425,11 +4431,17 @@ function AddEffectSheet({ ch, customs, existing, onAdd, onClose }) {
    Slots and tracked uses are spent here; catalog effects raise through the same patch the
    Effects card uses; concentration states its eviction before it happens. Pips everywhere
    stay hand-tappable — this sheet is the front door, not the only door. */
-function UsePrompt({ name, ch, customs, onUpdate, onDice, onClose }) {
+function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onClose }) {
   const recipe = useRecipe(name, ch, customs);
   const sp = recipe?.sp || null, tracker = recipe?.tracker || null, effs = recipe?.effs || [];
   const [variant, setVariant] = useState(0);
+  const [bladeWpn, setBladeWpn] = useState(0);
   const eff = effs[Math.min(variant, Math.max(0, effs.length - 1))] || null;
+  /* Blade cantrips (Booming/Green-Flame) are cast AS a melee weapon attack — pick the weapon */
+  const blade = !!sp && isBladeCantrip(sp.name);
+  const meleeOptions = blade ? equippedOf(ch).map((r) => findItem(r.name, customs)).filter((x) => x && x.type === "M") : [];
+  const bladeLvl = totalLevel(ch);
+  const bladeTier = bladeRiderTier(bladeLvl);
 
   /* ---- every way this could be paid for ---- */
   const slots = spellSlots(ch.classes) || [];
@@ -4574,6 +4586,25 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onClose }) {
           <div style={{ marginTop: 14, color: T.dim, fontSize: 13 }}>{sp && sp.level === 0 ? "No cost — cantrips are cast at will." : "No cost — a stance you declare."}</div>
         )}
 
+        {blade && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ color: T.dim, fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>Strike with</div>
+            {meleeOptions.length ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                {meleeOptions.map((it, i) => (
+                  <button key={it.name + i} style={pillOpt(i === Math.min(bladeWpn, meleeOptions.length - 1))} onClick={() => setBladeWpn(i)}>{it.name}</button>
+                ))}
+              </div>
+            ) : (
+              <div style={{ color: "#d76a76", fontSize: 13, marginTop: 6 }}>Equip a melee weapon to strike with {recipe.name}.</div>
+            )}
+            <div style={{ color: T.dim, fontSize: 12.5, marginTop: 8, lineHeight: 1.6 }}>
+              A melee weapon attack. {bladeTier
+                ? `At level ${bladeLvl}, a hit adds +${bladeTier}d8 ${/green[- ]?flame/i.test(sp.name) ? "fire" : "thunder"}.`
+                : "Below 5th level it adds no bonus damage yet — just the weapon's hit."} The attack rolls first, then its damage.
+            </div>
+          </div>
+        )}
         {eff?.input && eff.input.unit !== "slot" && (
           <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12, color: T.dim, fontSize: 13 }}>
             {eff.input.label} ({eff.input.min}–{eff.input.max})
@@ -4588,7 +4619,12 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onClose }) {
         {blocked && <div style={{ color: "#d76a76", fontSize: 13, marginTop: 10 }}>{tracker && chosen?.type === "tracker" ? `Spent — recharges on a ${chosen && tracker.per === "short" ? "short or long" : "long"} rest.` : "No slot can pay for this right now."}</div>}
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 18 }}>
-          {freeToggle ? (
+          {blade ? (
+            <button style={{ ...primaryBtn, opacity: meleeOptions.length ? 1 : 0.4, cursor: meleeOptions.length ? "pointer" : "default" }} disabled={!meleeOptions.length}
+              onClick={() => { const it = meleeOptions[Math.min(bladeWpn, meleeOptions.length - 1)]; if (it) { onBlade(it, sp.name); onClose(); } }}>
+              <Icon name="sword" /> Cast &amp; strike
+            </button>
+          ) : freeToggle ? (
             <>
               <button style={primaryBtn} onClick={endIt}>End {recipe.name}</button>
               <button style={btn(false)} onClick={() => commit(false)}>Refresh it</button>
@@ -4760,6 +4796,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   };
   const acInfo = armorClass(ch, customs, fx);
   const [dmgRoll, setDmgRoll] = useState(null); // { title, dice, bonus, bonusLabel, note }
+  const [pendingDmg, setPendingDmg] = useState(null); // a blade cantrip's damage, held until its attack tray closes
   /* Active-effect attack/damage bonuses, filtered to the attack being made: its scope
      (melee/ranged/weapon/spell), the ability behind the swing (Rage is Strength-only),
      and any required weapon property (Great Weapon Master demands Heavy) */
@@ -4792,6 +4829,47 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
       dice: Array.from({ length: +m[1] }, () => ({ sides: +m[2], value: roll(+m[2]) })),
       bonus, bonusLabel: [weaponAbilLabel(it, abil), dueling ? "Dueling" : null, ...extras.map((b) => b.label)].filter(Boolean).join(" + "),
       note: `${DMG_TYPES[it.dmgType] || "damage"}${it.dmg2 && !shillTarget(it) ? ` · versatile: ${it.dmg2} two-handed` : ""}${(ch.styles || []).includes("Great Weapon Fighting") && props.includes("2H") ? " · GWF: you may reroll 1s and 2s" : ""}${dmgNotes.length ? " · " + dmgNotes.join(" · ") : ""}`,
+    });
+  };
+  /* Booming/Green-Flame Blade: a weapon attack carrying a scaling elemental rider. The bones
+     fall in order — the attack tray first, then its damage tray follows when that one closes. */
+  const bladeSpellMod = () => {
+    const casters = ch.classes.filter((c) => CLASSES[c.name].caster && SPELL_ABILITY[c.name]);
+    return casters.length
+      ? Math.max(...casters.map((c) => mod(ch.abilities[SPELL_ABILITY[c.name]])))
+      : Math.max(mod(ch.abilities.int), mod(ch.abilities.wis), mod(ch.abilities.cha));
+  };
+  const castBlade = (it, name) => {
+    const green = /green[- ]?flame/i.test(name);
+    const cantrip = green ? "Green-Flame Blade" : "Booming Blade";
+    const elem = green ? "fire" : "thunder";
+    const tier = bladeRiderTier(lvl);
+    const abil = weaponAbility(it);
+    const props = (it.property || "").split(",").map((x) => x.trim());
+    const atkParts = [{ label: weaponAbilLabel(it, abil), value: mod(ch.abilities[abil]) }, { label: "proficiency", value: pb }, ...fxAtk("melee", abil, props)];
+    const md = weaponDie(it).match(/(\d+)d(\d+)/);
+    const dueling = (ch.styles || []).includes("Dueling") && it.type === "M" && !props.includes("2H") ? 2 : 0;
+    const extras = fxDmg("melee", abil, props);
+    const bonus = mod(ch.abilities[abil]) + dueling + extras.reduce((s, b) => s + b.value, 0);
+    const wpnDice = md ? Array.from({ length: +md[1] }, () => ({ sides: +md[2], value: roll(+md[2]) })) : [];
+    const riderDice = Array.from({ length: tier }, () => ({ sides: 8, value: roll(8) }));
+    const secondary = green
+      ? `2nd creature within 5 ft takes ${tier ? `${tier}d8 + ` : ""}${bladeSpellMod()} ${elem}`
+      : `if the target then moves: ${1 + tier}d8 thunder`;
+    const note = [
+      `${DMG_TYPES[it.dmgType] || "weapon"}${tier ? ` + ${tier}d8 ${elem} (${cantrip})` : ""}`,
+      tier ? null : `${cantrip}'s bonus damage begins at level 5`,
+      secondary,
+      ...rollNotes(ch, "dmg", abil),
+    ].filter(Boolean).join(" · ");
+    onUpdate({ log: [...(ch.log || []), `Cast ${cantrip} — strike with ${it.name}.`] });
+    setRollSpec({ title: `${cantrip} — ${it.name}`, parts: atkParts, kind: "attack", abil, extra: [`${cantrip}: a melee weapon attack — roll damage once it lands.`] });
+    setPendingDmg({
+      title: `${cantrip} — ${it.name} damage`,
+      dice: [...wpnDice, ...riderDice],
+      bonus,
+      bonusLabel: [weaponAbilLabel(it, abil), dueling ? "Dueling" : null, ...extras.map((b) => b.label)].filter(Boolean).join(" + "),
+      note,
     });
   };
   const equippedWeapons = equippedOf(ch).map((r) => findItem(r.name, customs)).filter((x) => x && isWeaponType(x.type));
@@ -5134,7 +5212,8 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
 
       {rollSpec && (
         <RollTray key={JSON.stringify(rollSpec) + advMode} title={rollSpec.title} mode={advMode} parts={rollSpec.parts}
-          kind={rollSpec.kind} abil={rollSpec.abil} proficient={rollSpec.proficient} extra={rollSpec.extra} ch={ch} onClose={() => setRollSpec(null)} />
+          kind={rollSpec.kind} abil={rollSpec.abil} proficient={rollSpec.proficient} extra={rollSpec.extra} ch={ch}
+          onClose={() => { setRollSpec(null); if (pendingDmg) { setDmgRoll(pendingDmg); setPendingDmg(null); } }} />
       )}
       {dmgRoll && (
         <DiceTray title={dmgRoll.title} dice={dmgRoll.dice} note={dmgRoll.note} bonus={dmgRoll.bonus} bonusLabel={dmgRoll.bonusLabel}
@@ -5145,7 +5224,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           }} />
       )}
       {useTarget && (
-        <UsePrompt key={useTarget} name={useTarget} ch={ch} customs={customs} onUpdate={onUpdate} onDice={setDmgRoll} onClose={() => setUseTarget(null)} />
+        <UsePrompt key={useTarget} name={useTarget} ch={ch} customs={customs} onUpdate={onUpdate} onDice={setDmgRoll} onBlade={castBlade} onClose={() => setUseTarget(null)} />
       )}
       {drinkRoll && (
         <DiceTray title={drinkRoll.title} dice={drinkRoll.dice} bonus={drinkRoll.bonus} bonusLabel="healing"
