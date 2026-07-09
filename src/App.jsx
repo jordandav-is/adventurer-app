@@ -5799,7 +5799,7 @@ export default function App() {
         /* the horizon: a Bierstadt sunset at the page's foot, revealed as if the sky curtain
            were drawn back — the page's own dark bleeds down through most of the painting so
            only the glowing horizon and its lone rider surface, faint and atmospheric */
-        .horizon { position: fixed; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 0;
+        .horizon { position: fixed; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: -1;
           height: clamp(150px, 24vh, 250px); opacity: 0.72;
           background-image: linear-gradient(to bottom, ${T.bg} 0%, ${T.bg}f7 20%, ${T.bg}cc 42%, ${T.bg}80 64%, ${T.bg}33 85%, ${T.bg}00 100%), url('./horizon.jpg');
           background-size: cover; background-position: center 62%;
