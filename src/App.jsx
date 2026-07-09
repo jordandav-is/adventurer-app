@@ -5799,7 +5799,7 @@ export default function App() {
         /* the horizon: a Bierstadt sunset at the page's foot, revealed as if the sky curtain
            were drawn back — the page's own dark bleeds down through most of the painting so
            only the glowing horizon and its lone rider surface, faint and atmospheric */
-        .horizon { position: fixed; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: -1;
+        .horizon { position: fixed; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 0;
           height: clamp(150px, 24vh, 250px); opacity: 0.72;
           background-image: linear-gradient(to bottom, ${T.bg} 0%, ${T.bg}f7 20%, ${T.bg}cc 42%, ${T.bg}80 64%, ${T.bg}33 85%, ${T.bg}00 100%), url('./horizon.jpg');
           background-size: cover; background-position: center 62%;
@@ -5809,13 +5809,13 @@ export default function App() {
         [data-lore] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
         .lore-lock, .lore-lock * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
       `}</style>
-      <div style={{ textAlign: "center", padding: "26px 14px 6px" }}>
+      <div style={{ textAlign: "center", padding: "26px 14px 6px", position: "relative", zIndex: 1 }}>
         <div style={{ fontFamily: "Georgia, serif", fontSize: 30, color: T.gold, letterSpacing: 1 }}>The Adventurer's Ledger</div>
         <div style={{ color: T.dim, fontSize: 13 }}>5e SRD character forge · full multiclass rules</div>
       </div>
 
       {view === "roster" && (
-        <div style={{ maxWidth: 760, margin: "0 auto", padding: 20 }}>
+        <div style={{ maxWidth: 760, margin: "0 auto", padding: 20, position: "relative", zIndex: 1 }}>
           <div style={{ display: "flex", gap: 10, alignItems: "stretch" }}>
             <button onClick={() => setView("create")}
               style={{
