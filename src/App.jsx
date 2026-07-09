@@ -802,6 +802,49 @@ const btn = (primary) => ({
   background: primary ? T.blood : "transparent", color: primary ? T.ink : T.gold,
   border: primary ? `1px solid ${T.blood}` : `1px solid ${T.gold}`, fontFamily: "Georgia, serif",
 });
+/* The sheet's quiet corner buttons — share and the golden ?, exactly as tall as Roster */
+const cornerBtn = {
+  flex: "0 0 auto", width: 44, borderRadius: 12, cursor: "pointer", boxSizing: "border-box",
+  border: `1px solid ${T.edge}`, background: T.panel, color: T.gold, lineHeight: 1,
+  display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.85,
+  WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
+};
+/* One page shell and one stylesheet, worn by the app and by shared sheets alike,
+   so a sheet opened from a link is pixel-for-pixel the sheet its owner sees */
+const SHELL_STYLE = {
+  minHeight: "100vh", background: T.bg, color: T.ink,
+  fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
+  overflowX: "hidden", paddingBottom: "calc(60px + env(safe-area-inset-bottom))", WebkitFontSmoothing: "antialiased",
+};
+const GLOBAL_CSS = `
+  @keyframes diceDrop {
+    0% { transform: translateY(-90px) scale(0.7); opacity: 0; }
+    55% { transform: translateY(0) scale(1.06); opacity: 1; }
+    72% { transform: translateY(-14px) scale(0.98); }
+    86% { transform: translateY(0) scale(1.02); }
+    100% { transform: translateY(0) scale(1); }
+  }
+  @keyframes diceTumbleA { from { transform: rotate3d(1, 0.7, 0.35, -1620deg); } to { transform: rotate3d(1, 0.7, 0.35, 0deg); } }
+  @keyframes diceTumbleB { from { transform: rotate3d(0.6, 1, 0.45, 1440deg); } to { transform: rotate3d(0.6, 1, 0.45, 0deg); } }
+  @keyframes sheetVeil { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes sheetRise { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  /* dvh tracks the true visible viewport on mobile (vh hides under browser chrome); the vh line is the fallback */
+  .sheet-tall { height: min(82vh, 700px); height: min(82dvh, 700px); }
+  .sheet-cap { max-height: min(88vh, 700px); max-height: min(88dvh, 700px); }
+  .sheet-body { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  /* the horizon: a Bierstadt sunset at the page's foot, revealed as if the sky curtain
+     were drawn back — the page's own dark bleeds down through most of the painting so
+     only the glowing horizon and its lone rider surface, faint and atmospheric */
+  .horizon { position: fixed; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 0;
+    height: clamp(150px, 24vh, 250px); opacity: 0.72;
+    background-image: linear-gradient(to bottom, ${T.bg} 0%, ${T.bg}f7 20%, ${T.bg}cc 42%, ${T.bg}80 64%, ${T.bg}33 85%, ${T.bg}00 100%), url('./horizon.jpg');
+    background-size: cover; background-position: center 62%;
+    animation: horizonIn 2.6s ease-out both; }
+  @media (min-width: 700px) { .horizon { height: clamp(200px, 32vh, 360px); } }
+  @keyframes horizonIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 0.72; transform: none; } }
+  [data-lore] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .lore-lock, .lore-lock * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
+`;
 
 /* ============ ICONS (inline SVG, stroke = currentColor) ============ */
 const ICON_PATHS = {
@@ -825,6 +868,7 @@ const ICON_PATHS = {
   eye: <><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></>,
   book: <><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /></>,
   sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" /></>,
+  share: <><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" /><path d="m8 6 4-4 4 4" /><path d="M12 2v13" /></>,
 };
 const Icon = ({ name, size = 15, style }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -2174,6 +2218,98 @@ const allFeats = (customs) => {
   (customs?.feats || []).forEach((f) => map.set(f.name, f)); // imported full text shadows the stub
   return [...map.values()];
 };
+
+/* ============ SHARE — one soul, sealed inside a link ============ */
+/* There is no server to hold a shared sheet, and none is needed: the character
+   itself rides in the URL fragment — JSON, deflated by the browser's native
+   CompressionStream, then base64url. The fragment never leaves the device that
+   opens it (servers don't see fragments), the passphrase gate stays shut on
+   everything else, and the link reveals exactly what its sender chose to put
+   in it: this one character, as they stood that day. */
+const b64uFromBytes = (bytes) => {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+const bytesFromB64u = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+const pipeBytes = async (bytes, transform) => new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(transform)).arrayBuffer());
+
+/* A viewer's browser only carries the base compendium, so any homebrew the
+   character actually leans on — gear in the pack, spells known, their subclass,
+   their feats and rules text — travels with them. Only the referenced slice:
+   a whole imported compendium would sink the link. */
+function shareCustomsFor(ch, customs) {
+  const own = stripBase(customs, __BASE);
+  const norm = (s) => String(s || "").toLowerCase();
+  const spellNames = new Set();
+  const addSpell = (n) => n && spellNames.add(norm(n));
+  Object.values(ch.spells || {}).forEach((b) => {
+    (b.cantrips || []).forEach(addSpell);
+    (b.spells || []).forEach(addSpell);
+    Object.values(b.arcanum || {}).forEach(addSpell);
+  });
+  (ch.tomeCantrips || []).forEach(addSpell);
+  (ch.boasRituals || []).forEach(addSpell);
+  addSpell(ch.racialChoices?.cantrip);
+  Object.values(ch.choices || {}).forEach((v) => (Array.isArray(v) ? v : [v]).forEach(addSpell)); // Magic Initiate and kin
+  const itemNames = new Set((ch.inventory || []).map((r) => norm(r.name)));
+  const subKeep = new Set(ch.classes.flatMap((c) => (c.subclass ? [norm(c.subclass), norm(baseSubName(c.subclass))] : [])));
+  const subs = {};
+  Object.entries(own.subs || {}).forEach(([cls, arr]) => {
+    const keep = arr.filter((s) => subKeep.has(norm(s.name)) || subKeep.has(norm(baseSubName(s.name))));
+    if (keep.length) subs[cls] = keep;
+  });
+  const featureNames = new Set();
+  const addFeature = (n) => n && featureNames.add(norm(baseSubName(String(n).replace(/\s*\(.*$/, ""))));
+  ch.classes.forEach((c) => {
+    for (let l = 1; l <= c.level; l++) {
+      (CLASSES[c.name].feats[l] || []).forEach(addFeature);
+      allSubFeats(c.subclass, l, customs).forEach(addFeature);
+    }
+  });
+  (ch.feats || []).forEach(addFeature);
+  (ch.invocations || []).forEach(addFeature);
+  (ch.metamagic || []).forEach(addFeature);
+  addFeature(ch.pactBoon);
+  (RACES[ch.race]?.traits || []).forEach(addFeature);
+  const featureTexts = {};
+  Object.entries(own.featureTexts || {}).forEach(([k, v]) => { if (featureNames.has(norm(baseSubName(k)))) featureTexts[k] = v; });
+  return {
+    subs,
+    feats: (own.feats || []).filter((f) => (ch.feats || []).some((n) => norm(n) === norm(f.name))),
+    spells: (own.spells || []).filter((sp) => spellNames.has(norm(sp.name))),
+    items: (own.items || []).filter((it) => itemNames.has(norm(it.name))),
+    featureTexts,
+  };
+}
+
+/* The payload's first character names its wrapping: "1" deflate-raw, "0" plain.
+   Bump `v` if the shape ever changes so old links fail loudly, not weirdly. */
+async function encodeShare(ch, customs) {
+  const { photo, log, hpLog, ...soul } = ch; // the portrait is megabytes and the chronicle is history — neither belongs in a link
+  const payload = { v: 1, t: new Date().toISOString().slice(0, 10), c: soul, x: shareCustomsFor(ch, customs) };
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  const canDeflate = typeof CompressionStream !== "undefined";
+  const body = canDeflate ? await pipeBytes(bytes, new CompressionStream("deflate-raw")) : bytes;
+  return `${location.href.split("#")[0]}#share=${canDeflate ? "1" : "0"}${b64uFromBytes(body)}`;
+}
+async function decodeShare(token) {
+  const body = bytesFromB64u(token.slice(1));
+  const json = token[0] === "1"
+    ? new TextDecoder().decode(await pipeBytes(body, new DecompressionStream("deflate-raw")))
+    : token[0] === "0" ? new TextDecoder().decode(body)
+    : null;
+  const payload = JSON.parse(json); // a null or clipped token throws here, and the caller shows the faded-link card
+  const c = payload?.v === 1 ? payload.c : null;
+  // the sheet dereferences race, classes, and abilities without mercy — a link that
+  // doesn't hold all three (mangled, or forged by hand) dies here, on the error card
+  if (!c?.name || !RACES[c.race] || !Array.isArray(c.classes) || !c.classes.length || c.classes.some((x) => !CLASSES[x?.name]) || ABILITIES.some((a) => typeof c.abilities?.[a] !== "number")) {
+    throw new Error("not a shared character");
+  }
+  payload.c = { ...c, photo: null, log: [], skills: Array.isArray(c.skills) ? c.skills : [], maxHp: typeof c.maxHp === "number" ? c.maxHp : 1 };
+  payload.x = { ...EMPTY_CUSTOM, ...(payload.x || {}) };
+  return payload;
+}
 
 
 /* ============ PHOTO ============ */
@@ -4719,6 +4855,7 @@ const SHEET_GUIDE = [
     icon: "up", title: "The header",
     items: [
       ["Portrait", "tap it to set a photo from your camera roll."],
+      ["Share (the arrow-in-a-box)", "seals a read-only snapshot of this sheet into a link your DM can open — no passphrase, no way to touch your ledger."],
       ["Level Up", "advance a class — choose new features, take or roll HP, and the whole sheet re-derives itself."],
       ["Proficiency +N", "your proficiency bonus, shown as its own stat card; it scales with total level and feeds every proficient roll."],
       ["Delete", "asks once more before it's final."],
@@ -4852,7 +4989,84 @@ function GuideSheet({ onClose }) {
   );
 }
 
-function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, onInvocations, onUpdate, customs }) {
+/* The share scroll: forge the link, explain its nature, hand it over. Copying
+   is the primary road; the native share tray appears where the device offers one. */
+function ShareSheet({ ch, customs, onClose }) {
+  const [url, setUrl] = useState(null);
+  const [failed, setFailed] = useState(false);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    let live = true;
+    encodeShare(ch, customs).then((u) => { if (live) setUrl(u); }, () => { if (live) setFailed(true); });
+    return () => { live = false; };
+  }, [ch, customs]);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(url); }
+    catch { // clipboard API needs a secure context; fall back to the old select-and-copy rite
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      ta.style.cssText = "position:fixed;opacity:0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } finally { document.body.removeChild(ta); }
+    }
+    setCopied(true);
+  };
+  const nativeShare = () => navigator.share({ title: `${ch.name} — The Adventurer's Ledger`, url }).catch(() => {});
+  const point = (text, i) => (
+    <div key={i} style={{ display: "flex", gap: 9, fontSize: 13.5, lineHeight: 1.55, marginTop: 8 }}>
+      <span style={{ flex: "none", marginTop: 7, width: 5, height: 5, borderRadius: 5, background: T.gold, opacity: 0.75 }} />
+      <span style={{ color: T.dim }}>{text}</span>
+    </div>
+  );
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 80, display: "flex", alignItems: "flex-end", justifyContent: "center", animation: "sheetVeil 200ms ease" }} onClick={onClose}>
+      <div className="sheet-cap"
+        style={{ ...card, width: "min(640px, 100%)", borderRadius: "16px 16px 0 0", display: "flex", flexDirection: "column", overflow: "hidden", animation: "sheetRise 300ms cubic-bezier(0.32, 0.72, 0, 1)" }}
+        onClick={(e) => e.stopPropagation()}>
+        <div style={{ flex: "none", padding: "8px 20px 0" }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: T.edge, margin: "0 auto 10px" }} />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+            <div>
+              <div style={{ fontFamily: "Georgia, serif", fontSize: 21, color: T.gold }}><Icon name="share" size={18} /> Send to your DM</div>
+              <div style={{ color: T.dim, fontSize: 13, marginTop: 2 }}>A read-only snapshot of {ch.name}, sealed in a link.</div>
+            </div>
+            <button aria-label="Close" onClick={onClose}
+              style={{ background: "none", border: "none", color: T.dim, cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "10px 4px 10px 14px", margin: "-10px -4px", WebkitTapHighlightColor: "transparent" }}>✕</button>
+          </div>
+        </div>
+        <div className="sheet-body" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "6px 20px calc(22px + env(safe-area-inset-bottom))" }}>
+          {[
+            "The whole sheet rides inside the link itself — stats, spells, gear, even your homebrew. Nothing is uploaded anywhere.",
+            "Anyone holding the link can open it, no passphrase needed. It shows only this character, and nothing they do there can touch your ledger.",
+            "It's a snapshot, frozen today. Level up or take a beating tomorrow and the link won't know — share again for a fresh one.",
+          ].map(point)}
+          {failed ? (
+            <div style={{ color: "#d76a76", fontSize: 13, marginTop: 16 }}>The link would not seal — this browser lacks the craft. Try a current Safari, Chrome, or Firefox.</div>
+          ) : (
+            <>
+              <div style={{ marginTop: 16, padding: "10px 12px", background: T.panel2, border: `1px solid ${T.edge}`, borderRadius: 10, color: url ? T.dim : T.edge, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontFamily: "ui-monospace, monospace" }}>
+                {url || "Sealing the link…"}
+              </div>
+              {url && url.length > 8000 && (
+                <div style={{ color: T.dim, fontSize: 12, marginTop: 8 }}>A hefty soul — this link runs long, and some messaging apps clip long links. If it arrives broken, send it by email instead.</div>
+              )}
+              <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                <button style={{ ...btn(true), flex: 1, opacity: url ? 1 : 0.5 }} disabled={!url} onClick={copy}>{copied ? "Copied ✓" : "Copy link"}</button>
+                {typeof navigator !== "undefined" && !!navigator.share && (
+                  <button style={{ ...btn(false), flex: 1, opacity: url ? 1 : 0.5 }} disabled={!url} onClick={nativeShare}><Icon name="share" size={14} /> Share…</button>
+                )}
+              </div>
+              {copied && <div style={{ color: T.green, fontSize: 12.5, marginTop: 10 }}>Copied — paste it anywhere your DM will see it.</div>}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, onInvocations, onUpdate, customs, shared }) {
   const lvl = totalLevel(ch);
   const pb = profBonus(lvl);
   const slots = spellSlots(ch.classes);
@@ -4932,6 +5146,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   };
   const [prepOpen, setPrepOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false); // the guided tour of every trick this sheet knows
+  const [shareOpen, setShareOpen] = useState(false); // the scroll that seals this soul into a link
   const [restAsk, setRestAsk] = useState(null); // "short" | "long" — a rest waits for a confirming word
   const longRest = () => {
     onUpdate({ dmg: 0, usedSlots: [], usedPact: 0, usedArcanum: [], tempHp: 0, effects: restEffects("long"), usedFeatures: {} });
@@ -5137,31 +5352,45 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", padding: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "stretch", gap: 10, marginBottom: 16 }}>
-        <button style={{ ...btn(false) }} onClick={onBack}>← Roster</button>
-        <button aria-label="How this sheet works" title="How this sheet works" onClick={() => setHelpOpen(true)}
-          style={{ flex: "0 0 auto", width: 44, borderRadius: 12, cursor: "pointer", boxSizing: "border-box",
-            border: `1px solid ${T.edge}`, background: T.panel,
-            color: T.gold, fontFamily: "Georgia, serif", fontSize: 18, fontWeight: 700, lineHeight: 1,
-            display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.85,
-            WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>?</button>
+        {shared ? (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "0 14px", borderRadius: 12, border: `1px solid ${T.edge}`, background: T.panel, color: T.dim, fontSize: 13, fontFamily: "Georgia, serif" }}>
+            <Icon name="eye" size={14} style={{ marginRight: 0, color: T.gold }} /> Read-only snapshot
+          </div>
+        ) : (
+          <button style={{ ...btn(false) }} onClick={onBack}>← Roster</button>
+        )}
+        <div style={{ display: "flex", gap: 10, alignItems: "stretch" }}>
+          {!shared && (
+            <button aria-label="Share with your DM" title="Share a read-only snapshot" onClick={() => setShareOpen(true)}
+              style={{ ...cornerBtn, color: T.gold }}><Icon name="share" size={17} style={{ marginRight: 0 }} /></button>
+          )}
+          <button aria-label="How this sheet works" title="How this sheet works" onClick={() => setHelpOpen(true)}
+            style={{ ...cornerBtn, fontFamily: "Georgia, serif", fontSize: 18, fontWeight: 700 }}>?</button>
+        </div>
       </div>
 
       <div style={{ ...card, padding: 20, display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
-        <label style={{ cursor: "pointer" }} title="Click to change portrait">
+        {shared ? (
           <Portrait photo={ch.photo} size={96} name={ch.name} />
-          <input type="file" accept="image/*" onChange={photoUpload} style={{ display: "none" }} />
-        </label>
+        ) : (
+          <label style={{ cursor: "pointer" }} title="Click to change portrait">
+            <Portrait photo={ch.photo} size={96} name={ch.name} />
+            <input type="file" accept="image/*" onChange={photoUpload} style={{ display: "none" }} />
+          </label>
+        )}
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontFamily: "Georgia, serif", fontSize: 28, color: T.gold }}>{ch.name}</div>
           <div style={{ color: T.ink }}>{ch.race} · {ch.classes.map((c, i) => <span key={c.name}>{i > 0 ? " / " : ""}<ClassTag name={c.name} /> {c.level}{c.subclass ? <span style={{ color: T.dim }}> (<span {...lorePress(c.subclass)}>{c.subclass}</span>)</span> : ""}</span>)}</div>
           <div style={{ color: T.dim, fontSize: 13 }}>Character level {lvl} · Proficiency +{pb} · <span {...lorePress(ch.background)} style={{ textDecoration: "underline dotted" }}>{ch.background}</span>{ch.alignment ? ` · ${ch.alignment}` : ""}</div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexDirection: "column" }}>
-          <button style={{ ...btn(true), opacity: lvl >= 20 ? 0.4 : 1 }} disabled={lvl >= 20} onClick={onLevelUp}><Icon name="up" /> Level Up</button>
-          {!confirmDel
-            ? <button style={{ ...btn(false), borderColor: T.blood, color: T.blood }} onClick={() => setConfirmDel(true)}>Delete</button>
-            : <button style={{ ...btn(false), background: T.blood, color: T.ink, borderColor: T.blood }} onClick={onDelete}>Confirm delete?</button>}
-        </div>
+        {!shared && (
+          <div style={{ display: "flex", gap: 8, flexDirection: "column" }}>
+            <button style={{ ...btn(true), opacity: lvl >= 20 ? 0.4 : 1 }} disabled={lvl >= 20} onClick={onLevelUp}><Icon name="up" /> Level Up</button>
+            {!confirmDel
+              ? <button style={{ ...btn(false), borderColor: T.blood, color: T.blood }} onClick={() => setConfirmDel(true)}>Delete</button>
+              : <button style={{ ...btn(false), background: T.blood, color: T.ink, borderColor: T.blood }} onClick={onDelete}>Confirm delete?</button>}
+          </div>
+        )}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 10, marginTop: 14 }}>
@@ -5465,16 +5694,22 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
               {ch.persona.flaws && <div><b style={{ color: T.gold }}>Flaws:</b> {ch.persona.flaws}</div>}
             </div>
           )}
-          <textarea defaultValue={ch.notes || ""} onBlur={(e) => onNotes(e.target.value)} rows={7}
-            placeholder="Equipment, personality traits, ideals, bonds, flaws, debts owed to ravens…"
-            style={{ width: "100%", boxSizing: "border-box", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 16, resize: "vertical", fontFamily: "inherit" }} />
+          {shared ? (
+            <div style={{ color: ch.notes ? T.ink : T.dim, fontSize: 14, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{ch.notes || "No notes recorded."}</div>
+          ) : (
+            <textarea defaultValue={ch.notes || ""} onBlur={(e) => onNotes(e.target.value)} rows={7}
+              placeholder="Equipment, personality traits, ideals, bonds, flaws, debts owed to ravens…"
+              style={{ width: "100%", boxSizing: "border-box", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 16, resize: "vertical", fontFamily: "inherit" }} />
+          )}
         </div>
-        <div style={{ ...card, padding: 16 }}>
-          <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>Chronicle</div>
-          <div style={{ color: T.dim, fontSize: 12, lineHeight: 1.8, maxHeight: 220, overflowY: "auto" }}>
-            {ch.log.map((l, i) => <div key={i}>{l}</div>)}
+        {!shared && ( /* the chronicle is play history — it stays home when a sheet is shared */
+          <div style={{ ...card, padding: 16 }}>
+            <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>Chronicle</div>
+            <div style={{ color: T.dim, fontSize: 12, lineHeight: 1.8, maxHeight: 220, overflowY: "auto" }}>
+              {ch.log.map((l, i) => <div key={i}>{l}</div>)}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {rollSpec && (
@@ -5503,6 +5738,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           }} />
       )}
       {helpOpen && <GuideSheet onClose={() => setHelpOpen(false)} />}
+      {shareOpen && <ShareSheet ch={ch} customs={customs} onClose={() => setShareOpen(false)} />}
     </div>
   );
 }
@@ -5939,36 +6175,8 @@ export default function App() {
   const active = chars.find((c) => c.id === activeId);
 
   return (
-    <div style={{ minHeight: "100vh", background: T.bg, color: T.ink, fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif', overflowX: "hidden", paddingBottom: "calc(60px + env(safe-area-inset-bottom))", WebkitFontSmoothing: "antialiased" }}>
-      <style>{`
-        @keyframes diceDrop {
-          0% { transform: translateY(-90px) scale(0.7); opacity: 0; }
-          55% { transform: translateY(0) scale(1.06); opacity: 1; }
-          72% { transform: translateY(-14px) scale(0.98); }
-          86% { transform: translateY(0) scale(1.02); }
-          100% { transform: translateY(0) scale(1); }
-        }
-        @keyframes diceTumbleA { from { transform: rotate3d(1, 0.7, 0.35, -1620deg); } to { transform: rotate3d(1, 0.7, 0.35, 0deg); } }
-        @keyframes diceTumbleB { from { transform: rotate3d(0.6, 1, 0.45, 1440deg); } to { transform: rotate3d(0.6, 1, 0.45, 0deg); } }
-        @keyframes sheetVeil { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes sheetRise { from { transform: translateY(100%); } to { transform: translateY(0); } }
-        /* dvh tracks the true visible viewport on mobile (vh hides under browser chrome); the vh line is the fallback */
-        .sheet-tall { height: min(82vh, 700px); height: min(82dvh, 700px); }
-        .sheet-cap { max-height: min(88vh, 700px); max-height: min(88dvh, 700px); }
-        .sheet-body { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-        /* the horizon: a Bierstadt sunset at the page's foot, revealed as if the sky curtain
-           were drawn back — the page's own dark bleeds down through most of the painting so
-           only the glowing horizon and its lone rider surface, faint and atmospheric */
-        .horizon { position: fixed; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 0;
-          height: clamp(150px, 24vh, 250px); opacity: 0.72;
-          background-image: linear-gradient(to bottom, ${T.bg} 0%, ${T.bg}f7 20%, ${T.bg}cc 42%, ${T.bg}80 64%, ${T.bg}33 85%, ${T.bg}00 100%), url('./horizon.jpg');
-          background-size: cover; background-position: center 62%;
-          animation: horizonIn 2.6s ease-out both; }
-        @media (min-width: 700px) { .horizon { height: clamp(200px, 32vh, 360px); } }
-        @keyframes horizonIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 0.72; transform: none; } }
-        [data-lore] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-        .lore-lock, .lore-lock * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
-      `}</style>
+    <div style={SHELL_STYLE}>
+      <style>{GLOBAL_CSS}</style>
       <div style={{ textAlign: "center", padding: "26px 14px 6px", position: "relative", zIndex: 1 }}>
         <div style={{ fontFamily: "Georgia, serif", fontSize: 30, color: T.gold, letterSpacing: 1 }}>The Adventurer's Ledger</div>
         <div style={{ color: T.dim, fontSize: 13 }}>5e SRD character forge · full multiclass rules</div>
@@ -6080,5 +6288,73 @@ export default function App() {
 
       <LoreSheet customs={customs} />
     </div>
+  );
+}
+
+/* ============ THE SHARED SHEET — a read-only window on one soul ============ */
+/* Rendered instead of the gated app when the URL carries a #share= fragment
+   (main.jsx makes that call). The character lives only in memory here: dice
+   and trackers work at the table, but a refresh restores the snapshot, and
+   the owner's ledger is a world away. Reusing <Sheet/> keeps this view
+   pixel-identical to the owner's — and every future sheet feature arrives
+   in shared links for free. */
+export function SharedView({ token }) {
+  const [state, setState] = useState({ status: "loading" });
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const [payload, base] = await Promise.all([decodeShare(token), fetchBaseCompendium()]);
+        // the traveling homebrew slice layers over the base compendium, exactly as the owner's does
+        const customs = base ? mergeCompendium(payload.x, base).customs : payload.x;
+        if (live) setState({ status: "ok", ch: payload.c, customs, when: payload.t });
+      } catch {
+        if (live) setState({ status: "error" });
+      }
+    })();
+    return () => { live = false; };
+  }, [token]);
+  const patchCh = (patch) => setState((s) => (s.status === "ok" ? { ...s, ch: { ...s.ch, ...patch } } : s));
+  const shell = (body) => (
+    <div style={SHELL_STYLE}>
+      <style>{GLOBAL_CSS}</style>
+      <div style={{ textAlign: "center", padding: "26px 14px 6px", position: "relative", zIndex: 1 }}>
+        <div style={{ fontFamily: "Georgia, serif", fontSize: 30, color: T.gold, letterSpacing: 1 }}>The Adventurer's Ledger</div>
+        <div style={{ color: T.dim, fontSize: 13 }}>a character sheet, shared</div>
+      </div>
+      {body}
+    </div>
+  );
+  if (state.status === "loading") return shell(
+    <div style={{ padding: 60, textAlign: "center", color: T.dim, fontFamily: "Georgia, serif" }}>Unsealing the scroll…</div>
+  );
+  if (state.status === "error") return shell(
+    <div style={{ maxWidth: 480, margin: "40px auto", padding: 20 }}>
+      <div style={{ ...card, padding: 28, textAlign: "center" }}>
+        <div style={{ fontSize: 38, marginBottom: 10 }}>🕯️</div>
+        <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold }}>This link has faded</div>
+        <div style={{ color: T.dim, fontSize: 13.5, lineHeight: 1.7, marginTop: 10 }}>
+          It doesn't hold a character this ledger can read. Links sometimes arrive clipped by messaging apps,
+          and older browsers lack the craft to unseal them — ask for a fresh link, or open this one in a current browser.
+        </div>
+      </div>
+    </div>
+  );
+  const { ch, customs, when } = state;
+  return shell(
+    <>
+      <div style={{ maxWidth: 860, margin: "0 auto", padding: "14px 20px 0" }}>
+        <div style={{ ...card, padding: "12px 16px", borderColor: `${T.gold}55`, color: T.dim, fontSize: 13, lineHeight: 1.6 }}>
+          <Icon name="eye" size={14} style={{ color: T.gold }} />
+          A snapshot of <b style={{ color: T.ink }}>{ch.name}</b>{when ? `, shared ${when}` : ""}. Dice and trackers work right here at the
+          table, but nothing you touch reaches the owner's ledger — and the sheet won't change as the character grows.
+        </div>
+      </div>
+      <Sheet shared ch={ch} customs={customs}
+        onUpdate={patchCh}
+        onSpells={(sp) => patchCh({ spells: sp })}
+        onInvocations={(inv) => patchCh({ invocations: inv })} />
+      <LoreSheet customs={customs} />
+    </>
   );
 }
