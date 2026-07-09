@@ -2259,10 +2259,10 @@ function AbilityStep({ scores, setScores, method, setMethod }) {
 }
 
 /* ============ THE HORIZON — a promise of adventure at the page's foot ============
-   public/horizon.jpg: Half Dome under a starlit sky ("Photo of Snow-Capped Mountain
-   During Evening", pexels.com/photo/2440024 — Pexels license: free to use and modify;
-   sourced via elementary/wallpapers). Cropped to a wide band and served same-origin,
-   as the CSP admits no outside art. The curtain gradient lives in the .horizon rule. */
+   public/horizon.jpg: Albert Bierstadt (1830–1902), "On the Plains, Sunset" — a lone
+   rider against a blazing prairie sunset, the painter's gold-and-blood palette a twin
+   of the app's own. Public domain (author died 1902). Cropped to a wide band and served
+   same-origin, as the CSP admits no outside art. Curtain gradient lives in .horizon. */
 function HorizonArt() {
   return <div className="horizon" aria-hidden="true" />;
 }
@@ -5605,15 +5605,16 @@ export default function App() {
         .sheet-tall { height: min(82vh, 700px); height: min(82dvh, 700px); }
         .sheet-cap { max-height: min(88vh, 700px); max-height: min(88dvh, 700px); }
         .sheet-body { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-        /* the horizon: a starlit mountain at the page's foot, revealed as if the sky curtain
-           were drawn back — the page's own dark bleeds down into the photograph's night */
+        /* the horizon: a Bierstadt sunset at the page's foot, revealed as if the sky curtain
+           were drawn back — the page's own dark bleeds down through most of the painting so
+           only the glowing horizon and its lone rider surface, faint and atmospheric */
         .horizon { position: fixed; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 0;
-          height: clamp(150px, 26vh, 260px);
-          background-image: linear-gradient(to bottom, ${T.bg} 0%, ${T.bg}f2 8%, ${T.bg}99 30%, ${T.bg}26 55%, ${T.bg}00 80%), url('./horizon.jpg');
-          background-size: cover; background-position: center top;
+          height: clamp(150px, 24vh, 250px); opacity: 0.72;
+          background-image: linear-gradient(to bottom, ${T.bg} 0%, ${T.bg}f7 20%, ${T.bg}cc 42%, ${T.bg}80 64%, ${T.bg}33 85%, ${T.bg}00 100%), url('./horizon.jpg');
+          background-size: cover; background-position: center 62%;
           animation: horizonIn 2.6s ease-out both; }
-        @media (min-width: 700px) { .horizon { height: clamp(220px, 34vh, 400px); } }
-        @keyframes horizonIn { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }
+        @media (min-width: 700px) { .horizon { height: clamp(200px, 32vh, 360px); } }
+        @keyframes horizonIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 0.72; transform: none; } }
         [data-lore] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
         .lore-lock, .lore-lock * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
       `}</style>
