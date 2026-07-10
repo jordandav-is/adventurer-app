@@ -1825,15 +1825,69 @@ const SUMMON_LIB = [
   SM("Feature", "Pact of the Chain", { ends: "manual", role: "Scout", mine: (ch) => ch.pactBoon === "Pact of the Chain", pickNames: ["Imp", "Quasit", "Pseudodragon", "Sprite"], brief: "Your special familiar — imp, quasit, pseudodragon, or sprite — and it can attack in your stead", forms: [
     ["Imp", 10, 13], ["Quasit", 7, 13], ["Pseudodragon", 7, 13], ["Sprite", 2, 15],
   ] }),
+  /* ---- The Summon-spirit family (Tasha's, Fizban's): one spirit whose AC and HP
+     scale with the slot — `slot` is the base level, AC = acPlus + slot level,
+     HP = the form's base + hpStep per slot level above the base. ---- */
+  SM("Spell", "Summon Beast", { ends: "short", conc: true, spirit: true, slot: 2, acPlus: 11, hpStep: 5, role: "Companion", countHint: "Bestial Spirit — AC 11 + slot level · HP 30 (land/water) or 20 (air), +5 per slot level above 2nd", brief: "A bestial spirit answers in air, land, or water form", forms: [
+    { name: "Bestial Spirit (Land)", hp: 30 }, { name: "Bestial Spirit (Water)", hp: 30 }, { name: "Bestial Spirit (Air)", hp: 20 },
+  ] }),
+  SM("Spell", "Summon Fey", { ends: "short", conc: true, spirit: true, slot: 3, acPlus: 12, hpStep: 10, role: "Striker", countHint: "Fey Spirit — AC 12 + slot level · HP 30 + 10 per slot level above 3rd", brief: "A fey spirit in fuming, mirthful, or tricksy mood", forms: [
+    { name: "Fey Spirit (Fuming)", hp: 30 }, { name: "Fey Spirit (Mirthful)", hp: 30 }, { name: "Fey Spirit (Tricksy)", hp: 30 },
+  ] }),
+  SM("Spell", "Summon Undead", { ends: "short", conc: true, spirit: true, slot: 3, acPlus: 11, hpStep: 10, role: "Striker", countHint: "Undead Spirit — AC 11 + slot level · HP 30 (ghostly/putrid) or 20 (skeletal), +10 per slot level above 3rd", brief: "An undead spirit in ghostly, putrid, or skeletal form", forms: [
+    { name: "Undead Spirit (Ghostly)", hp: 30 }, { name: "Undead Spirit (Putrid)", hp: 30 }, { name: "Undead Spirit (Skeletal)", hp: 20 },
+  ] }),
+  SM("Spell", "Summon Shadowspawn", { ends: "short", conc: true, spirit: true, slot: 3, acPlus: 11, hpStep: 15, role: "Striker", countHint: "Shadow Spirit — AC 11 + slot level · HP 35 + 15 per slot level above 3rd", brief: "A shadow spirit of fury, despair, or fear", forms: [
+    { name: "Shadow Spirit (Fury)", hp: 35 }, { name: "Shadow Spirit (Despair)", hp: 35 }, { name: "Shadow Spirit (Fear)", hp: 35 },
+  ] }),
+  SM("Spell", "Summon Aberration", { ends: "short", conc: true, spirit: true, slot: 4, acPlus: 11, hpStep: 10, role: "Striker", countHint: "Aberrant Spirit — AC 11 + slot level · HP 40 + 10 per slot level above 4th", brief: "An aberrant spirit — beholderkin, slaad, or star spawn", forms: [
+    { name: "Aberrant Spirit (Beholderkin)", hp: 40 }, { name: "Aberrant Spirit (Slaad)", hp: 40 }, { name: "Aberrant Spirit (Star Spawn)", hp: 40 },
+  ] }),
+  SM("Spell", "Summon Construct", { ends: "short", conc: true, spirit: true, slot: 4, acPlus: 13, hpStep: 15, role: "Defender", countHint: "Construct Spirit — AC 13 + slot level · HP 40 + 15 per slot level above 4th", brief: "A construct spirit of clay, metal, or stone", forms: [
+    { name: "Construct Spirit (Clay)", hp: 40 }, { name: "Construct Spirit (Metal)", hp: 40 }, { name: "Construct Spirit (Stone)", hp: 40 },
+  ] }),
+  SM("Spell", "Summon Elemental", { ends: "short", conc: true, spirit: true, slot: 4, acPlus: 11, hpStep: 10, role: "Defender", countHint: "Elemental Spirit — AC 11 + slot level · HP 50 + 10 per slot level above 4th", brief: "An elemental spirit of air, earth, fire, or water", forms: [
+    { name: "Elemental Spirit (Air)", hp: 50 }, { name: "Elemental Spirit (Earth)", hp: 50 }, { name: "Elemental Spirit (Fire)", hp: 50 }, { name: "Elemental Spirit (Water)", hp: 50 },
+  ] }),
+  SM("Spell", "Summon Celestial", { ends: "short", conc: true, spirit: true, slot: 5, acPlus: 11, hpStep: 10, role: "Healer", countHint: "Celestial Spirit — AC 11 + slot level (defender +2) · HP 40 + 10 per slot level above 5th", brief: "A celestial spirit as avenger or defender", forms: [
+    { name: "Celestial Spirit (Avenger)", hp: 40 }, { name: "Celestial Spirit (Defender)", hp: 40, acPlus: 13 },
+  ] }),
+  SM("Spell", "Summon Fiend", { ends: "short", conc: true, spirit: true, slot: 6, acPlus: 12, hpStep: 15, role: "Striker", countHint: "Fiendish Spirit — AC 12 + slot level · HP 50 (demon), 40 (devil), or 60 (yugoloth), +15 per slot level above 6th", brief: "A fiendish spirit — demon, devil, or yugoloth", forms: [
+    { name: "Fiendish Spirit (Demon)", hp: 50 }, { name: "Fiendish Spirit (Devil)", hp: 40 }, { name: "Fiendish Spirit (Yugoloth)", hp: 60 },
+  ] }),
+  SM("Spell", "Summon Draconic Spirit", { ends: "short", conc: true, spirit: true, slot: 5, acPlus: 14, hpStep: 10, role: "Striker", countHint: "Draconic Spirit — AC 14 + slot level · HP 50 + 10 per slot level above 5th", brief: "A draconic spirit — chromatic, gem, or metallic", forms: [
+    { name: "Draconic Spirit (Chromatic)", hp: 50 }, { name: "Draconic Spirit (Gem)", hp: 50 }, { name: "Draconic Spirit (Metallic)", hp: 50 },
+  ] }),
   /* ---- The whole bestiary, for everything else: feats, magic items, DM gifts ---- */
   SM("Bestiary", "Any creature", { ends: "manual", role: "Companion", pick: {}, brief: "Every SRD stat block — muster anything a feat, item, or DM's whim can grant", forms: [["Creature", 10, 10]] }),
-].map((d) => ({ ...d, forms: d.forms.map(([name, hp, ac]) => ({ name, hp, ac })) }));
-const SUMMON_BY_KEY = Object.fromEntries(SUMMON_LIB.map((d) => [d.key, d]));
+].map((d) => ({ ...d, forms: d.forms.map((f) => (Array.isArray(f) ? { name: f[0], hp: f[1], ac: f[2] } : f)) }));
 /* Match a tapped spell/feature name to its summon entry — "(Ritual Only)" twins included */
 const summonDefFor = (name) => {
   const n = baseSubName(String(name || "").trim());
   return SUMMON_LIB.find((d) => d.source === n || d.source === String(name || "").trim()) || null;
 };
+/* Spirit arithmetic: the Summon-spirit spells build their creature from the slot */
+const spiritHp = (def, form, slot) => (form.hp || 1) + (def.hpStep || 0) * Math.max(0, (slot || def.slot) - def.slot);
+const spiritAc = (def, form, slot) => (form.acPlus ?? def.acPlus) + (slot || def.slot);
+/* An imported summon spell the catalog doesn't know still gets a muster if its own
+   text carries the spirit formulas ("AC 11 + the level of the spell", "40 + 10 for
+   each spell level above 4th") — the whole def is conjured from the spell. */
+function spiritDefFromSpell(sp) {
+  if (!sp || sp.level == null) return null;
+  const t = String(sp.text || "");
+  const acM = t.match(/armou?r class:?\s*(\d+)\s*\+\s*the (?:level of the spell|spell'?s level)/i);
+  const hpM = t.match(/hit points:?\s*(\d+)[^]{0,80}?\+\s*(\d+)\s*for each spell level above (\d+)/i);
+  if (!acM && !hpM) return null;
+  const base = hpM ? +hpM[3] : sp.level;
+  return {
+    key: `spirit-${slugFx(sp.name)}`, kind: "Spell", source: sp.name,
+    ends: "short", conc: /concentration/i.test(sp.duration || ""), role: "Striker",
+    spirit: true, slot: base, acPlus: acM ? +acM[1] : 10, hpStep: hpM ? +hpM[2] : 0,
+    countHint: `AC ${acM ? acM[1] : "10"} + slot level · HP ${hpM ? `${hpM[1]} + ${hpM[2]} per slot level above ${base}` : "as the spell states"}`,
+    brief: "A summoned spirit — its strength scales with the slot",
+    forms: [{ name: sp.name.replace(/^summon\s+/i, "") + " Spirit", hp: hpM ? +hpM[1] : 20 }],
+  };
+}
 /* Damage a minion the same way the character takes it: temp HP soaks first, then the wound
    is recorded; healing unwinds recorded damage and never overshoots the maximum. */
 const minionHp = (m) => Math.max(0, (m.maxHp || 1) - Math.max(0, m.dmg || 0));
@@ -5019,14 +5073,20 @@ function MinionsCard({ ch, customs, onUpdate, onSummon, readOnly }) {
    choose the form, how many, their HP, their role — and commits one instance per body.
    `preset` (from the Use prompt) skips browsing and lands straight on the source just cast. */
 function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
-  const presetDef = (preset && SUMMON_BY_KEY[preset.key]) || null;
-  const defaultsFor = (d, f) => ({ name: f.name, count: "1", hp: String(f.hp), ac: String(f.ac ?? ""), role: d.role || "Striker" });
+  const presetDef = preset?.def || null;
+  const defaultsFor = (d, f, slot) => ({
+    name: f.name, count: "1", role: d.role || "Striker",
+    hp: String(d.spirit ? spiritHp(d, f, slot) : f.hp),
+    ac: String(d.spirit ? spiritAc(d, f, slot) : (f.ac ?? "")),
+  });
   const [q, setQ] = useState("");
   const [pending, setPending] = useState(presetDef);
   const [form, setForm] = useState(presetDef ? summonFormsFor(presetDef)[0] : null);
   const [formQ, setFormQ] = useState("");
-  const [fields, setFields] = useState(presetDef ? defaultsFor(presetDef, summonFormsFor(presetDef)[0]) : null);
+  const [slotLv, setSlotLv] = useState(preset?.slotLvl || presetDef?.slot || null);
+  const [fields, setFields] = useState(presetDef ? defaultsFor(presetDef, summonFormsFor(presetDef)[0], preset?.slotLvl || presetDef.slot) : null);
   const [custom, setCustom] = useState(null);
+  const slotNow = (d) => (d?.spirit ? Math.max(d.slot, Math.min(9, parseInt(slotLv, 10) || d.slot)) : null);
   /* the page beneath holds still while the sheet is up — only the sheet's own list scrolls */
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -5048,12 +5108,18 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
   ].filter(([, a]) => a.length);
   const pick = (d) => {
     const f = summonFormsFor(d)[0];
-    setPending(d); setForm(f); setFormQ(""); setFields(defaultsFor(d, f));
+    setPending(d); setForm(f); setFormQ(""); setSlotLv(d.slot || null); setFields(defaultsFor(d, f, d.slot));
   };
   const pickForm = (f) => {
     setForm(f);
     // a new form refreshes the stats it owns; the count and a hand-typed role survive
-    setFields((prev) => ({ ...prev, name: f.name, hp: String(f.hp), ac: String(f.ac ?? "") }));
+    const s = slotNow(pending);
+    setFields((prev) => ({ ...prev, name: f.name, hp: String(pending.spirit ? spiritHp(pending, f, s) : f.hp), ac: String(pending.spirit ? spiritAc(pending, f, s) : (f.ac ?? "")) }));
+  };
+  const bumpSlot = (v) => {
+    setSlotLv(v);
+    const s = Math.max(pending.slot, Math.min(9, parseInt(v, 10) || pending.slot));
+    setFields((prev) => ({ ...prev, hp: String(spiritHp(pending, form, s)), ac: String(spiritAc(pending, form, s)) }));
   };
   const addMinions = (def, f, stat) => {
     const nm = (f.name || "").trim() || def.source;
@@ -5142,10 +5208,11 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
                     {shown.map((f) => {
                       const on = form && form.name === f.name;
+                      const hpShown = pending.spirit ? spiritHp(pending, f, slotNow(pending)) : f.hp;
                       return (
                         <button key={f.name} {...(f.stat ? lorePress("creature:" + f.name) : {})} onClick={() => pickForm(f)}
                           style={{ ...btn(false), padding: "6px 10px", minHeight: 0, fontSize: 12.5, fontFamily: "inherit", fontWeight: on ? 700 : 400, borderColor: on ? T.gold : T.edge, color: on ? T.gold : T.ink }}>
-                          {f.name} <span style={{ color: T.dim, fontSize: 11 }}>{f.cr != null ? `CR ${crShow(f.cr)} · ` : ""}{f.hp} HP</span>
+                          {f.name} <span style={{ color: T.dim, fontSize: 11 }}>{f.cr != null ? `CR ${crShow(f.cr)} · ` : ""}{hpShown} HP</span>
                         </button>
                       );
                     })}
@@ -5159,6 +5226,12 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
                 Name
                 <input value={fields.name} onChange={(e) => setFields({ ...fields, name: e.target.value })} style={sheetField} />
               </label>
+              {pending.spirit && (
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: T.dim, flex: "1 1 80px" }}>
+                  Slot level
+                  <input type="number" min={pending.slot} max={9} value={slotLv ?? pending.slot} onChange={(e) => bumpSlot(e.target.value)} style={sheetField} />
+                </label>
+              )}
               {numField("How many", "count", fields, setFields)}
               {numField("HP each", "hp", fields, setFields)}
               {numField("AC", "ac", fields, setFields)}
@@ -5271,8 +5344,9 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
   const [manual, setManual] = useState(eff?.input && eff.input.unit !== "slot" ? eff.input.def : 1);
   if (!recipe) return null;
 
-  /* a conjuring cast opens the muster afterward, so each creature lands with its own HP */
-  const summonDef = summonDefFor(recipe.name);
+  /* a conjuring cast opens the muster afterward, so each creature lands with its own HP;
+     unknown imported summon spells conjure their def from their own text */
+  const summonDef = summonDefFor(recipe.name) || spiritDefFromSpell(sp);
 
   /* effects that scale with the slot read it straight off the chosen cost */
   const slotVal = chosen && chosen.lvl != null && chosen.type !== "ritual" && chosen.type !== "tracker" ? chosen.lvl : null;
@@ -5336,7 +5410,7 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
     }
     patch.log = [...(ch.log || []), `${verb === "Cast" ? "Cast" : "Used"} ${recipe.name}${bits.length ? " — " + bits.join("; ") : ""}.`];
     onUpdate(patch);
-    if (summonDef && onSummon) onSummon(summonDef.key, slotVal || sp?.level || null);
+    if (summonDef && onSummon) onSummon(summonDef, slotVal || sp?.level || null);
     if (!free && chosen?.type === "tracker" && tracker.die && onDice)
       onDice({ title: `${tracker.name} — d${tracker.die}${tracker.dieBonus ? ` + ${tracker.dieBonus}` : ""}`, dice: [{ sides: tracker.die, value: roll(tracker.die) }], bonus: tracker.dieBonus || 0, bonusLabel: tracker.dieBonus ? tracker.dieLabel || "" : "", note: tracker.heal ? "Accept to heal yourself." : "Add it where the feature calls for it.", heal: !!tracker.heal });
     onClose();
@@ -6157,7 +6231,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
       <EffectsCard ch={ch} customs={customs} fx={fx} onUpdate={onUpdate} readOnly={shared} />
 
       <MinionsCard ch={ch} customs={customs} onUpdate={onUpdate} onSummon={() => setSummoning({})} readOnly={shared} />
-      {summoning && !shared && <AddMinionSheet ch={ch} customs={customs} preset={summoning.key ? summoning : null} onUpdate={onUpdate} onClose={() => setSummoning(null)} />}
+      {summoning && !shared && <AddMinionSheet ch={ch} customs={customs} preset={summoning.def ? summoning : null} onUpdate={onUpdate} onClose={() => setSummoning(null)} />}
 
       <div style={{ ...card, padding: 14, marginTop: 14 }}>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -6383,7 +6457,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           }} />
       )}
       {useTarget && (
-        <UsePrompt key={useTarget} name={useTarget} ch={ch} customs={customs} onUpdate={onUpdate} onDice={setDmgRoll} onBlade={castBlade} onStrike={castSpellStrike} onSummon={(key, slotLvl) => setSummoning({ key, slotLvl })} onClose={() => setUseTarget(null)} />
+        <UsePrompt key={useTarget} name={useTarget} ch={ch} customs={customs} onUpdate={onUpdate} onDice={setDmgRoll} onBlade={castBlade} onStrike={castSpellStrike} onSummon={(def, slotLvl) => setSummoning({ def, slotLvl })} onClose={() => setUseTarget(null)} />
       )}
       {drinkRoll && (
         <DiceTray title={drinkRoll.title} dice={drinkRoll.dice} bonus={drinkRoll.bonus} bonusLabel="healing"
