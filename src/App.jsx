@@ -862,6 +862,7 @@ const ICON_PATHS = {
   leaf: <><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" /><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" /></>,
   swords: <><path d="M14.5 17.5 3 6V3h3l11.5 11.5" /><path d="M13 19l6-6" /><path d="M16 16l4 4" /><path d="M19 21l2-2" /><path d="M9.5 6.5 21 18v3h-3L6.5 9.5" /></>,
   zen: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3" /></>,
+  paw: <><circle cx="5.3" cy="10.2" r="1.8" /><circle cx="9.2" cy="6.4" r="1.9" /><circle cx="14.8" cy="6.4" r="1.9" /><circle cx="18.7" cy="10.2" r="1.8" /><path d="M12 10.8c-2.7 0-5.4 2.7-5.4 5.4 0 1.9 1.4 3.1 3.1 3.1 1 0 1.5-.4 2.3-.4s1.3.4 2.3.4c1.7 0 3.1-1.2 3.1-3.1 0-2.7-2.7-5.4-5.4-5.4z" /></>,
   shield: <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></>,
   dagger: <><path d="M3 21l5-5" /><path d="m8 16 9.5-9.5a2.83 2.83 0 0 0-4-4L4 12l4 4Z" /><path d="M14 4l6 6" /></>,
   flame: <><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z" /></>,
@@ -1497,7 +1498,7 @@ const EFFECT_LIB = [
     mods: (v, ch) => { const l = classLevel(ch, "Barbarian"); const b = l >= 16 ? 4 : l >= 9 ? 3 : 2; return { dmg: [{ label: "Rage", value: b, scope: "melee", abil: "str" }], notes: { save: [{ t: "Rage: advantage on Strength saves · resistance to bludgeoning, piercing, slashing", abil: "str" }], check: [{ t: "Rage: advantage on Strength checks", abil: "str" }], attack: [{ t: `Rage: +${b} damage on Strength-based melee hits`, abil: "str" }] } }; } }),
   E("Feature", "Reckless Attack", { dur: "until your next turn", ends: "short", brief: "Advantage on Strength melee attacks this turn — and every attack against you has advantage too", mine: (ch) => classLevel(ch, "Barbarian") >= 2, mods: () => ({ notes: { attack: [{ t: "Reckless Attack: advantage on Strength-based melee attacks; enemies have advantage against you", abil: "str" }] } }) }),
   E("Feature", "Frenzy", { dur: "while raging", ends: "short", brief: "Bonus-action melee attack each turn; one level of exhaustion when the rage ends", mine: (ch) => hasSub(ch, "Path of the Berserker") }),
-  E("Feature", "Wild Shape", { dur: "up to half your druid level in hours", ends: "short", brief: "You are the beast: use its physical stats and HP, keep your Int/Wis/Cha, saves, and skill proficiencies; at 0 beast HP you revert and excess damage carries over", desc: "Track the beast's hit points in the Temp HP counter if you like — when the form's pool empties, remove this effect and take any leftover damage on your true body.", mine: (ch) => classLevel(ch, "Druid") >= 2 }),
+  E("Feature", "Wild Shape", { dur: "up to half your druid level in hours", ends: "short", brief: "You are the beast: use its physical stats and HP, keep your Int/Wis/Cha, saves, and skill proficiencies; at 0 beast HP you revert and excess damage carries over", desc: "Track the beast's own hit-point pool in the Minions & Summons card — when it empties, remove this effect and take any leftover damage on your true body.", mine: (ch) => classLevel(ch, "Druid") >= 2 }),
   E("Feature", "Bardic Inspiration (received)", { dur: "10 minutes or until spent", ends: "short", brief: "Add the inspiration die to one attack roll, ability check, or saving throw — after you see the d20", mods: () => ({ notes: { attack: ["Bardic Inspiration: you may add the die after seeing the roll"], save: ["Bardic Inspiration: you may add the die after seeing the roll"], check: ["Bardic Inspiration: you may add the die after seeing the roll"] } }) }),
   E("Feature", "Sacred Weapon", { dur: "1 minute", ends: "short", brief: "Add your Charisma modifier to attack rolls with the blessed weapon (shown on every weapon — honor it on the blessed one); it sheds bright light", mine: (ch) => hasSub(ch, "Oath of Devotion"), mods: (v, ch) => ({ atk: [{ label: "Sacred Weapon", value: Math.max(1, mod(ch.abilities.cha)), scope: "weapon" }] }) }),
   E("Feature", "Empty Body", { dur: "1 minute", ends: "short", brief: "Invisible, and resistant to all damage except force", mine: (ch) => classLevel(ch, "Monk") >= 18, mods: () => ({ notes: { attack: ["Empty Body: your attack rolls have advantage (invisible)"] } }) }),
@@ -1713,6 +1714,91 @@ function useTrackersFor(ch, customs) {
   const built = USE_TRACKERS.filter((t) => t.when(ch)).map((t) => ({ ...t, max: t.max(ch), per: typeof t.per === "function" ? t.per(ch) : t.per, die: typeof t.die === "function" ? t.die(ch) : t.die, dieBonus: typeof t.dieBonus === "function" ? t.dieBonus(ch) : t.dieBonus }));
   const custom = (Array.isArray(ch.customTrackers) ? ch.customTrackers : []).map((t) => ({ key: `custom-${t.id}`, name: t.name, max: Math.max(1, t.max || 1), per: t.per === "short" ? "short" : "long", pool: (t.max || 1) > 12, custom: true, id: t.id }));
   return [...built, ...derivedTrackers(ch, customs), ...custom];
+}
+
+/* ============ MINIONS & SUMMONS — every creature that answers the call ============ */
+/* A minion is a tracked creature the character brought to the table: a conjured wolf pack,
+   a raised skeleton, a familiar, a beast companion, a wild shape form. Each instance keeps
+   its own HP the same way the character does — maxHp recorded, dmg counted up, temp HP
+   soaked first — plus a role so the table remembers what each body is for.
+   Instance shape: { id, key, kind, name, role, source, maxHp, dmg, tempHp, ac, ends, note } */
+const minionsOf = (ch) => (Array.isArray(ch.minions) ? ch.minions : []);
+const MINION_ROLES = ["Striker", "Defender", "Scout", "Skirmisher", "Mount", "Servant", "Healer", "Companion", "Wild Shape"];
+/* `ends` follows the effects convention: "short" summons dissolve on any rest (the
+   concentration menagerie), "long" outlast an hour's breather but not the night,
+   "manual" creatures (familiars, steeds, the walking dead) stay until dismissed. */
+const SM = (kind, source, def) => ({ key: slugFx(source), kind, source, ...def });
+const SUMMON_LIB = [
+  /* ---- Spells: the conjurer's bestiary ---- */
+  SM("Spell", "Find Familiar", { ends: "manual", role: "Scout", brief: "A spirit takes an animal form of your choosing; it can deliver your touch spells and lend you its eyes", forms: [
+    ["Owl", 1, 11], ["Bat", 1, 12], ["Cat", 2, 12], ["Raven", 1, 12], ["Hawk", 1, 13], ["Weasel", 1, 13],
+    ["Spider", 1, 12], ["Rat", 1, 10], ["Frog", 1, 11], ["Lizard", 2, 10], ["Crab", 2, 11], ["Octopus", 3, 12], ["Poisonous Snake", 2, 13], ["Fish (Quipper)", 1, 13],
+  ] }),
+  SM("Spell", "Find Steed", { ends: "manual", role: "Mount", brief: "A loyal otherworldly mount; while mounted, your single-target spells can touch it too", forms: [
+    ["Warhorse", 19, 11], ["Riding Horse", 13, 10], ["Pony", 10, 10], ["Camel", 15, 9], ["Elk", 13, 10], ["Mastiff", 5, 12],
+  ] }),
+  SM("Spell", "Conjure Animals", { ends: "short", conc: true, role: "Skirmisher", countHint: "8 beasts of CR ¼, 4 of CR ½, 2 of CR 1, or 1 of CR 2 — counts double at 5th, triple at 7th, quadruple at 9th", brief: "Fey spirits in beast shapes fight at your command for up to an hour", forms: [
+    ["Wolf", 11, 13], ["Panther", 13, 12], ["Boar", 11, 11], ["Giant Poisonous Snake", 11, 14], ["Elk", 13, 10],
+    ["Black Bear", 19, 11], ["Giant Wolf Spider", 11, 13], ["Brown Bear", 34, 11], ["Dire Wolf", 37, 14], ["Giant Spider", 26, 14], ["Giant Eagle", 26, 13], ["Giant Elk", 42, 14], ["Giant Constrictor Snake", 60, 12],
+  ] }),
+  SM("Spell", "Conjure Minor Elementals", { ends: "short", conc: true, role: "Striker", countHint: "8 of CR ¼, 4 of CR ½, 2 of CR 1, or 1 of CR 2 — counts double at 6th level, triple at 8th", brief: "Small elementals coalesce and obey for up to an hour", forms: [
+    ["Steam Mephit", 21, 10], ["Dust Mephit", 17, 12], ["Ice Mephit", 21, 11], ["Magma Mephit", 22, 11], ["Mud Mephit", 27, 11], ["Smoke Mephit", 22, 12], ["Azer", 39, 17], ["Gargoyle", 52, 15],
+  ] }),
+  SM("Spell", "Conjure Woodland Beings", { ends: "short", conc: true, role: "Skirmisher", countHint: "8 fey of CR ¼, 4 of CR ½, 2 of CR 1, or 1 of CR 2 — counts double at 6th level, triple at 8th", brief: "Fey creatures step out of the green to fight beside you", forms: [
+    ["Pixie", 1, 15], ["Sprite", 2, 15], ["Blink Dog", 22, 13], ["Satyr", 31, 14], ["Dryad", 22, 11],
+  ] }),
+  SM("Spell", "Conjure Elemental", { ends: "short", conc: true, role: "Defender", countHint: "one elemental of CR ≤ 5; +1 CR per slot level above 5th — mind it if concentration breaks", brief: "A pillar of the raw elements answers, obedient while your concentration holds", forms: [
+    ["Air Elemental", 90, 15], ["Earth Elemental", 126, 17], ["Fire Elemental", 102, 13], ["Water Elemental", 114, 14],
+  ] }),
+  SM("Spell", "Conjure Fey", { ends: "short", conc: true, role: "Striker", countHint: "one fey creature of CR ≤ 6; +1 CR per slot level above 6th", brief: "A fey creature of your DM's choosing steps through — it turns hostile if concentration breaks", forms: [["Fey creature", 60, 13]] }),
+  SM("Spell", "Conjure Celestial", { ends: "short", conc: true, role: "Healer", countHint: "one celestial of CR ≤ 4 (CR ≤ 5 with a 9th-level slot)", brief: "A celestial answers the call, friendly to you and yours", forms: [
+    ["Couatl", 97, 19], ["Pegasus", 59, 12], ["Unicorn", 67, 12],
+  ] }),
+  SM("Spell", "Planar Ally", { ends: "manual", role: "Striker", brief: "Your patron deity lends a servant — celestial, elemental, or fiend. Payment is negotiable; the stat block is the DM's", forms: [["Planar ally", 68, 14]] }),
+  SM("Spell", "Animate Dead", { ends: "manual", role: "Servant", countHint: "one per casting, +2 per slot level above 3rd; each casting also reasserts control over four you've already raised", brief: "A pile of bones or a corpse rises as your servant for 24 hours at a time", forms: [
+    ["Skeleton", 13, 13], ["Zombie", 22, 8],
+  ] }),
+  SM("Spell", "Create Undead", { ends: "manual", role: "Servant", countHint: "3 ghouls at 6th; 4 ghouls at 7th; 5 ghouls or 2 ghasts/wights at 8th; 6 ghouls, 3 ghasts/wights, or 2 mummies at 9th", brief: "Corpses rise as fouler servants — yours for 24 hours at a time", forms: [
+    ["Ghoul", 22, 12], ["Ghast", 36, 13], ["Wight", 45, 14], ["Mummy", 58, 11],
+  ] }),
+  SM("Spell", "Animate Objects", { ends: "short", conc: true, role: "Striker", countHint: "10 tiny, 5 small, 2 medium, or 1 large/huge object — two more objects per slot level above 5th", brief: "Loose objects spring to life and swarm at your word", forms: [
+    ["Tiny object", 20, 18], ["Small object", 25, 16], ["Medium object", 40, 13], ["Large object", 50, 10], ["Huge object", 80, 10],
+  ] }),
+  SM("Spell", "Giant Insect", { ends: "short", conc: true, role: "Striker", countHint: "10 centipedes, 3 spiders, 5 wasps, or 1 scorpion — they grow giant and obey", brief: "Ordinary vermin swell to giants under your command", forms: [
+    ["Giant Centipede", 4, 13], ["Giant Wasp", 13, 12], ["Giant Spider", 26, 14], ["Giant Scorpion", 52, 15],
+  ] }),
+  SM("Spell", "Unseen Servant", { ends: "short", role: "Servant", brief: "An invisible, mindless force fetches and carries for an hour", forms: [["Unseen servant", 1, 10]] }),
+  SM("Spell", "Summon Lesser Demons", { ends: "short", conc: true, role: "Striker", countHint: "8 of CR ¼, 4 of CR ½, or 2 of CR 1 — they attack the nearest creature, friend or foe", brief: "Demons claw through — uncontrolled, hungry, and aimed only by proximity", forms: [
+    ["Manes", 9, 9], ["Dretch", 18, 11], ["Quasit", 7, 13],
+  ] }),
+  SM("Spell", "Summon Greater Demon", { ends: "short", conc: true, role: "Striker", countHint: "one demon of CR ≤ 5; +1 CR per slot level above 4th — it slips your leash when concentration ends", brief: "A greater demon answers, straining against your commands every round", forms: [
+    ["Barlgura", 68, 15], ["Shadow Demon", 66, 13], ["Vrock", 104, 15],
+  ] }),
+  /* ---- Class features & pact boons ---- */
+  SM("Feature", "Wild Shape", { ends: "manual", role: "Wild Shape", mine: (ch) => classLevel(ch, "Druid") >= 2, countHint: "you ARE the beast: at 0 HP the form breaks and leftover damage carries to your true body", brief: "Track your beast form's own hit-point pool here while you wear it", forms: [
+    ["Wolf", 11, 13], ["Panther", 13, 12], ["Giant Wolf Spider", 11, 13], ["Black Bear", 19, 11], ["Brown Bear", 34, 11], ["Dire Wolf", 37, 14], ["Giant Spider", 26, 14], ["Giant Eagle", 26, 13], ["Water Elemental", 114, 14],
+  ] }),
+  SM("Feature", "Ranger's Companion", { ends: "manual", role: "Companion", mine: (ch) => hasSub(ch, "Beast Master"), brief: "Your bonded beast — it acts on your commands and grows with your ranger level", forms: [
+    ["Wolf", 11, 13], ["Panther", 13, 12], ["Hawk", 1, 13], ["Mastiff", 5, 12], ["Boar", 11, 11], ["Giant Poisonous Snake", 11, 14], ["Giant Wolf Spider", 11, 13],
+  ] }),
+  SM("Feature", "Pact of the Chain", { ends: "manual", role: "Scout", mine: (ch) => ch.pactBoon === "Pact of the Chain", brief: "Your special familiar — imp, quasit, pseudodragon, or sprite — and it can attack in your stead", forms: [
+    ["Imp", 10, 13], ["Quasit", 7, 13], ["Pseudodragon", 7, 13], ["Sprite", 2, 15],
+  ] }),
+].map((d) => ({ ...d, forms: d.forms.map(([name, hp, ac]) => ({ name, hp, ac })) }));
+const SUMMON_BY_KEY = Object.fromEntries(SUMMON_LIB.map((d) => [d.key, d]));
+/* Match a tapped spell/feature name to its summon entry — "(Ritual Only)" twins included */
+const summonDefFor = (name) => {
+  const n = baseSubName(String(name || "").trim());
+  return SUMMON_LIB.find((d) => d.source === n || d.source === String(name || "").trim()) || null;
+};
+/* Damage a minion the same way the character takes it: temp HP soaks first, then the wound
+   is recorded; healing unwinds recorded damage and never overshoots the maximum. */
+const minionHp = (m) => Math.max(0, (m.maxHp || 1) - Math.max(0, m.dmg || 0));
+function minionApplyHp(m, delta) {
+  if (delta >= 0) return { ...m, dmg: Math.max(0, Math.max(0, m.dmg || 0) - delta) };
+  const d = -delta, temp = Math.max(0, m.tempHp || 0);
+  const fromTemp = Math.min(temp, d);
+  return { ...m, tempHp: temp - fromTemp, dmg: Math.min(m.maxHp || 1, Math.max(0, m.dmg || 0) + (d - fromTemp)) };
 }
 
 /* ============ TAP TO ACT — resolve a tapped name into its use recipe ============ */
@@ -4787,12 +4873,290 @@ function AddEffectSheet({ ch, customs, existing, onAdd, onClose }) {
   );
 }
 
+/* ============ MINIONS & SUMMONS CARD — the creatures at your side ============ */
+/* Every summoned body gets its own chip: name, role, and a hit-point pool tracked the same
+   way the character's is. The amount field arms both buttons — one tap wounds or heals one
+   minion, so a wolf pack under a fireball is eight taps, not eight sums.
+   readOnly (shared sheets): the menagerie shows, nothing bleeds. */
+function MinionsCard({ ch, customs, onUpdate, onSummon, readOnly }) {
+  const minions = minionsOf(ch);
+  const [amt, setAmt] = useState(1);
+  if (readOnly && minions.length === 0) return null;
+  const n = Math.max(1, parseInt(amt, 10) || 1);
+  const patchOne = (id, fn) => onUpdate({ minions: minions.map((m) => (m.id === id ? fn(m) : m)) });
+  const dismiss = (m) => onUpdate({
+    minions: minions.filter((x) => x.id !== m.id),
+    log: [...(ch.log || []), `${m.name} ${minionHp(m) <= 0 ? "fell" : "was dismissed"}.`],
+  });
+  const dismissAll = () => onUpdate({ minions: [], log: [...(ch.log || []), "Every summoned creature dismissed."] });
+  const standing = minions.filter((m) => minionHp(m) > 0).length;
+  return (
+    <div style={{ ...card, padding: 16, marginTop: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17 }}>Minions &amp; Summons</div>
+        {minions.length > 0 && <span style={{ color: T.dim, fontSize: 12 }}>{standing} of {minions.length} standing</span>}
+        <div style={{ flex: 1 }} />
+        {!readOnly && minions.length > 1 && <button style={{ ...btn(false), padding: "6px 12px", minHeight: 0, fontSize: 13, borderColor: T.edge, color: T.dim }} onClick={dismissAll}>Dismiss all</button>}
+        {!readOnly && <button style={{ ...btn(false), padding: "6px 12px", minHeight: 0, fontSize: 13 }} onClick={onSummon}>＋ Summon</button>}
+      </div>
+      {minions.length === 0 ? (
+        <div style={{ color: T.dim, fontSize: 13, marginTop: 10 }}>No creatures at your side. Cast a conjuring spell — or tap ＋ Summon — and they'll muster here, each with its own hit points and role.</div>
+      ) : (
+        <>
+          {!readOnly && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, color: T.dim, fontSize: 13 }}>
+              Damage / heal by
+              <input data-minion-amt type="number" min={1} value={amt} onChange={(e) => setAmt(e.target.value)}
+                style={{ width: 58, textAlign: "center", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 4px", fontSize: 16, minHeight: 42, boxSizing: "border-box" }} />
+              — then tap a creature's − or ＋
+            </div>
+          )}
+          <div style={{ display: "grid", gap: 6, marginTop: 12 }}>
+            {minions.map((m) => {
+              const max = Math.max(1, m.maxHp || 1);
+              const cur = minionHp(m);
+              const temp = Math.max(0, m.tempHp || 0);
+              const ratio = cur / max;
+              const hpColor = cur <= 0 ? "#d76a76" : ratio > 0.5 ? T.green : ratio > 0.25 ? T.gold : "#d76a76";
+              const down = cur <= 0 && temp <= 0;
+              return (
+                <div key={m.id} data-minion={m.id} style={{ display: "flex", alignItems: "center", gap: 10, background: T.panel2, border: `1px solid ${down ? "#8e3b4688" : T.edge}`, borderRadius: 10, padding: "8px 10px", opacity: down ? 0.75 : 1, flexWrap: "wrap" }}>
+                  <div {...lorePress(m.source)} style={{ flex: "1 1 150px", minWidth: 0, cursor: "pointer" }}>
+                    <span style={{ color: T.ink, fontWeight: 700, fontSize: 14, textDecoration: down ? "line-through" : "none" }}>{m.name}</span>
+                    <span style={{ color: FX_KIND_COLOR[m.kind] || FX_KIND_COLOR.Custom, fontSize: 10.5, marginLeft: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>{m.kind || "Custom"}</span>
+                    {down && <span style={{ color: "#d76a76", fontSize: 11, marginLeft: 8 }}>down — heal it or let it go</span>}
+                    <div style={{ color: T.dim, fontSize: 11.5, marginTop: 2 }}>
+                      {m.source}{m.ac ? ` · AC ${m.ac}` : ""}{m.note ? ` · ${m.note}` : ""}
+                    </div>
+                  </div>
+                  {readOnly ? (
+                    <span style={{ color: T.dim, fontSize: 12 }}>{m.role}</span>
+                  ) : (
+                    <select value={m.role || ""} title="Role" onChange={(e) => patchOne(m.id, (x) => ({ ...x, role: e.target.value }))}
+                      style={{ ...fieldStyle, width: "auto", padding: "6px 8px", fontSize: 12.5 }}>
+                      {(MINION_ROLES.includes(m.role) ? MINION_ROLES : [m.role || "—", ...MINION_ROLES]).map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  )}
+                  <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 8 }}>
+                    {!readOnly && <button style={{ ...pillBtn, color: "#d76a76", opacity: down ? 0.4 : 1 }} disabled={down} title={`Deal ${n} damage`} onClick={() => patchOne(m.id, (x) => minionApplyHp(x, -n))}>−</button>}
+                    <div style={{ minWidth: 74, textAlign: "center" }}>
+                      <span style={{ fontFamily: "Georgia, serif", fontSize: 17, color: hpColor }}>
+                        {cur}{temp > 0 && <span style={{ fontSize: 12, color: "#5eb1bf" }}> +{temp}</span>}<span style={{ fontSize: 12, color: T.dim }}> / {max}</span>
+                      </span>
+                      <div style={{ height: 3, borderRadius: 2, background: T.panel, marginTop: 3, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${ratio * 100}%`, background: hpColor, transition: "width 240ms ease" }} />
+                      </div>
+                    </div>
+                    {!readOnly && <button style={{ ...pillBtn, color: T.green, opacity: (m.dmg || 0) > 0 ? 1 : 0.4 }} disabled={!(m.dmg || 0)} title={`Heal ${n}`} onClick={() => patchOne(m.id, (x) => minionApplyHp(x, n))}>＋</button>}
+                  </div>
+                  {!readOnly && <span onClick={() => dismiss(m)} title={down ? "Let it go" : "Dismiss"} style={{ color: T.dim, cursor: "pointer", fontSize: 16, padding: "0 2px", lineHeight: 1.4 }}>✕</span>}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ============ SUMMON SHEET — pick what answers the call ============ */
+/* The bottom-sheet picker behind ＋ Summon and behind every conjuring cast. Browsing shows
+   the catalog with the character's own sources first; picking a source opens the muster —
+   choose the form, how many, their HP, their role — and commits one instance per body.
+   `preset` (from the Use prompt) skips browsing and lands straight on the source just cast. */
+function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
+  const presetDef = (preset && SUMMON_BY_KEY[preset.key]) || null;
+  const defaultsFor = (d, idx) => {
+    const f = d.forms[Math.max(0, Math.min(idx, d.forms.length - 1))];
+    return { name: f.name, count: "1", hp: String(f.hp), ac: String(f.ac), role: d.role || "Striker" };
+  };
+  const [q, setQ] = useState("");
+  const [pending, setPending] = useState(presetDef);
+  const [formIdx, setFormIdx] = useState(0);
+  const [fields, setFields] = useState(presetDef ? defaultsFor(presetDef, 0) : null);
+  const [custom, setCustom] = useState(null);
+  /* the page beneath holds still while the sheet is up — only the sheet's own list scrolls */
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+  const sheetField = { ...fieldStyle, fontSize: 16 }; // 16px keeps mobile Safari from zooming into focused inputs
+  const known = knownSpellNames(ch, customs);
+  const isMine = (d) => (d.kind === "Spell" ? known.has(d.source) : d.mine ? d.mine(ch) : false);
+  const ql = q.trim().toLowerCase();
+  const matches = (d) => !ql || d.source.toLowerCase().includes(ql) || (d.brief || "").toLowerCase().includes(ql) || d.forms.some((f) => f.name.toLowerCase().includes(ql));
+  const suggested = SUMMON_LIB.filter((d) => matches(d) && isMine(d));
+  const sugKeys = new Set(suggested.map((d) => d.key));
+  const groups = [
+    [`Yours — ${ch.name}'s spells & features`, suggested],
+    ["Summoning spells", SUMMON_LIB.filter((d) => d.kind === "Spell" && matches(d) && !sugKeys.has(d.key))],
+    ["Class features", SUMMON_LIB.filter((d) => d.kind === "Feature" && matches(d) && !sugKeys.has(d.key))],
+  ].filter(([, a]) => a.length);
+  const pick = (d) => { setPending(d); setFormIdx(0); setFields(defaultsFor(d, 0)); };
+  const pickForm = (i) => {
+    const f = pending.forms[i];
+    setFormIdx(i);
+    // a new form refreshes the stats it owns; the count and a hand-typed role survive
+    setFields((prev) => ({ ...prev, name: f.name, hp: String(f.hp), ac: String(f.ac) }));
+  };
+  const addMinions = (def, f) => {
+    const nm = (f.name || "").trim() || def.forms?.[formIdx]?.name || def.source;
+    const count = Math.max(1, Math.min(20, parseInt(f.count, 10) || 1));
+    const hp = Math.max(1, parseInt(f.hp, 10) || 1);
+    const ac = Math.max(0, parseInt(f.ac, 10) || 0);
+    const existing = minionsOf(ch);
+    // "Wolf", then "Wolf 2"… — numbering picks up where the standing pack left off
+    const already = existing.filter((m) => m.name === nm || m.name.startsWith(nm + " ")).length;
+    const insts = Array.from({ length: count }, (_, i) => ({
+      id: uid(), key: def.key, kind: def.kind, source: def.source,
+      name: count === 1 && already === 0 ? nm : `${nm} ${already + i + 1}`,
+      role: f.role || "Striker", maxHp: hp, dmg: 0, tempHp: 0, ...(ac ? { ac } : {}), ends: def.ends || "manual",
+      ...(def.key === "custom" && f.note ? { note: f.note } : {}),
+    }));
+    onUpdate({
+      minions: [...existing, ...insts],
+      log: [...(ch.log || []), `Summoned ${count > 1 ? `${count}× ` : ""}${nm} (${def.source}).`],
+    });
+    onClose();
+  };
+  const blankCustom = { name: "", source: "", role: "Striker", count: "1", hp: "10", ac: "", note: "", ends: "manual" };
+  const submitCustom = () => addMinions(
+    { key: "custom", kind: "Custom", source: (custom.source || "").trim() || "Custom summon", ends: custom.ends },
+    custom
+  );
+  const browsing = !pending && !custom;
+  const numField = (label, f, obj, setObj, width = "1 1 80px") => (
+    <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: T.dim, flex: width }}>
+      {label}
+      <input type="number" min={0} value={obj[f]} onChange={(e) => setObj({ ...obj, [f]: e.target.value })} style={sheetField} />
+    </label>
+  );
+  const roleSelect = (obj, setObj) => (
+    <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: T.dim, flex: "1 1 110px" }}>
+      Role
+      <select value={obj.role} onChange={(e) => setObj({ ...obj, role: e.target.value })} style={sheetField}>
+        {MINION_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+      </select>
+    </label>
+  );
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center", animation: "sheetVeil 200ms ease" }} onClick={onClose}>
+      <div className={browsing ? "sheet-tall" : "sheet-cap"}
+        style={{ ...card, width: "min(680px, 100%)", borderRadius: "16px 16px 0 0", display: "flex", flexDirection: "column", overflow: "hidden", animation: "sheetRise 300ms cubic-bezier(0.32, 0.72, 0, 1)" }}
+        onClick={(e) => e.stopPropagation()}>
+        <div style={{ flex: "none", padding: "8px 20px 0" }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: T.edge, margin: "0 auto 10px" }} />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <div style={{ fontFamily: "Georgia, serif", fontSize: 21, color: T.gold }}>Summon a Creature</div>
+            <button aria-label="Close" onClick={onClose}
+              style={{ background: "none", border: "none", color: T.dim, cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "10px 4px 10px 14px", margin: "-10px -4px", WebkitTapHighlightColor: "transparent" }}>✕</button>
+          </div>
+          {browsing && (
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <input value={q} placeholder="Search — wolf, familiar, skeleton…" onChange={(e) => setQ(e.target.value)} style={sheetField} />
+              <button style={{ ...btn(false), whiteSpace: "nowrap", fontSize: 13 }} onClick={() => setCustom(blankCustom)}><Icon name="hammer" size={13} /> Custom</button>
+            </div>
+          )}
+        </div>
+        <div className="sheet-body" style={{ flex: browsing ? 1 : "0 1 auto", minHeight: 0, overflowY: "auto", padding: "0 20px calc(20px + env(safe-area-inset-bottom))" }}>
+        {pending ? (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ color: T.ink, fontWeight: 700 }}>
+              {pending.source}
+              <span style={{ color: FX_KIND_COLOR[pending.kind] || T.dim, fontSize: 10.5, marginLeft: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>{pending.kind}</span>
+              {pending.conc && <span title="Concentration — if it breaks, the summons go with it" style={{ color: "#b48ead", fontSize: 12, marginLeft: 6 }}>◉ conc</span>}
+            </div>
+            <div style={{ color: T.dim, fontSize: 13, marginTop: 4 }}>{pending.brief}</div>
+            {(preset?.slotLvl || pending.countHint) && (
+              <div style={{ color: T.gold, fontSize: 12.5, marginTop: 6, lineHeight: 1.5 }}>
+                {preset?.slotLvl ? `Cast at level ${preset.slotLvl}. ` : ""}{pending.countHint || ""}
+              </div>
+            )}
+            {pending.forms.length > 1 && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                {pending.forms.map((f, i) => (
+                  <button key={f.name} onClick={() => pickForm(i)}
+                    style={{ ...btn(false), padding: "6px 10px", minHeight: 0, fontSize: 12.5, fontFamily: "inherit", fontWeight: i === formIdx ? 700 : 400, borderColor: i === formIdx ? T.gold : T.edge, color: i === formIdx ? T.gold : T.ink }}>
+                    {f.name} <span style={{ color: T.dim, fontSize: 11 }}>{f.hp} HP</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: T.dim, flex: "2 1 150px" }}>
+                Name them (a shared name numbers itself)
+                <input value={fields.name} onChange={(e) => setFields({ ...fields, name: e.target.value })} style={sheetField} />
+              </label>
+              {numField("How many", "count", fields, setFields)}
+              {numField("HP each", "hp", fields, setFields)}
+              {numField("AC", "ac", fields, setFields)}
+              {roleSelect(fields, setFields)}
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+              <button style={btn(true)} onClick={() => addMinions(pending, fields)}>Summon</button>
+              {!presetDef && <button style={btn(false)} onClick={() => setPending(null)}>Back</button>}
+            </div>
+          </div>
+        ) : custom ? (
+          <div style={{ marginTop: 14 }}>
+            <label style={{ display: "block", color: T.dim, fontSize: 12 }}>Creature<input value={custom.name} autoFocus placeholder="Homunculus, awakened shrub, borrowed war dog…" onChange={(e) => setCustom({ ...custom, name: e.target.value })} style={{ ...sheetField, marginTop: 4 }} /></label>
+            <label style={{ display: "block", color: T.dim, fontSize: 12, marginTop: 10 }}>Source — the spell, feature, feat, or item that grants it<input value={custom.source} placeholder="Danse Macabre, a feat, a DM's boon…" onChange={(e) => setCustom({ ...custom, source: e.target.value })} style={{ ...sheetField, marginTop: 4 }} /></label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+              {numField("How many", "count", custom, setCustom)}
+              {numField("HP each", "hp", custom, setCustom)}
+              {numField("AC", "ac", custom, setCustom)}
+              {roleSelect(custom, setCustom)}
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: T.dim, flex: "1 1 150px" }}>
+                It lasts
+                <select value={custom.ends} onChange={(e) => setCustom({ ...custom, ends: e.target.value })} style={sheetField}>
+                  <option value="short">until any rest</option><option value="long">until a long rest</option><option value="manual">until dismissed</option>
+                </select>
+              </label>
+            </div>
+            <label style={{ display: "block", color: T.dim, fontSize: 12, marginTop: 10 }}>Reminder note<input value={custom.note} placeholder="flies 60 ft, obeys only in Infernal…" onChange={(e) => setCustom({ ...custom, note: e.target.value })} style={{ ...sheetField, marginTop: 4 }} /></label>
+            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+              <button style={btn(true)} onClick={submitCustom}>Summon</button>
+              <button style={btn(false)} onClick={() => setCustom(null)}>Back</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {groups.length === 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 14 }}>Nothing in the bestiary matches — muster it as a custom creature instead.</div>}
+            {groups.map(([title, defs]) => (
+              <div key={title} style={{ marginTop: 14 }}>
+                <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 15 }}>{title}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 4, marginTop: 6 }}>
+                  {defs.map((d) => (
+                    <div key={d.key} data-summon-row={d.key} onClick={() => pick(d)}
+                      style={{ minWidth: 0, minHeight: 44, boxSizing: "border-box", padding: "8px 10px", borderRadius: 8, cursor: "pointer", background: T.panel2, border: `1px solid ${T.edge}`, WebkitTapHighlightColor: "transparent" }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "baseline", minWidth: 0 }}>
+                        <span style={{ color: T.ink, fontWeight: 700, fontSize: 13.5 }}>{d.source}</span>
+                        {d.conc && <span style={{ color: "#b48ead", fontSize: 11 }}>◉</span>}
+                        <span style={{ flex: 1 }} />
+                        <span style={{ color: FX_KIND_COLOR[d.kind], fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, textAlign: "right" }}>{d.kind}</span>
+                      </div>
+                      <div style={{ color: T.dim, fontSize: 12, marginTop: 2, lineHeight: 1.45 }}>{d.brief}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ============ USE PROMPT — tap a spell or feature, confirm, the sheet does the rest ============ */
 /* The front door for casting and feature use: name, cost, consequences, one confirming tap.
    Slots and tracked uses are spent here; catalog effects raise through the same patch the
    Effects card uses; concentration states its eviction before it happens. Pips everywhere
    stay hand-tappable — this sheet is the front door, not the only door. */
-function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onClose }) {
+function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onSummon, onClose }) {
   const recipe = useRecipe(name, ch, customs);
   const sp = recipe?.sp || null, tracker = recipe?.tracker || null, effs = recipe?.effs || [];
   const [variant, setVariant] = useState(0);
@@ -4836,6 +5200,9 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onC
   const [poolAmt, setPoolAmt] = useState(1);
   const [manual, setManual] = useState(eff?.input && eff.input.unit !== "slot" ? eff.input.def : 1);
   if (!recipe) return null;
+
+  /* a conjuring cast opens the muster afterward, so each creature lands with its own HP */
+  const summonDef = summonDefFor(recipe.name);
 
   /* effects that scale with the slot read it straight off the chosen cost */
   const slotVal = chosen && chosen.lvl != null && chosen.type !== "ritual" && chosen.type !== "tracker" ? chosen.lvl : null;
@@ -4899,6 +5266,7 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onC
     }
     patch.log = [...(ch.log || []), `${verb === "Cast" ? "Cast" : "Used"} ${recipe.name}${bits.length ? " — " + bits.join("; ") : ""}.`];
     onUpdate(patch);
+    if (summonDef && onSummon) onSummon(summonDef.key, slotVal || sp?.level || null);
     if (!free && chosen?.type === "tracker" && tracker.die && onDice)
       onDice({ title: `${tracker.name} — d${tracker.die}${tracker.dieBonus ? ` + ${tracker.dieBonus}` : ""}`, dice: [{ sides: tracker.die, value: roll(tracker.die) }], bonus: tracker.dieBonus || 0, bonusLabel: tracker.dieBonus ? tracker.dieLabel || "" : "", note: tracker.heal ? "Accept to heal yourself." : "Add it where the feature calls for it.", heal: !!tracker.heal });
     onClose();
@@ -4986,6 +5354,12 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onC
         {(eff?.conc || spConc) && !concEnding.length && <div style={{ color: "#b48ead", fontSize: 13, marginTop: 10 }}>◉ Concentration — one at a time; Con save when you take damage.</div>}
         {activeInst && !freeToggle && <div style={{ color: T.dim, fontSize: 12.5, marginTop: 10 }}>Already active — {verb.toLowerCase()}ing again refreshes it rather than stacking.</div>}
         {blocked && <div style={{ color: "#d76a76", fontSize: 13, marginTop: 10 }}>{tracker && chosen?.type === "tracker" ? `Spent — recharges on a ${chosen && tracker.per === "short" ? "short or long" : "long"} rest.` : "No slot can pay for this right now."}</div>}
+        {summonDef && (
+          <div style={{ color: T.dim, fontSize: 12.5, marginTop: 10, lineHeight: 1.6 }}>
+            <span style={{ color: T.gold }}>Calls creatures to your side</span> — {verb === "Cast" ? "casting" : "using it"} opens the muster, and each one arrives with its own hit points and role.
+            {summonDef.countHint ? ` ${summonDef.countHint}.` : ""}
+          </div>
+        )}
         {damaging && (
           <div style={{ color: T.dim, fontSize: 12.5, marginTop: 10, lineHeight: 1.6 }}>
             {strike.attack ? `A ${strike.attack} spell attack — roll it, then its damage on a hit.`
@@ -5077,6 +5451,15 @@ const SHEET_GUIDE = [
       ["Bestow an effect", "Rage, Bless, Shield of Faith, exhaustion, poisoned — search the list or forge a custom one."],
       ["They do the math", "an active effect automatically adjusts AC, saves, attack, damage, even max HP."],
       ["They expire on cue", "each one ends on the right rest or duration, so you never track it by hand."],
+    ],
+  },
+  {
+    icon: "paw", title: "Minions & Summons",
+    items: [
+      ["＋ Summon", "muster anything you can call — conjured beasts, a familiar, skeletons, a steed, a wild shape form — or forge a custom creature from any feat or feature."],
+      ["Cast to summon", "casting a conjuring spell opens the muster automatically, with the slot level in hand."],
+      ["Each body, its own pool", "every creature tracks its own HP — set the amount, tap its − or ＋ — and wears a role you can change mid-fight."],
+      ["They know when to leave", "concentration menageries dissolve on a rest; familiars, steeds, and the raised dead stay until dismissed."],
     ],
   },
   {
@@ -5325,8 +5708,11 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   const trackers = useTrackersFor(ch, customs);
   /* prepared casters re-pick their spells at dawn, so a long rest is never a no-op for them */
   const canPrep = ch.classes.some((c) => PREP_ALL_CLASSES.includes(c.name) && spellCapacity(c.name, c.level, ch.abilities).n > 0) && (customs?.spells || []).length > 0;
-  const shortWould = usedPact > 0 || effectsOf(ch).some((e) => restTouches(e, "short")) || trackers.some((t) => t.per === "short" && (usedFeats[t.key] || 0) > 0);
-  const longWould = dmgRaw > 0 || tempHp > 0 || usedSlots.some(Boolean) || usedPact > 0 || usedArc.length > 0 || effectsOf(ch).some((e) => restTouches(e, "long")) || trackers.some((t) => (usedFeats[t.key] || 0) > 0) || canPrep;
+  /* summoned creatures dissolve on the rest that outlasts them; familiars, steeds,
+     and the raised dead (ends: "manual") wait faithfully through the night */
+  const restMinions = (kind) => minionsOf(ch).filter((m) => (kind === "short" ? m.ends !== "short" : m.ends === "manual"));
+  const shortWould = usedPact > 0 || effectsOf(ch).some((e) => restTouches(e, "short")) || trackers.some((t) => t.per === "short" && (usedFeats[t.key] || 0) > 0) || restMinions("short").length < minionsOf(ch).length;
+  const longWould = dmgRaw > 0 || tempHp > 0 || usedSlots.some(Boolean) || usedPact > 0 || usedArc.length > 0 || effectsOf(ch).some((e) => restTouches(e, "long")) || trackers.some((t) => (usedFeats[t.key] || 0) > 0) || canPrep || restMinions("long").length < minionsOf(ch).length;
   const resetUses = (kind) => {
     const u = { ...usedFeats };
     trackers.forEach((t) => { if (kind === "long" || t.per === "short") delete u[t.key]; });
@@ -5336,14 +5722,15 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     const kept = new Set(restEffects("short").map((e) => e.id));
     // granted max HP walks out with its effect: refund it from recorded damage
     const refund = effectsOf(ch).filter((e) => !kept.has(e.id)).reduce((s, e) => s + instMaxHp(e, ch), 0);
-    onUpdate({ usedPact: 0, effects: restEffects("short"), usedFeatures: resetUses("short"), ...(refund ? { dmg: Math.max(0, dmgRaw - refund) } : {}) });
+    onUpdate({ usedPact: 0, effects: restEffects("short"), usedFeatures: resetUses("short"), minions: restMinions("short"), ...(refund ? { dmg: Math.max(0, dmgRaw - refund) } : {}) });
   };
   const [prepOpen, setPrepOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false); // the guided tour of every trick this sheet knows
   const [shareOpen, setShareOpen] = useState(false); // the scroll that seals this soul into a link
   const [restAsk, setRestAsk] = useState(null); // "short" | "long" — a rest waits for a confirming word
+  const [summoning, setSummoning] = useState(null); // {} browses the bestiary; {key, slotLvl} lands on the source just cast
   const longRest = () => {
-    onUpdate({ dmg: 0, usedSlots: [], usedPact: 0, usedArcanum: [], tempHp: 0, effects: restEffects("long"), usedFeatures: {} });
+    onUpdate({ dmg: 0, usedSlots: [], usedPact: 0, usedArcanum: [], tempHp: 0, effects: restEffects("long"), usedFeatures: {}, minions: restMinions("long") });
     if (canPrep) setPrepOpen(true); // dawn — swap your prepared spells
   };
 
@@ -5699,6 +6086,9 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
 
       <EffectsCard ch={ch} customs={customs} fx={fx} onUpdate={onUpdate} readOnly={shared} />
 
+      <MinionsCard ch={ch} customs={customs} onUpdate={onUpdate} onSummon={() => setSummoning({})} readOnly={shared} />
+      {summoning && !shared && <AddMinionSheet ch={ch} customs={customs} preset={summoning.key ? summoning : null} onUpdate={onUpdate} onClose={() => setSummoning(null)} />}
+
       <div style={{ ...card, padding: 14, marginTop: 14 }}>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17 }}>Roll the Bones</div>
@@ -5923,7 +6313,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           }} />
       )}
       {useTarget && (
-        <UsePrompt key={useTarget} name={useTarget} ch={ch} customs={customs} onUpdate={onUpdate} onDice={setDmgRoll} onBlade={castBlade} onStrike={castSpellStrike} onClose={() => setUseTarget(null)} />
+        <UsePrompt key={useTarget} name={useTarget} ch={ch} customs={customs} onUpdate={onUpdate} onDice={setDmgRoll} onBlade={castBlade} onStrike={castSpellStrike} onSummon={(key, slotLvl) => setSummoning({ key, slotLvl })} onClose={() => setUseTarget(null)} />
       )}
       {drinkRoll && (
         <DiceTray title={drinkRoll.title} dice={drinkRoll.dice} bonus={drinkRoll.bonus} bonusLabel="healing"
