@@ -1724,66 +1724,109 @@ function useTrackersFor(ch, customs) {
    Instance shape: { id, key, kind, name, role, source, maxHp, dmg, tempHp, ac, ends, note } */
 const minionsOf = (ch) => (Array.isArray(ch.minions) ? ch.minions : []);
 const MINION_ROLES = ["Striker", "Defender", "Scout", "Skirmisher", "Mount", "Servant", "Healer", "Companion", "Wild Shape"];
+
+/* ---- The bestiary: full SRD stat blocks, riding in the base compendium ----
+   Loaded once by fetchBaseCompendium alongside spells and items. Summon sources
+   query it by creature type and CR; long-pressing any creature reads its block. */
+let __BESTIARY = [];
+const SIZE_RANK = { Tiny: 0, Small: 1, Medium: 2, Large: 3, Huge: 4, Gargantuan: 5 };
+const crShow = (cr) => (cr === 0.125 ? "⅛" : cr === 0.25 ? "¼" : cr === 0.5 ? "½" : String(cr));
+const creatureByName = (n) => {
+  const q = String(n || "").trim().toLowerCase();
+  return (q && __BESTIARY.find((c) => c.name.toLowerCase() === q)) || null;
+};
+function statBlockText(c) {
+  const lines = [
+    `AC ${c.ac}${c.acN ? ` (${c.acN})` : ""} · HP ${c.hp}${c.hd ? ` (${c.hd})` : ""} · Speed ${c.spd}`,
+    ABILITIES.map((a) => `${a.toUpperCase()} ${c.ab[a]} (${fmtMod(mod(c.ab[a]))})`).join(" · "),
+    [c.saves && `Saving throws ${c.saves}`, c.skills && `Skills ${c.skills}`, c.vuln && `Vulnerable ${c.vuln}`, c.res && `Resistant ${c.res}`, c.imm && `Immune ${c.imm}`, c.cond && `Condition immunities ${c.cond}`, c.sen && `Senses ${c.sen}`, c.lang && `Languages ${c.lang}`].filter(Boolean).join(" · "),
+  ];
+  (c.traits || []).forEach((x) => lines.push(`${x.n}. ${x.t}`));
+  const section = (title, arr) => { if (arr?.length) { lines.push(`— ${title} —`); arr.forEach((x) => lines.push(`${x.n}. ${x.t}`)); } };
+  section("Actions", c.acts);
+  section("Reactions", c.reacts);
+  section("Legendary Actions", c.leg);
+  return lines.filter(Boolean).join("\n");
+}
+/* The creatures a summon source can call: named picks or a type/CR query against the
+   bestiary, each carrying its real HP and AC; the hand-listed forms only stand in
+   when the compendium hasn't loaded (offline first visit). */
+function summonFormsFor(def) {
+  if (__BESTIARY.length) {
+    let hits = null;
+    if (def.pickNames) hits = def.pickNames.map(creatureByName).filter(Boolean);
+    else if (def.pick) hits = __BESTIARY.filter((c) =>
+      (!def.pick.types || def.pick.types.some((t) => c.type.startsWith(t)))
+      && (def.pick.maxCr == null || c.cr <= def.pick.maxCr)
+      && (def.pick.maxSize == null || SIZE_RANK[c.size] <= SIZE_RANK[def.pick.maxSize]));
+    if (hits && hits.length) return hits
+      .map((c) => ({ name: c.name, hp: c.hp, ac: c.ac, cr: c.cr, stat: true }))
+      .sort((a, b) => a.cr - b.cr || a.name.localeCompare(b.name));
+  }
+  return def.forms;
+}
 /* `ends` follows the effects convention: "short" summons dissolve on any rest (the
    concentration menagerie), "long" outlast an hour's breather but not the night,
    "manual" creatures (familiars, steeds, the walking dead) stay until dismissed. */
 const SM = (kind, source, def) => ({ key: slugFx(source), kind, source, ...def });
 const SUMMON_LIB = [
   /* ---- Spells: the conjurer's bestiary ---- */
-  SM("Spell", "Find Familiar", { ends: "manual", role: "Scout", brief: "A spirit takes an animal form of your choosing; it can deliver your touch spells and lend you its eyes", forms: [
+  SM("Spell", "Find Familiar", { ends: "manual", role: "Scout", pickNames: ["Bat", "Cat", "Crab", "Frog", "Hawk", "Lizard", "Octopus", "Owl", "Poisonous Snake", "Quipper", "Rat", "Raven", "Sea Horse", "Spider", "Weasel"], brief: "A spirit takes an animal form of your choosing; it can deliver your touch spells and lend you its eyes", forms: [
     ["Owl", 1, 11], ["Bat", 1, 12], ["Cat", 2, 12], ["Raven", 1, 12], ["Hawk", 1, 13], ["Weasel", 1, 13],
     ["Spider", 1, 12], ["Rat", 1, 10], ["Frog", 1, 11], ["Lizard", 2, 10], ["Crab", 2, 11], ["Octopus", 3, 12], ["Poisonous Snake", 2, 13], ["Fish (Quipper)", 1, 13],
   ] }),
-  SM("Spell", "Find Steed", { ends: "manual", role: "Mount", brief: "A loyal otherworldly mount; while mounted, your single-target spells can touch it too", forms: [
+  SM("Spell", "Find Steed", { ends: "manual", role: "Mount", pickNames: ["Warhorse", "Riding Horse", "Pony", "Camel", "Elk", "Mastiff"], brief: "A loyal otherworldly mount; while mounted, your single-target spells can touch it too", forms: [
     ["Warhorse", 19, 11], ["Riding Horse", 13, 10], ["Pony", 10, 10], ["Camel", 15, 9], ["Elk", 13, 10], ["Mastiff", 5, 12],
   ] }),
-  SM("Spell", "Conjure Animals", { ends: "short", conc: true, role: "Skirmisher", countHint: "8 beasts of CR ¼, 4 of CR ½, 2 of CR 1, or 1 of CR 2 — counts double at 5th, triple at 7th, quadruple at 9th", brief: "Fey spirits in beast shapes fight at your command for up to an hour", forms: [
+  SM("Spell", "Conjure Animals", { ends: "short", conc: true, role: "Skirmisher", pick: { types: ["beast"], maxCr: 2 }, countHint: "8 beasts of CR ¼, 4 of CR ½, 2 of CR 1, or 1 of CR 2 — counts double at 5th, triple at 7th, quadruple at 9th", brief: "Fey spirits in beast shapes fight at your command for up to an hour", forms: [
     ["Wolf", 11, 13], ["Panther", 13, 12], ["Boar", 11, 11], ["Giant Poisonous Snake", 11, 14], ["Elk", 13, 10],
     ["Black Bear", 19, 11], ["Giant Wolf Spider", 11, 13], ["Brown Bear", 34, 11], ["Dire Wolf", 37, 14], ["Giant Spider", 26, 14], ["Giant Eagle", 26, 13], ["Giant Elk", 42, 14], ["Giant Constrictor Snake", 60, 12],
   ] }),
-  SM("Spell", "Conjure Minor Elementals", { ends: "short", conc: true, role: "Striker", countHint: "8 of CR ¼, 4 of CR ½, 2 of CR 1, or 1 of CR 2 — counts double at 6th level, triple at 8th", brief: "Small elementals coalesce and obey for up to an hour", forms: [
+  SM("Spell", "Conjure Minor Elementals", { ends: "short", conc: true, role: "Striker", pick: { types: ["elemental"], maxCr: 2 }, countHint: "8 of CR ¼, 4 of CR ½, 2 of CR 1, or 1 of CR 2 — counts double at 6th level, triple at 8th", brief: "Small elementals coalesce and obey for up to an hour", forms: [
     ["Steam Mephit", 21, 10], ["Dust Mephit", 17, 12], ["Ice Mephit", 21, 11], ["Magma Mephit", 22, 11], ["Mud Mephit", 27, 11], ["Smoke Mephit", 22, 12], ["Azer", 39, 17], ["Gargoyle", 52, 15],
   ] }),
-  SM("Spell", "Conjure Woodland Beings", { ends: "short", conc: true, role: "Skirmisher", countHint: "8 fey of CR ¼, 4 of CR ½, 2 of CR 1, or 1 of CR 2 — counts double at 6th level, triple at 8th", brief: "Fey creatures step out of the green to fight beside you", forms: [
+  SM("Spell", "Conjure Woodland Beings", { ends: "short", conc: true, role: "Skirmisher", pick: { types: ["fey"], maxCr: 2 }, countHint: "8 fey of CR ¼, 4 of CR ½, 2 of CR 1, or 1 of CR 2 — counts double at 6th level, triple at 8th", brief: "Fey creatures step out of the green to fight beside you", forms: [
     ["Pixie", 1, 15], ["Sprite", 2, 15], ["Blink Dog", 22, 13], ["Satyr", 31, 14], ["Dryad", 22, 11],
   ] }),
-  SM("Spell", "Conjure Elemental", { ends: "short", conc: true, role: "Defender", countHint: "one elemental of CR ≤ 5; +1 CR per slot level above 5th — mind it if concentration breaks", brief: "A pillar of the raw elements answers, obedient while your concentration holds", forms: [
+  SM("Spell", "Conjure Elemental", { ends: "short", conc: true, role: "Defender", pick: { types: ["elemental"] }, countHint: "one elemental of CR ≤ 5; +1 CR per slot level above 5th — mind it if concentration breaks", brief: "A pillar of the raw elements answers, obedient while your concentration holds", forms: [
     ["Air Elemental", 90, 15], ["Earth Elemental", 126, 17], ["Fire Elemental", 102, 13], ["Water Elemental", 114, 14],
   ] }),
-  SM("Spell", "Conjure Fey", { ends: "short", conc: true, role: "Striker", countHint: "one fey creature of CR ≤ 6; +1 CR per slot level above 6th", brief: "A fey creature of your DM's choosing steps through — it turns hostile if concentration breaks", forms: [["Fey creature", 60, 13]] }),
-  SM("Spell", "Conjure Celestial", { ends: "short", conc: true, role: "Healer", countHint: "one celestial of CR ≤ 4 (CR ≤ 5 with a 9th-level slot)", brief: "A celestial answers the call, friendly to you and yours", forms: [
+  SM("Spell", "Conjure Fey", { ends: "short", conc: true, role: "Striker", pick: { types: ["fey", "beast"], maxCr: 6 }, countHint: "one fey creature (or fey-spirit beast) of CR ≤ 6; +1 CR per slot level above 6th", brief: "A fey creature steps through — it turns hostile if concentration breaks", forms: [["Fey creature", 60, 13]] }),
+  SM("Spell", "Conjure Celestial", { ends: "short", conc: true, role: "Healer", pick: { types: ["celestial"], maxCr: 5 }, countHint: "one celestial of CR ≤ 4 (CR ≤ 5 with a 9th-level slot)", brief: "A celestial answers the call, friendly to you and yours", forms: [
     ["Couatl", 97, 19], ["Pegasus", 59, 12], ["Unicorn", 67, 12],
   ] }),
-  SM("Spell", "Planar Ally", { ends: "manual", role: "Striker", brief: "Your patron deity lends a servant — celestial, elemental, or fiend. Payment is negotiable; the stat block is the DM's", forms: [["Planar ally", 68, 14]] }),
-  SM("Spell", "Animate Dead", { ends: "manual", role: "Servant", countHint: "one per casting, +2 per slot level above 3rd; each casting also reasserts control over four you've already raised", brief: "A pile of bones or a corpse rises as your servant for 24 hours at a time", forms: [
+  SM("Spell", "Planar Ally", { ends: "manual", role: "Striker", pick: { types: ["celestial", "elemental", "fiend"] }, brief: "Your patron deity lends a servant — celestial, elemental, or fiend. Payment is negotiable", forms: [["Planar ally", 68, 14]] }),
+  SM("Spell", "Animate Dead", { ends: "manual", role: "Servant", pickNames: ["Skeleton", "Zombie"], countHint: "one per casting, +2 per slot level above 3rd; each casting also reasserts control over four you've already raised", brief: "A pile of bones or a corpse rises as your servant for 24 hours at a time", forms: [
     ["Skeleton", 13, 13], ["Zombie", 22, 8],
   ] }),
-  SM("Spell", "Create Undead", { ends: "manual", role: "Servant", countHint: "3 ghouls at 6th; 4 ghouls at 7th; 5 ghouls or 2 ghasts/wights at 8th; 6 ghouls, 3 ghasts/wights, or 2 mummies at 9th", brief: "Corpses rise as fouler servants — yours for 24 hours at a time", forms: [
+  SM("Spell", "Create Undead", { ends: "manual", role: "Servant", pickNames: ["Ghoul", "Ghast", "Wight", "Mummy"], countHint: "3 ghouls at 6th; 4 ghouls at 7th; 5 ghouls or 2 ghasts/wights at 8th; 6 ghouls, 3 ghasts/wights, or 2 mummies at 9th", brief: "Corpses rise as fouler servants — yours for 24 hours at a time", forms: [
     ["Ghoul", 22, 12], ["Ghast", 36, 13], ["Wight", 45, 14], ["Mummy", 58, 11],
   ] }),
   SM("Spell", "Animate Objects", { ends: "short", conc: true, role: "Striker", countHint: "10 tiny, 5 small, 2 medium, or 1 large/huge object — two more objects per slot level above 5th", brief: "Loose objects spring to life and swarm at your word", forms: [
     ["Tiny object", 20, 18], ["Small object", 25, 16], ["Medium object", 40, 13], ["Large object", 50, 10], ["Huge object", 80, 10],
   ] }),
-  SM("Spell", "Giant Insect", { ends: "short", conc: true, role: "Striker", countHint: "10 centipedes, 3 spiders, 5 wasps, or 1 scorpion — they grow giant and obey", brief: "Ordinary vermin swell to giants under your command", forms: [
+  SM("Spell", "Giant Insect", { ends: "short", conc: true, role: "Striker", pickNames: ["Giant Centipede", "Giant Spider", "Giant Wasp", "Giant Scorpion"], countHint: "10 centipedes, 3 spiders, 5 wasps, or 1 scorpion — they grow giant and obey", brief: "Ordinary vermin swell to giants under your command", forms: [
     ["Giant Centipede", 4, 13], ["Giant Wasp", 13, 12], ["Giant Spider", 26, 14], ["Giant Scorpion", 52, 15],
   ] }),
   SM("Spell", "Unseen Servant", { ends: "short", role: "Servant", brief: "An invisible, mindless force fetches and carries for an hour", forms: [["Unseen servant", 1, 10]] }),
-  SM("Spell", "Summon Lesser Demons", { ends: "short", conc: true, role: "Striker", countHint: "8 of CR ¼, 4 of CR ½, or 2 of CR 1 — they attack the nearest creature, friend or foe", brief: "Demons claw through — uncontrolled, hungry, and aimed only by proximity", forms: [
+  SM("Spell", "Summon Lesser Demons", { ends: "short", conc: true, role: "Striker", pick: { types: ["fiend"], maxCr: 1 }, countHint: "8 of CR ¼, 4 of CR ½, or 2 of CR 1 — they attack the nearest creature, friend or foe", brief: "Demons claw through — uncontrolled, hungry, and aimed only by proximity", forms: [
     ["Manes", 9, 9], ["Dretch", 18, 11], ["Quasit", 7, 13],
   ] }),
-  SM("Spell", "Summon Greater Demon", { ends: "short", conc: true, role: "Striker", countHint: "one demon of CR ≤ 5; +1 CR per slot level above 4th — it slips your leash when concentration ends", brief: "A greater demon answers, straining against your commands every round", forms: [
+  SM("Spell", "Summon Greater Demon", { ends: "short", conc: true, role: "Striker", pick: { types: ["fiend"], maxCr: 5 }, countHint: "one demon of CR ≤ 5; +1 CR per slot level above 4th — it slips your leash when concentration ends", brief: "A greater demon answers, straining against your commands every round", forms: [
     ["Barlgura", 68, 15], ["Shadow Demon", 66, 13], ["Vrock", 104, 15],
   ] }),
   /* ---- Class features & pact boons ---- */
-  SM("Feature", "Wild Shape", { ends: "manual", role: "Wild Shape", mine: (ch) => classLevel(ch, "Druid") >= 2, countHint: "you ARE the beast: at 0 HP the form breaks and leftover damage carries to your true body", brief: "Track your beast form's own hit-point pool here while you wear it", forms: [
-    ["Wolf", 11, 13], ["Panther", 13, 12], ["Giant Wolf Spider", 11, 13], ["Black Bear", 19, 11], ["Brown Bear", 34, 11], ["Dire Wolf", 37, 14], ["Giant Spider", 26, 14], ["Giant Eagle", 26, 13], ["Water Elemental", 114, 14],
+  SM("Feature", "Wild Shape", { ends: "manual", role: "Wild Shape", mine: (ch) => classLevel(ch, "Druid") >= 2, pick: { types: ["beast"], maxCr: 6 }, countHint: "CR caps by druid level: ¼ at 2nd (no fly/swim), ½ at 4th (no fly), 1 at 8th — Circle of the Moon goes higher. At 0 HP the form breaks and leftover damage carries to your true body", brief: "Track your beast form's own hit-point pool here while you wear it", forms: [
+    ["Wolf", 11, 13], ["Panther", 13, 12], ["Giant Wolf Spider", 11, 13], ["Black Bear", 19, 11], ["Brown Bear", 34, 11], ["Dire Wolf", 37, 14], ["Giant Spider", 26, 14], ["Giant Eagle", 26, 13],
   ] }),
-  SM("Feature", "Ranger's Companion", { ends: "manual", role: "Companion", mine: (ch) => hasSub(ch, "Beast Master"), brief: "Your bonded beast — it acts on your commands and grows with your ranger level", forms: [
+  SM("Feature", "Ranger's Companion", { ends: "manual", role: "Companion", mine: (ch) => hasSub(ch, "Beast Master"), pick: { types: ["beast"], maxCr: 0.25, maxSize: "Medium" }, countHint: "a beast of CR ¼ or lower, Medium or smaller", brief: "Your bonded beast — it acts on your commands and grows with your ranger level", forms: [
     ["Wolf", 11, 13], ["Panther", 13, 12], ["Hawk", 1, 13], ["Mastiff", 5, 12], ["Boar", 11, 11], ["Giant Poisonous Snake", 11, 14], ["Giant Wolf Spider", 11, 13],
   ] }),
-  SM("Feature", "Pact of the Chain", { ends: "manual", role: "Scout", mine: (ch) => ch.pactBoon === "Pact of the Chain", brief: "Your special familiar — imp, quasit, pseudodragon, or sprite — and it can attack in your stead", forms: [
+  SM("Feature", "Pact of the Chain", { ends: "manual", role: "Scout", mine: (ch) => ch.pactBoon === "Pact of the Chain", pickNames: ["Imp", "Quasit", "Pseudodragon", "Sprite"], brief: "Your special familiar — imp, quasit, pseudodragon, or sprite — and it can attack in your stead", forms: [
     ["Imp", 10, 13], ["Quasit", 7, 13], ["Pseudodragon", 7, 13], ["Sprite", 2, 15],
   ] }),
+  /* ---- The whole bestiary, for everything else: feats, magic items, DM gifts ---- */
+  SM("Bestiary", "Any creature", { ends: "manual", role: "Companion", pick: {}, brief: "Every SRD stat block — muster anything a feat, item, or DM's whim can grant", forms: [["Creature", 10, 10]] }),
 ].map((d) => ({ ...d, forms: d.forms.map(([name, hp, ac]) => ({ name, hp, ac })) }));
 const SUMMON_BY_KEY = Object.fromEntries(SUMMON_LIB.map((d) => [d.key, d]));
 /* Match a tapped spell/feature name to its summon entry — "(Ritual Only)" twins included */
@@ -2061,9 +2104,20 @@ function ClassDetail({ cls, customs }) {
 }
 
 /* Resolve a name into readable lore, searching compendium imports then built-in tables */
+const creatureInfo = (b) => ({
+  title: b.name,
+  meta: [[b.size, b.type].filter(Boolean).join(" "), b.align, b.cr != null && `CR ${crShow(b.cr)}${b.xp ? ` · ${b.xp} XP` : ""}`].filter(Boolean).join(" · "),
+  body: statBlockText(b),
+  foot: "5e SRD bestiary",
+});
 function infoFor(rawName, customs) {
   const name = String(rawName || "").trim();
   if (!name) return null;
+  // "creature:Wolf" insists on the stat block even where an item shares the name (mounts)
+  if (name.startsWith("creature:")) {
+    const b = creatureByName(name.slice(9));
+    if (b) return creatureInfo(b);
+  }
   const strip = baseSubName(name);
   const sp = (customs?.spells || []).find((s) => s.name === name || s.name === strip);
   if (sp) return {
@@ -2080,6 +2134,8 @@ function infoFor(rawName, customs) {
       body: item.text || null, foot: sourceOf(item.text),
     };
   }
+  const beast = creatureByName(name) || creatureByName(strip);
+  if (beast) return creatureInfo(beast);
   const inv = INVOCATION_DATA.find(([n]) => n === name || n === strip);
   if (inv) return { title: inv[0], meta: ["Eldritch Invocation", inv[1] > 0 ? `requires warlock ${inv[1]}` : "", inv[2] ? `requires ${inv[2]}` : ""].filter(Boolean).join(" · "), body: INVOCATION_INFO[inv[0]] || null };
   if (METAMAGIC_INFO[name]) return { title: name, meta: "Metamagic", body: METAMAGIC_INFO[name] };
@@ -2222,6 +2278,7 @@ async function fetchBaseCompendium() {
     const res = await fetch("compendium.json");
     if (!res.ok) return null;
     __BASE = await res.json();
+    __BESTIARY = Array.isArray(__BASE.bestiary) ? __BASE.bestiary : [];
     if (typeof window !== "undefined") window.__ledgerBase = __BASE;
     return __BASE;
   } catch { return null; /* offline first visit or no bundled data — stored customs stand alone */ }
@@ -4557,7 +4614,7 @@ function ChoiceManager({ ch, customs, onUpdate }) {
 const pillBtn = { width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.edge}`, background: T.panel, color: T.gold, fontSize: 16, cursor: "pointer", lineHeight: 1, padding: 0, WebkitTapHighlightColor: "transparent", touchAction: "manipulation" };
 const pip = (filled, color) => ({ cursor: "pointer", fontSize: 18, fontFamily: "Georgia, serif", color: filled ? color : T.dim, opacity: filled ? 1 : 0.45, userSelect: "none", padding: "0 1px" });
 const fieldStyle = { background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 10px", fontSize: 15, fontFamily: "inherit", boxSizing: "border-box", width: "100%" };
-const FX_KIND_COLOR = { Spell: "#6c91e0", Feature: "#7fb069", Feat: "#c77dca", Action: "#5eb1bf", Condition: "#d76a76", Custom: "#c9a44c" };
+const FX_KIND_COLOR = { Spell: "#6c91e0", Feature: "#7fb069", Feat: "#c77dca", Action: "#5eb1bf", Condition: "#d76a76", Custom: "#c9a44c", Bestiary: "#c9a44c" };
 
 /* readOnly (shared sheets): effects and temp HP display but cannot be granted,
    stacked, or removed — the sheet is a sealed snapshot */
@@ -4917,12 +4974,12 @@ function MinionsCard({ ch, customs, onUpdate, onSummon, readOnly }) {
               const down = cur <= 0 && temp <= 0;
               return (
                 <div key={m.id} data-minion={m.id} style={{ display: "flex", alignItems: "center", gap: 10, background: T.panel2, border: `1px solid ${down ? "#8e3b4688" : T.edge}`, borderRadius: 10, padding: "8px 10px", opacity: down ? 0.75 : 1, flexWrap: "wrap" }}>
-                  <div {...lorePress(m.source)} style={{ flex: "1 1 150px", minWidth: 0, cursor: "pointer" }}>
+                  <div {...lorePress(m.stat ? "creature:" + m.stat : m.source)} style={{ flex: "1 1 150px", minWidth: 0, cursor: "pointer" }}>
                     <span style={{ color: T.ink, fontWeight: 700, fontSize: 14, textDecoration: down ? "line-through" : "none" }}>{m.name}</span>
                     <span style={{ color: FX_KIND_COLOR[m.kind] || FX_KIND_COLOR.Custom, fontSize: 10.5, marginLeft: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>{m.kind || "Custom"}</span>
                     {down && <span style={{ color: "#d76a76", fontSize: 11, marginLeft: 8 }}>down</span>}
                     <div style={{ color: T.dim, fontSize: 11.5, marginTop: 2 }}>
-                      {m.source}{m.ac ? ` · AC ${m.ac}` : ""}{m.note ? ` · ${m.note}` : ""}
+                      {m.stat && m.stat !== m.name ? `${m.stat} · ` : ""}{m.source}{m.ac ? ` · AC ${m.ac}` : ""}{m.note ? ` · ${m.note}` : ""}
                     </div>
                   </div>
                   {readOnly ? (
@@ -4963,14 +5020,12 @@ function MinionsCard({ ch, customs, onUpdate, onSummon, readOnly }) {
    `preset` (from the Use prompt) skips browsing and lands straight on the source just cast. */
 function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
   const presetDef = (preset && SUMMON_BY_KEY[preset.key]) || null;
-  const defaultsFor = (d, idx) => {
-    const f = d.forms[Math.max(0, Math.min(idx, d.forms.length - 1))];
-    return { name: f.name, count: "1", hp: String(f.hp), ac: String(f.ac), role: d.role || "Striker" };
-  };
+  const defaultsFor = (d, f) => ({ name: f.name, count: "1", hp: String(f.hp), ac: String(f.ac ?? ""), role: d.role || "Striker" });
   const [q, setQ] = useState("");
   const [pending, setPending] = useState(presetDef);
-  const [formIdx, setFormIdx] = useState(0);
-  const [fields, setFields] = useState(presetDef ? defaultsFor(presetDef, 0) : null);
+  const [form, setForm] = useState(presetDef ? summonFormsFor(presetDef)[0] : null);
+  const [formQ, setFormQ] = useState("");
+  const [fields, setFields] = useState(presetDef ? defaultsFor(presetDef, summonFormsFor(presetDef)[0]) : null);
   const [custom, setCustom] = useState(null);
   /* the page beneath holds still while the sheet is up — only the sheet's own list scrolls */
   useEffect(() => {
@@ -4982,23 +5037,26 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
   const known = knownSpellNames(ch, customs);
   const isMine = (d) => (d.kind === "Spell" ? known.has(d.source) : d.mine ? d.mine(ch) : false);
   const ql = q.trim().toLowerCase();
-  const matches = (d) => !ql || d.source.toLowerCase().includes(ql) || (d.brief || "").toLowerCase().includes(ql) || d.forms.some((f) => f.name.toLowerCase().includes(ql));
+  const matches = (d) => !ql || d.source.toLowerCase().includes(ql) || (d.brief || "").toLowerCase().includes(ql) || summonFormsFor(d).some((f) => f.name.toLowerCase().includes(ql));
   const suggested = SUMMON_LIB.filter((d) => matches(d) && isMine(d));
   const sugKeys = new Set(suggested.map((d) => d.key));
   const groups = [
     [`Yours — ${ch.name}'s spells & features`, suggested],
     ["Summoning spells", SUMMON_LIB.filter((d) => d.kind === "Spell" && matches(d) && !sugKeys.has(d.key))],
     ["Class features", SUMMON_LIB.filter((d) => d.kind === "Feature" && matches(d) && !sugKeys.has(d.key))],
+    ["The bestiary", SUMMON_LIB.filter((d) => d.kind === "Bestiary" && matches(d))],
   ].filter(([, a]) => a.length);
-  const pick = (d) => { setPending(d); setFormIdx(0); setFields(defaultsFor(d, 0)); };
-  const pickForm = (i) => {
-    const f = pending.forms[i];
-    setFormIdx(i);
-    // a new form refreshes the stats it owns; the count and a hand-typed role survive
-    setFields((prev) => ({ ...prev, name: f.name, hp: String(f.hp), ac: String(f.ac) }));
+  const pick = (d) => {
+    const f = summonFormsFor(d)[0];
+    setPending(d); setForm(f); setFormQ(""); setFields(defaultsFor(d, f));
   };
-  const addMinions = (def, f) => {
-    const nm = (f.name || "").trim() || def.forms?.[formIdx]?.name || def.source;
+  const pickForm = (f) => {
+    setForm(f);
+    // a new form refreshes the stats it owns; the count and a hand-typed role survive
+    setFields((prev) => ({ ...prev, name: f.name, hp: String(f.hp), ac: String(f.ac ?? "") }));
+  };
+  const addMinions = (def, f, stat) => {
+    const nm = (f.name || "").trim() || def.source;
     const count = Math.max(1, Math.min(20, parseInt(f.count, 10) || 1));
     const hp = Math.max(1, parseInt(f.hp, 10) || 1);
     const ac = Math.max(0, parseInt(f.ac, 10) || 0);
@@ -5009,6 +5067,7 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
       id: uid(), key: def.key, kind: def.kind, source: def.source,
       name: count === 1 && already === 0 ? nm : `${nm} ${already + i + 1}`,
       role: f.role || "Striker", maxHp: hp, dmg: 0, tempHp: 0, ...(ac ? { ac } : {}), ends: def.ends || "manual",
+      ...(stat ? { stat } : {}),
       ...(def.key === "custom" && f.note ? { note: f.note } : {}),
     }));
     onUpdate({
@@ -5020,7 +5079,7 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
   const blankCustom = { name: "", source: "", role: "Striker", count: "1", hp: "10", ac: "", note: "", ends: "manual" };
   const submitCustom = () => addMinions(
     { key: "custom", kind: "Custom", source: (custom.source || "").trim() || "Custom summon", ends: custom.ends },
-    custom
+    custom, creatureByName(custom.name)?.name || null
   );
   const browsing = !pending && !custom;
   const numField = (label, f, obj, setObj, width = "1 1 80px") => (
@@ -5070,16 +5129,31 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
                 {preset?.slotLvl ? `Cast at level ${preset.slotLvl}. ` : ""}{pending.countHint || ""}
               </div>
             )}
-            {pending.forms.length > 1 && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-                {pending.forms.map((f, i) => (
-                  <button key={f.name} onClick={() => pickForm(i)}
-                    style={{ ...btn(false), padding: "6px 10px", minHeight: 0, fontSize: 12.5, fontFamily: "inherit", fontWeight: i === formIdx ? 700 : 400, borderColor: i === formIdx ? T.gold : T.edge, color: i === formIdx ? T.gold : T.ink }}>
-                    {f.name} <span style={{ color: T.dim, fontSize: 11 }}>{f.hp} HP</span>
-                  </button>
-                ))}
-              </div>
-            )}
+            {(() => {
+              const forms = summonFormsFor(pending);
+              if (forms.length <= 1) return null;
+              const fq = formQ.trim().toLowerCase();
+              const shown = fq ? forms.filter((f) => f.name.toLowerCase().includes(fq)) : forms;
+              return (
+                <>
+                  {forms.length > 12 && (
+                    <input value={formQ} placeholder={`Search ${forms.length} creatures…`} onChange={(e) => setFormQ(e.target.value)} style={{ ...sheetField, marginTop: 10 }} />
+                  )}
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                    {shown.map((f) => {
+                      const on = form && form.name === f.name;
+                      return (
+                        <button key={f.name} {...(f.stat ? lorePress("creature:" + f.name) : {})} onClick={() => pickForm(f)}
+                          style={{ ...btn(false), padding: "6px 10px", minHeight: 0, fontSize: 12.5, fontFamily: "inherit", fontWeight: on ? 700 : 400, borderColor: on ? T.gold : T.edge, color: on ? T.gold : T.ink }}>
+                          {f.name} <span style={{ color: T.dim, fontSize: 11 }}>{f.cr != null ? `CR ${crShow(f.cr)} · ` : ""}{f.hp} HP</span>
+                        </button>
+                      );
+                    })}
+                    {shown.length === 0 && <span style={{ color: T.dim, fontSize: 13 }}>No creature matches.</span>}
+                  </div>
+                </>
+              );
+            })()}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
               <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: T.dim, flex: "2 1 150px" }}>
                 Name
@@ -5091,7 +5165,7 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
               {roleSelect(fields, setFields)}
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-              <button style={btn(true)} onClick={() => addMinions(pending, fields)}>Summon</button>
+              <button style={btn(true)} onClick={() => addMinions(pending, fields, form?.stat ? form.name : null)}>Summon</button>
               {!presetDef && <button style={btn(false)} onClick={() => setPending(null)}>Back</button>}
             </div>
           </div>
@@ -5451,9 +5525,10 @@ const SHEET_GUIDE = [
   {
     icon: "paw", title: "Minions & Summons",
     items: [
-      ["＋ Summon", "muster anything you can call — conjured beasts, a familiar, skeletons, a steed, a wild shape form — or forge a custom creature from any feat or feature."],
-      ["Cast to summon", "casting a conjuring spell opens the muster automatically, with the slot level in hand."],
+      ["＋ Summon", "muster anything you can call — conjured beasts, a familiar, skeletons, a steed, a wild shape form, or any creature in the SRD bestiary."],
+      ["Cast to summon", "casting a conjuring spell opens the muster automatically, with the slot level in hand and the legal creatures already filtered by type and CR."],
       ["Each body, its own pool", "every creature tracks its own HP — set the amount, tap its − or ＋ — and wears a role you can change mid-fight."],
+      ["Long-press a creature", "its full stat block — abilities, attacks, traits — rises like any other lore."],
       ["They know when to leave", "concentration menageries dissolve on a rest; familiars, steeds, and the raised dead stay until dismissed."],
     ],
   },
