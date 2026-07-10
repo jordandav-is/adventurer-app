@@ -6494,7 +6494,14 @@ export default function App() {
    the owner's ledger is a world away. Reusing <Sheet/> keeps this view
    pixel-identical to the owner's — and every future sheet feature arrives
    in shared links for free. */
-export function SharedView({ token }) {
+export function SharedView({ token, onExit }) {
+  // viewers are often ledger-keepers themselves — this door steps back into the
+  // app in place, no reload, their own vault untouched
+  const ledgerDoor = onExit && (
+    <span onClick={onExit} style={{ color: T.gold, cursor: "pointer", textDecoration: "underline dotted", whiteSpace: "nowrap" }}>
+      Open your own ledger →
+    </span>
+  );
   const [state, setState] = useState({ status: "loading" });
   useEffect(() => {
     let live = true;
@@ -6538,6 +6545,7 @@ export function SharedView({ token }) {
           It doesn't hold a character this ledger can read. Links sometimes arrive clipped by messaging apps,
           and older browsers lack the craft to unseal them — ask for a fresh link, or open this one in a current browser.
         </div>
+        {ledgerDoor && <div style={{ fontSize: 13.5, marginTop: 14 }}>{ledgerDoor}</div>}
       </div>
     </div>
   );
@@ -6549,6 +6557,7 @@ export function SharedView({ token }) {
           <Icon name="eye" size={14} style={{ color: T.gold }} />
           A snapshot of <b style={{ color: T.ink }}>{ch.name}</b>{when ? `, shared ${when}` : ""}, sealed the day it was shared.
           Tap anything to roll its dice, hold anything to read its rules — but the sheet itself cannot be changed, here or anywhere.
+          {ledgerDoor && <> {ledgerDoor}</>}
         </div>
       </div>
       <Sheet shared ch={ch} customs={customs}
