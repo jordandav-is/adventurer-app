@@ -4398,9 +4398,6 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
             {subData?.type === "expanded" && (
               <div style={{ marginTop: 4, color: "#b48ead", fontSize: 12 }}>{subData.label}</div>
             )}
-            {!isPrep && c.name !== "Wizard" && (
-              <div style={{ marginTop: 4, color: T.dim, fontSize: 11 }}>Known spells — swapped one-for-one on level-up, per the rules.</div>
-            )}
             {!readOnly && <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
               {isPrep && cap.n > 0 && pool.length > 0 && onPrepare && (
                 <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={onPrepare}>⟳ prepare spells</button>
@@ -4900,7 +4897,7 @@ function MinionsCard({ ch, customs, onUpdate, onSummon, readOnly }) {
         {!readOnly && <button style={{ ...btn(false), padding: "6px 12px", minHeight: 0, fontSize: 13 }} onClick={onSummon}>＋ Summon</button>}
       </div>
       {minions.length === 0 ? (
-        <div style={{ color: T.dim, fontSize: 13, marginTop: 10 }}>No creatures at your side. Cast a conjuring spell — or tap ＋ Summon — and they'll muster here, each with its own hit points and role.</div>
+        <div style={{ color: T.dim, fontSize: 13, marginTop: 10 }}>No creatures at your side.</div>
       ) : (
         <>
           {!readOnly && (
@@ -4908,7 +4905,6 @@ function MinionsCard({ ch, customs, onUpdate, onSummon, readOnly }) {
               Damage / heal by
               <input data-minion-amt type="number" min={1} value={amt} onChange={(e) => setAmt(e.target.value)}
                 style={{ width: 58, textAlign: "center", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 4px", fontSize: 16, minHeight: 42, boxSizing: "border-box" }} />
-              — then tap a creature's − or ＋
             </div>
           )}
           <div style={{ display: "grid", gap: 6, marginTop: 12 }}>
@@ -4924,7 +4920,7 @@ function MinionsCard({ ch, customs, onUpdate, onSummon, readOnly }) {
                   <div {...lorePress(m.source)} style={{ flex: "1 1 150px", minWidth: 0, cursor: "pointer" }}>
                     <span style={{ color: T.ink, fontWeight: 700, fontSize: 14, textDecoration: down ? "line-through" : "none" }}>{m.name}</span>
                     <span style={{ color: FX_KIND_COLOR[m.kind] || FX_KIND_COLOR.Custom, fontSize: 10.5, marginLeft: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>{m.kind || "Custom"}</span>
-                    {down && <span style={{ color: "#d76a76", fontSize: 11, marginLeft: 8 }}>down — heal it or let it go</span>}
+                    {down && <span style={{ color: "#d76a76", fontSize: 11, marginLeft: 8 }}>down</span>}
                     <div style={{ color: T.dim, fontSize: 11.5, marginTop: 2 }}>
                       {m.source}{m.ac ? ` · AC ${m.ac}` : ""}{m.note ? ` · ${m.note}` : ""}
                     </div>
@@ -5086,7 +5082,7 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
             )}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
               <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: T.dim, flex: "2 1 150px" }}>
-                Name them (a shared name numbers itself)
+                Name
                 <input value={fields.name} onChange={(e) => setFields({ ...fields, name: e.target.value })} style={sheetField} />
               </label>
               {numField("How many", "count", fields, setFields)}
@@ -5102,7 +5098,7 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
         ) : custom ? (
           <div style={{ marginTop: 14 }}>
             <label style={{ display: "block", color: T.dim, fontSize: 12 }}>Creature<input value={custom.name} autoFocus placeholder="Homunculus, awakened shrub, borrowed war dog…" onChange={(e) => setCustom({ ...custom, name: e.target.value })} style={{ ...sheetField, marginTop: 4 }} /></label>
-            <label style={{ display: "block", color: T.dim, fontSize: 12, marginTop: 10 }}>Source — the spell, feature, feat, or item that grants it<input value={custom.source} placeholder="Danse Macabre, a feat, a DM's boon…" onChange={(e) => setCustom({ ...custom, source: e.target.value })} style={{ ...sheetField, marginTop: 4 }} /></label>
+            <label style={{ display: "block", color: T.dim, fontSize: 12, marginTop: 10 }}>Source<input value={custom.source} placeholder="Danse Macabre, a feat, a DM's boon…" onChange={(e) => setCustom({ ...custom, source: e.target.value })} style={{ ...sheetField, marginTop: 4 }} /></label>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
               {numField("How many", "count", custom, setCustom)}
               {numField("HP each", "hp", custom, setCustom)}
@@ -5356,8 +5352,7 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
         {blocked && <div style={{ color: "#d76a76", fontSize: 13, marginTop: 10 }}>{tracker && chosen?.type === "tracker" ? `Spent — recharges on a ${chosen && tracker.per === "short" ? "short or long" : "long"} rest.` : "No slot can pay for this right now."}</div>}
         {summonDef && (
           <div style={{ color: T.dim, fontSize: 12.5, marginTop: 10, lineHeight: 1.6 }}>
-            <span style={{ color: T.gold }}>Calls creatures to your side</span> — {verb === "Cast" ? "casting" : "using it"} opens the muster, and each one arrives with its own hit points and role.
-            {summonDef.countHint ? ` ${summonDef.countHint}.` : ""}
+            <span style={{ color: T.gold }}>Calls creatures to your side</span>{summonDef.countHint ? ` — ${summonDef.countHint}.` : "."}
           </div>
         )}
         {damaging && (
