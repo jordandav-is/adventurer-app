@@ -5193,12 +5193,6 @@ function ShareSheet({ ch, customs, onClose }) {
     }
     navigator.share({ title: `${ch.name} — The Adventurer's Ledger`, text: line, url }).catch(() => {});
   };
-  const point = (text, i) => (
-    <div key={i} style={{ display: "flex", gap: 9, fontSize: 13.5, lineHeight: 1.55, marginTop: 8 }}>
-      <span style={{ flex: "none", marginTop: 7, width: 5, height: 5, borderRadius: 5, background: T.gold, opacity: 0.75 }} />
-      <span style={{ color: T.dim }}>{text}</span>
-    </div>
-  );
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 80, display: "flex", alignItems: "flex-end", justifyContent: "center", animation: "sheetVeil 200ms ease" }} onClick={onClose}>
       <div className="sheet-cap"
@@ -5220,12 +5214,6 @@ function ShareSheet({ ch, customs, onClose }) {
             <img src={card.src} alt={`${ch.name} — character card`}
               style={{ width: "100%", display: "block", marginTop: 10, borderRadius: 12, border: `1px solid ${T.edge}` }} />
           )}
-          {card && <div style={{ color: T.dim, fontSize: 12, marginTop: 6, textAlign: "center" }}>This card travels with the link when you share from here.</div>}
-          {[
-            "The whole sheet rides inside the link itself — stats, spells, gear, even your homebrew. Nothing is uploaded anywhere.",
-            "Anyone holding the link can open it, no passphrase needed. It shows only this character, and nothing they do there can touch your ledger.",
-            "It's a snapshot, frozen today. Level up or take a beating tomorrow and the link won't know — share again for a fresh one.",
-          ].map(point)}
           {failed ? (
             <div style={{ color: "#d76a76", fontSize: 13, marginTop: 16 }}>The link would not seal — this browser lacks the craft. Try a current Safari, Chrome, or Firefox.</div>
           ) : (
