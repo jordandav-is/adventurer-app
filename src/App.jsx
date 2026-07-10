@@ -3930,7 +3930,9 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
 /* ============ INVENTORY & EQUIPMENT ============ */
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-function InventoryCard({ ch, customs, onUpdate, onConsume }) {
+/* readOnly (shared sheets): the pack and purse read as a manifest — nothing can
+   be bought, sold, drunk, equipped, or discarded */
+function InventoryCard({ ch, customs, onUpdate, onConsume, readOnly }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [usableOnly, setUsableOnly] = useState(true);
@@ -3987,16 +3989,16 @@ function InventoryCard({ ch, customs, onUpdate, onConsume }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
         <span style={{ color: T.gold, fontSize: 13, fontWeight: 700 }}>Purse</span>
         <span data-purse style={{ fontFamily: "Georgia, serif", fontSize: 17, color: T.gold }}>{gold} gp</span>
-        <input type="number" min={0} value={coin} onChange={(e) => setCoin(e.target.value)} title="Amount of gold"
+        {!readOnly && <><input type="number" min={0} value={coin} onChange={(e) => setCoin(e.target.value)} title="Amount of gold"
           style={{ width: 66, textAlign: "center", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "5px 4px", fontSize: 14 }} />
         <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0, borderColor: T.blood, color: "#d76a76", opacity: !coinAmt || coinAmt > gold ? 0.4 : 1 }}
           disabled={!coinAmt || coinAmt > gold} title={coinAmt > gold ? "Not enough gold in the purse" : "Pay for lodging, bribes, diamonds for Revivify…"}
           onClick={() => adjustGold(-coinAmt, `Spent ${coinAmt} gp.`)}>− Spend</button>
         <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0, borderColor: T.green, color: T.green, opacity: !coinAmt ? 0.4 : 1 }}
           disabled={!coinAmt} title="Loot, rewards, ill-gotten gains" onClick={() => adjustGold(coinAmt, `Gained ${coinAmt} gp.`)}>+ Gain</button>
-        {coinAmt > gold && <span style={{ color: "#d76a76", fontSize: 11 }}>the purse holds only {gold} gp</span>}
+        {coinAmt > gold && <span style={{ color: "#d76a76", fontSize: 11 }}>the purse holds only {gold} gp</span>}</>}
       </div>
-      {inv.length === 0 && <div style={{ color: T.dim, fontSize: 13, margin: "8px 0" }}>Empty packs win no battles. Add gear below — equip armor, shields, and weapons to power your AC and attack buttons.</div>}
+      {inv.length === 0 && <div style={{ color: T.dim, fontSize: 13, margin: "8px 0" }}>{readOnly ? "The pack is empty." : "Empty packs win no battles. Add gear below — equip armor, shields, and weapons to power your AC and attack buttons."}</div>}
       {inv.map((row) => {
         const it = findItem(row.name, customs);
         const equippable = it && (isArmorType(it.type) || it.type === "S" || isWeaponType(it.type));
@@ -4006,38 +4008,47 @@ function InventoryCard({ ch, customs, onUpdate, onConsume }) {
               {row.name}
               <span style={{ color: T.dim, fontWeight: 400, fontSize: 11 }}> {it ? `· ${ITEM_TYPES[it.type] || it.type}${it.ac ? ` · AC ${it.type === "S" ? "+" : ""}${it.ac}` : ""}${it.dmg1 ? ` · ${it.dmg1}` : ""}${it.weight ? ` · ${it.weight} lb` : ""}` : ""}</span>
             </span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: T.dim, fontSize: 13 }}>
-              <button style={{ ...btn(false), padding: "1px 8px", minHeight: 0, fontSize: 13 }} onClick={() => save(inv.map((r) => (r.name === row.name ? { ...r, qty: Math.max(1, (r.qty || 1) - 1) } : r)))}>−</button>
-              {row.qty || 1}
-              <button style={{ ...btn(false), padding: "1px 8px", minHeight: 0, fontSize: 13 }} onClick={() => save(inv.map((r) => (r.name === row.name ? { ...r, qty: (r.qty || 1) + 1 } : r)))}>＋</button>
-            </span>
-            {equippable && (canEquip(it, ch)
-              ? (
-                <button style={{ ...btn(!!row.equipped), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => equip(row)}>
-                  {row.equipped ? "✓ Equipped" : "Equip"}
-                </button>
-              )
-              : <span style={{ color: T.blood, fontSize: 11 }}>not proficient</span>)}
-            {onConsume && isConsumableRow(row, it) && (
-              <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0, borderColor: "#5eb1bf", color: "#5eb1bf" }} title="Spend one and apply what it does" onClick={() => onConsume(row)}>
-                {/potion|elixir|philter/i.test(row.name) ? "Drink" : "Use"}
-              </button>
+            {readOnly ? (
+              <>
+                <span style={{ color: T.dim, fontSize: 13 }}>× {row.qty || 1}</span>
+                {row.equipped && <span style={{ color: T.gold, fontSize: 12 }}>✓ equipped</span>}
+              </>
+            ) : (
+              <>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: T.dim, fontSize: 13 }}>
+                  <button style={{ ...btn(false), padding: "1px 8px", minHeight: 0, fontSize: 13 }} onClick={() => save(inv.map((r) => (r.name === row.name ? { ...r, qty: Math.max(1, (r.qty || 1) - 1) } : r)))}>−</button>
+                  {row.qty || 1}
+                  <button style={{ ...btn(false), padding: "1px 8px", minHeight: 0, fontSize: 13 }} onClick={() => save(inv.map((r) => (r.name === row.name ? { ...r, qty: (r.qty || 1) + 1 } : r)))}>＋</button>
+                </span>
+                {equippable && (canEquip(it, ch)
+                  ? (
+                    <button style={{ ...btn(!!row.equipped), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => equip(row)}>
+                      {row.equipped ? "✓ Equipped" : "Equip"}
+                    </button>
+                  )
+                  : <span style={{ color: T.blood, fontSize: 11 }}>not proficient</span>)}
+                {onConsume && isConsumableRow(row, it) && (
+                  <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0, borderColor: "#5eb1bf", color: "#5eb1bf" }} title="Spend one and apply what it does" onClick={() => onConsume(row)}>
+                    {/potion|elixir|philter/i.test(row.name) ? "Drink" : "Use"}
+                  </button>
+                )}
+                {it && priceOf(it) > 0 && (
+                  <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0 }} title={`Sell one for half value (${round2(priceOf(it) / 2)} gp)`} onClick={() => sell(row, it)}>
+                    Sell {round2(priceOf(it) / 2)}g
+                  </button>
+                )}
+                <span style={{ color: T.blood, cursor: "pointer", fontWeight: 700, padding: "0 4px" }} onClick={() => save(inv.filter((r) => r.name !== row.name))}>✕</span>
+              </>
             )}
-            {it && priceOf(it) > 0 && (
-              <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0 }} title={`Sell one for half value (${round2(priceOf(it) / 2)} gp)`} onClick={() => sell(row, it)}>
-                Sell {round2(priceOf(it) / 2)}g
-              </button>
-            )}
-            <span style={{ color: T.blood, cursor: "pointer", fontWeight: 700, padding: "0 4px" }} onClick={() => save(inv.filter((r) => r.name !== row.name))}>✕</span>
           </div>
         );
       })}
-      <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {!readOnly && <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
         {pool.length > 0 && <button style={{ ...btn(true), padding: "6px 14px" }} onClick={() => { setOpen(true); setQ(""); }}>＋ Add from compendium</button>}
         <input value={freeText} onChange={(e) => setFreeText(e.target.value)} placeholder="or type any item + Enter"
           onKeyDown={(e) => { if (e.key === "Enter" && freeText.trim() && !inv.some((r) => r.name === freeText.trim())) { save([...inv, { name: freeText.trim(), qty: 1 }]); setFreeText(""); } }}
           style={{ background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "6px 10px", fontSize: 13, flex: 1, minWidth: 160 }} />
-      </div>
+      </div>}
       {open && (
         <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={() => setOpen(false)}>
           <div style={{ ...card, width: "min(560px, 100%)", maxHeight: "75vh", display: "flex", flexDirection: "column", borderRadius: "16px 16px 0 0", padding: 16, paddingBottom: "calc(16px + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
@@ -4082,7 +4093,8 @@ function InventoryCard({ ch, customs, onUpdate, onConsume }) {
 }
 
 /* ============ INVOCATIONS (sheet management) ============ */
-function InvocationManager({ ch, onInvocations }) {
+/* readOnly (shared sheets): invocations list without learn/unlearn */
+function InvocationManager({ ch, onInvocations, readOnly }) {
   const wl = ch.classes.find((c) => c.name === "Warlock");
   const [open, setOpen] = useState(false);
   if (!wl || wl.level < 2) return null;
@@ -4101,10 +4113,10 @@ function InvocationManager({ ch, onInvocations }) {
       <div>
         {mine.map((n) => (
           <span key={n} {...lorePress(n)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel2, borderRadius: 8, padding: "4px 8px", margin: 2, fontSize: 13 }}>
-            {n}<span style={{ color: T.blood, cursor: "pointer", fontWeight: 700 }} onClick={() => onInvocations(mine.filter((x) => x !== n))}>✕</span>
+            {n}{!readOnly && <span style={{ color: T.blood, cursor: "pointer", fontWeight: 700 }} onClick={() => onInvocations(mine.filter((x) => x !== n))}>✕</span>}
           </span>
         ))}
-        {mine.length < cap && <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => setOpen(true)}>＋ add</button>}
+        {!readOnly && mine.length < cap && <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => setOpen(true)}>＋ add</button>}
       </div>
       {open && (
         <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={() => setOpen(false)}>
@@ -4179,7 +4191,9 @@ function PrepareSpells({ ch, customs, onSpells, onClose }) {
   );
 }
 
-function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse }) {
+/* readOnly (shared sheets): the grimoire reads in full, but nothing can be
+   scribed, prepared, or transcribed — and tapping a spell opens its text */
+function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readOnly }) {
   const casters = ch.classes.filter((c) => CLASSES[c.name].caster);
   const wl = ch.classes.find((c) => c.name === "Warlock");
   const hasBoAS = (ch.invocations || []).includes("Book of Ancient Secrets");
@@ -4301,8 +4315,8 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse }) {
             {!isPrep && c.name !== "Wizard" && (
               <div style={{ marginTop: 4, color: T.dim, fontSize: 11 }}>Known spells — swapped one-for-one on level-up, per the rules.</div>
             )}
-            <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {isPrep && cap.n > 0 && pool.length > 0 && (
+            {!readOnly && <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {isPrep && cap.n > 0 && pool.length > 0 && onPrepare && (
                 <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={onPrepare}>⟳ prepare spells</button>
               )}
               {canCap > 0 && mine.cantrips.length < canCap && pool.length > 0 && (
@@ -4320,7 +4334,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse }) {
                   </button>
                 );
               })}
-            </div>
+            </div>}
           </div>
         );
       })}
@@ -4328,14 +4342,14 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse }) {
       {hasBoAS && (
         <div style={{ marginBottom: 10 }}>
           <div style={{ color: T.ink, fontWeight: 700 }}>Book of Shadows — Ancient Secrets <span style={{ color: T.dim, fontWeight: 400, fontSize: 12 }}>· rituals only · level ≤ {Math.max(1, Math.ceil((wl?.level || 1) / 2))}</span></div>
-          {pool.length > 0 && <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0, marginTop: 6 }} onClick={() => { setAdding({ kind: "boas" }); setQ(""); }}>＋ transcribe ritual</button>}
-          {(ch.boasRituals || []).length < 2 && <div style={{ color: T.dim, fontSize: 11, marginTop: 4 }}>Start with two 1st-level rituals from any class; transcribe rituals you find in your travels.</div>}
+          {!readOnly && pool.length > 0 && <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0, marginTop: 6 }} onClick={() => { setAdding({ kind: "boas" }); setQ(""); }}>＋ transcribe ritual</button>}
+          {!readOnly && (ch.boasRituals || []).length < 2 && <div style={{ color: T.dim, fontSize: 11, marginTop: 4 }}>Start with two 1st-level rituals from any class; transcribe rituals you find in your travels.</div>}
         </div>
       )}
       {hasTome && (
         <div style={{ marginBottom: 10 }}>
           <div style={{ color: T.ink, fontWeight: 700 }}>Book of Shadows — Tome Cantrips <span style={{ color: T.dim, fontWeight: 400, fontSize: 12 }}>· {(ch.tomeCantrips || []).length}/3 · any class · cast at will</span></div>
-          {(ch.tomeCantrips || []).length < 3 && pool.length > 0 && <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0, marginTop: 6 }} onClick={() => { setAdding({ kind: "tome" }); setQ(""); }}>＋ add ({3 - (ch.tomeCantrips || []).length} owed)</button>}
+          {!readOnly && (ch.tomeCantrips || []).length < 3 && pool.length > 0 && <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0, marginTop: 6 }} onClick={() => { setAdding({ kind: "tome" }); setQ(""); }}>＋ add ({3 - (ch.tomeCantrips || []).length} owed)</button>}
         </div>
       )}
 
@@ -4360,7 +4374,9 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse }) {
               ))}
             </div>
           ))}
-          <div style={{ color: T.dim, fontSize: 11 }}>Tap a spell to cast it — the prompt spends the slot and raises its effect. Long-press to read. ✦ marks a spell whose effect is active; a dimmed spell has no slot left to pay for it.</div>
+          <div style={{ color: T.dim, fontSize: 11 }}>{readOnly
+            ? "Tap or hold a spell to read it. ✦ marks a spell whose effect is active; a dimmed spell has no slot left to pay for it."
+            : "Tap a spell to cast it — the prompt spends the slot and raises its effect. Long-press to read. ✦ marks a spell whose effect is active; a dimmed spell has no slot left to pay for it."}</div>
         </div>
       )}
 
@@ -4460,7 +4476,9 @@ const pip = (filled, color) => ({ cursor: "pointer", fontSize: 18, fontFamily: "
 const fieldStyle = { background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 10px", fontSize: 15, fontFamily: "inherit", boxSizing: "border-box", width: "100%" };
 const FX_KIND_COLOR = { Spell: "#6c91e0", Feature: "#7fb069", Feat: "#c77dca", Action: "#5eb1bf", Condition: "#d76a76", Custom: "#c9a44c" };
 
-function EffectsCard({ ch, customs, fx, onUpdate }) {
+/* readOnly (shared sheets): effects and temp HP display but cannot be granted,
+   stacked, or removed — the sheet is a sealed snapshot */
+function EffectsCard({ ch, customs, fx, onUpdate, readOnly }) {
   const effects = effectsOf(ch);
   const tempHp = Math.max(0, ch.tempHp || 0);
   const dmgRaw = Math.max(0, ch.dmg || 0);
@@ -4494,15 +4512,17 @@ function EffectsCard({ ch, customs, fx, onUpdate }) {
         <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17 }}>Active Effects</div>
         {fx.conc.length > 0 && <span title="One concentration effect at a time; Con save when you take damage" style={{ color: "#b48ead", fontSize: 12 }}>◉ concentrating on {fx.conc.join(", ")}</span>}
         <div style={{ flex: 1 }} />
-        <button style={{ ...btn(false), padding: "6px 12px", minHeight: 0, fontSize: 13 }} onClick={() => setAdding(true)}>＋ Add effect</button>
+        {!readOnly && <button style={{ ...btn(false), padding: "6px 12px", minHeight: 0, fontSize: 13 }} onClick={() => setAdding(true)}>＋ Add effect</button>}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-        <span style={{ color: "#5eb1bf", fontSize: 13, fontWeight: 700 }}>Temp HP</span>
-        <button style={{ ...pillBtn, opacity: tempHp ? 1 : 0.4 }} disabled={!tempHp} onClick={() => onUpdate({ tempHp: Math.max(0, tempHp - 1) })}>−</button>
-        <span style={{ color: tempHp ? "#5eb1bf" : T.dim, fontFamily: "Georgia, serif", fontSize: 18, minWidth: 26, textAlign: "center" }}>{tempHp}</span>
-        <button style={pillBtn} onClick={() => onUpdate({ tempHp: tempHp + 1 })}>＋</button>
-        {tempHp > 0 && <button style={{ ...pillBtn, width: "auto", padding: "0 10px", fontSize: 12 }} onClick={() => onUpdate({ tempHp: 0 })}>clear</button>}
-      </div>
+      {(!readOnly || tempHp > 0) && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+          <span style={{ color: "#5eb1bf", fontSize: 13, fontWeight: 700 }}>Temp HP</span>
+          {!readOnly && <button style={{ ...pillBtn, opacity: tempHp ? 1 : 0.4 }} disabled={!tempHp} onClick={() => onUpdate({ tempHp: Math.max(0, tempHp - 1) })}>−</button>}
+          <span style={{ color: tempHp ? "#5eb1bf" : T.dim, fontFamily: "Georgia, serif", fontSize: 18, minWidth: 26, textAlign: "center" }}>{tempHp}</span>
+          {!readOnly && <button style={pillBtn} onClick={() => onUpdate({ tempHp: tempHp + 1 })}>＋</button>}
+          {!readOnly && tempHp > 0 && <button style={{ ...pillBtn, width: "auto", padding: "0 10px", fontSize: 12 }} onClick={() => onUpdate({ tempHp: 0 })}>clear</button>}
+        </div>
+      )}
       {effects.length === 0 ? null : (
         <div style={{ display: "grid", gap: 6, marginTop: 12 }}>
           {effects.map((e) => {
@@ -4522,13 +4542,13 @@ function EffectsCard({ ch, customs, fx, onUpdate }) {
                   {isConcDef(e) && <span title={e.ally ? "An ally's spell or a potion sustains this — it doesn't hold your concentration" : "Concentration — one at a time; Con save when you take damage"} style={{ color: "#b48ead", fontSize: 12, marginLeft: 6 }}>{e.ally ? "◉ held for you" : "◉ conc"}</span>}
                   <div style={{ color: T.dim, fontSize: 12, marginTop: 2, lineHeight: 1.5 }}>{brief}{dur ? ` — ${dur}` : ""}</div>
                 </div>
-                {def?.stacks && (
+                {!readOnly && def?.stacks && (
                   <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
                     <button style={{ ...pillBtn, opacity: (e.stacks || 1) <= 1 ? 0.4 : 1 }} disabled={(e.stacks || 1) <= 1} onClick={() => bumpStacks(e.id, -1, def.stacks)}>−</button>
                     <button style={{ ...pillBtn, opacity: (e.stacks || 1) >= def.stacks ? 0.4 : 1 }} disabled={(e.stacks || 1) >= def.stacks} onClick={() => bumpStacks(e.id, 1, def.stacks)}>＋</button>
                   </span>
                 )}
-                <span onClick={() => remove(e.id)} title="Remove effect" style={{ color: T.dim, cursor: "pointer", fontSize: 16, padding: "0 2px", lineHeight: 1.4 }}>✕</span>
+                {!readOnly && <span onClick={() => remove(e.id)} title="Remove effect" style={{ color: T.dim, cursor: "pointer", fontSize: 16, padding: "0 2px", lineHeight: 1.4 }}>✕</span>}
               </div>
             );
           })}
@@ -4541,7 +4561,8 @@ function EffectsCard({ ch, customs, fx, onUpdate }) {
 }
 
 /* ============ FEATURE USES CARD — pips for every daily heroic ============ */
-function FeatureUsesCard({ ch, customs, onUpdate, onUse }) {
+/* readOnly (shared sheets): the pips show what stands spent, but expend nothing */
+function FeatureUsesCard({ ch, customs, onUpdate, onUse, readOnly }) {
   const trackers = useTrackersFor(ch, customs);
   const used = ch.usedFeatures || {};
   const [forging, setForging] = useState(false);
@@ -4565,11 +4586,11 @@ function FeatureUsesCard({ ch, customs, onUpdate, onUse }) {
   return (
     <div style={{ ...card, padding: 16, marginTop: 14 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17 }}>Feature Uses <span style={{ color: T.dim, fontSize: 12, fontFamily: "inherit" }}>· tap ◆ to expend, ◇ to recover</span></div>
+        <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17 }}>Feature Uses {!readOnly && <span style={{ color: T.dim, fontSize: 12, fontFamily: "inherit" }}>· tap ◆ to expend, ◇ to recover</span>}</div>
         <div style={{ flex: 1 }} />
-        <button style={{ ...btn(false), padding: "6px 12px", minHeight: 0, fontSize: 13 }} onClick={() => setForging(!forging)}>＋ Custom tracker</button>
+        {!readOnly && <button style={{ ...btn(false), padding: "6px 12px", minHeight: 0, fontSize: 13 }} onClick={() => setForging(!forging)}>＋ Custom tracker</button>}
       </div>
-      {forging && (
+      {forging && !readOnly && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
           <input value={form.name} autoFocus placeholder="Hexblade's Curse, wand charges, blessings owed…" onChange={(e) => setForm({ ...form, name: e.target.value })} style={{ ...fieldStyle, flex: "2 1 220px" }} />
           <input type="number" min={1} value={form.max} title="Number of uses" onChange={(e) => setForm({ ...form, max: e.target.value })} style={{ ...fieldStyle, width: 70, textAlign: "center" }} />
@@ -4588,18 +4609,18 @@ function FeatureUsesCard({ ch, customs, onUpdate, onUse }) {
               <div key={t.key} data-use-tracker={t.key} style={{ textAlign: "center", padding: "8px 12px", background: T.panel2, borderRadius: 8, border: `1px solid ${T.edge}` }}>
                 <div {...lorePress(t.name)} onClick={() => onUse && onUse(t.name)} style={{ color: T.dim, fontSize: 11, cursor: "pointer" }}>
                   <span style={{ color: themed }}>{t.name}</span> · {t.per === "short" ? "any rest" : "long rest"}
-                  {t.custom && <span title="Remove tracker" style={{ color: T.dim, cursor: "pointer", marginLeft: 6 }} onClick={(e) => { e.stopPropagation(); removeCustom(t.id); }}>✕</span>}
+                  {t.custom && !readOnly && <span title="Remove tracker" style={{ color: T.dim, cursor: "pointer", marginLeft: 6 }} onClick={(e) => { e.stopPropagation(); removeCustom(t.id); }}>✕</span>}
                 </div>
                 {t.pool || t.max > 12 ? (
                   <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "center", marginTop: 4 }}>
-                    <button style={{ ...pillBtn, opacity: avail <= 0 ? 0.4 : 1 }} disabled={avail <= 0} onClick={() => spend(t)}>−</button>
+                    {!readOnly && <button style={{ ...pillBtn, opacity: avail <= 0 ? 0.4 : 1 }} disabled={avail <= 0} onClick={() => spend(t)}>−</button>}
                     <span style={{ fontFamily: "Georgia, serif", fontSize: 18, color: avail ? T.ink : T.dim }}>{avail}<span style={{ color: T.dim, fontSize: 12 }}>/{t.max}{t.unit ? ` ${t.unit}` : ""}</span></span>
-                    <button style={{ ...pillBtn, opacity: u <= 0 ? 0.4 : 1 }} disabled={u <= 0} onClick={() => setUsed(t, u - 1)}>＋</button>
+                    {!readOnly && <button style={{ ...pillBtn, opacity: u <= 0 ? 0.4 : 1 }} disabled={u <= 0} onClick={() => setUsed(t, u - 1)}>＋</button>}
                   </div>
                 ) : (
                   <div>
                     {Array.from({ length: t.max }, (_, j) => (
-                      <span key={j} style={pip(j < avail, T.ink)} onClick={() => (j < avail ? spend(t) : setUsed(t, u - 1))}>
+                      <span key={j} style={{ ...pip(j < avail, T.ink), ...(readOnly ? { cursor: "default" } : {}) }} onClick={readOnly ? undefined : () => (j < avail ? spend(t) : setUsed(t, u - 1))}>
                         {j < avail ? "◆" : "◇"}
                       </span>
                     ))}
@@ -5332,6 +5353,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   /* ---- tap to act: a name that resolves to a use recipe opens the prompt; the rest read ---- */
   const [useTarget, setUseTarget] = useState(null);
   const openUse = (n) => {
+    if (shared) { if (__showLore) __showLore(n); return; } // a sealed sheet reads; it does not spend
     if (useRecipe(n, ch, customs)) setUseTarget(n);
     else if (__showLore) __showLore(n);
   };
@@ -5371,9 +5393,10 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     ];
   };
   const rollIt = (title, parts, kind, abil, proficient, extra) => setRollSpec({ title, parts, kind, abil, proficient, extra });
-  /* Loosing a shot from an ammunition weapon spends a piece from the pack — and says so */
+  /* Loosing a shot from an ammunition weapon spends a piece from the pack — and says so.
+     On a sealed sheet the quiver is beyond reach: the dice still fall, nothing is spent. */
   const fireAmmo = (it) => {
-    if (!usesAmmo(it)) return null;
+    if (shared || !usesAmmo(it)) return null;
     const row = ammoRowFor(ch, customs, it);
     if (!row) return `${it.name}: no ammunition in your pack — the quiver is empty!`;
     const left = (row.qty || 1) - 1;
@@ -5634,7 +5657,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         </div>
       </div>
 
-      <div style={{ ...card, padding: 14, marginTop: 14, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+      {!shared && <div style={{ ...card, padding: 14, marginTop: 14, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginRight: 4 }}>In Play</div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flex: "1 1 auto", minWidth: 0, flexWrap: "wrap" }}>
           <button style={{ ...btn(false), borderColor: T.blood, color: "#d76a76", flex: "1 1 auto", whiteSpace: "nowrap" }} onClick={() => applyHp(-hpAmt)} disabled={curHp <= 0 && tempHp <= 0}>− Damage</button>
@@ -5672,9 +5695,9 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
             ⚠ {concNote} <span style={{ color: T.dim, cursor: "pointer", textDecoration: "underline dotted" }} onClick={() => setConcNote(null)}>dismiss</span>
           </div>
         )}
-      </div>
+      </div>}
 
-      <EffectsCard ch={ch} customs={customs} fx={fx} onUpdate={onUpdate} />
+      <EffectsCard ch={ch} customs={customs} fx={fx} onUpdate={onUpdate} readOnly={shared} />
 
       <div style={{ ...card, padding: 14, marginTop: 14 }}>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -5729,11 +5752,11 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         )}
       </div>
 
-      <InventoryCard ch={ch} customs={customs} onUpdate={onUpdate} onConsume={consume} />
+      <InventoryCard ch={ch} customs={customs} onUpdate={onUpdate} onConsume={consume} readOnly={shared} />
 
       {(slots || pact) && (
         <div style={{ ...card, padding: 16, marginTop: 14 }}>
-          <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>Spell Slots <span style={{ color: T.dim, fontSize: 12, fontFamily: "inherit" }}>· tap ◆ to expend, ◇ to recover</span></div>
+          <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>Spell Slots {!shared && <span style={{ color: T.dim, fontSize: 12, fontFamily: "inherit" }}>· tap ◆ to expend, ◇ to recover</span>}</div>
           {slots && (
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               {slots.map((n, i) => {
@@ -5743,8 +5766,8 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
                     <div style={{ color: T.dim, fontSize: 11 }}>Level {i + 1}</div>
                     <div>
                       {Array.from({ length: n }, (_, j) => (
-                        <span key={j} style={pip(j < avail, T.ink)}
-                          onClick={() => setUsed(i, j < avail ? usedOf(i) + 1 : usedOf(i) - 1)}>
+                        <span key={j} style={{ ...pip(j < avail, T.ink), ...(shared ? { cursor: "default" } : {}) }}
+                          onClick={shared ? undefined : () => setUsed(i, j < avail ? usedOf(i) + 1 : usedOf(i) - 1)}>
                           {j < avail ? "◆" : "◇"}
                         </span>
                       ))}
@@ -5763,8 +5786,8 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
                 <div style={{ color: "#b48ead", fontSize: 11 }}>Pact · level {pact.lvl}</div>
                 <div>
                   {Array.from({ length: pact.n }, (_, j) => (
-                    <span key={j} style={pip(j < pact.n - usedPact, "#b48ead")}
-                      onClick={() => onUpdate({ usedPact: j < pact.n - usedPact ? usedPact + 1 : usedPact - 1 })}>
+                    <span key={j} style={{ ...pip(j < pact.n - usedPact, "#b48ead"), ...(shared ? { cursor: "default" } : {}) }}
+                      onClick={shared ? undefined : () => onUpdate({ usedPact: j < pact.n - usedPact ? usedPact + 1 : usedPact - 1 })}>
                       {j < pact.n - usedPact ? "◆" : "◇"}
                     </span>
                   ))}
@@ -5782,7 +5805,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
               {arcLevels.map((aLvl) => (
                 <div key={aLvl} style={{ textAlign: "center", padding: "8px 12px", background: T.panel2, borderRadius: 8, border: `1px solid #b48ead55` }}>
                   <div style={{ color: "#b48ead", fontSize: 11 }}>Arcanum {aLvl}th · {arcanum[aLvl]}</div>
-                  <span style={pip(!usedArc.includes(aLvl), "#b48ead")} onClick={() => toggleArc(aLvl)}>
+                  <span style={{ ...pip(!usedArc.includes(aLvl), "#b48ead"), ...(shared ? { cursor: "default" } : {}) }} onClick={shared ? undefined : () => toggleArc(aLvl)}>
                     {usedArc.includes(aLvl) ? "◇" : "◆"}
                   </span>
                 </div>
@@ -5792,12 +5815,12 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         </div>
       )}
 
-      <FeatureUsesCard ch={ch} customs={customs} onUpdate={onUpdate} onUse={openUse} />
+      <FeatureUsesCard ch={ch} customs={customs} onUpdate={onUpdate} onUse={openUse} readOnly={shared} />
 
-      <SpellManager ch={ch} customs={customs} onSpells={onSpells} onUpdate={onUpdate} onPrepare={canPrep ? () => setPrepOpen(true) : undefined} onUse={openUse} />
+      <SpellManager ch={ch} customs={customs} onSpells={onSpells} onUpdate={onUpdate} onPrepare={canPrep && !shared ? () => setPrepOpen(true) : undefined} onUse={openUse} readOnly={shared} />
       {prepOpen && <PrepareSpells ch={ch} customs={customs} onSpells={onSpells} onClose={() => setPrepOpen(false)} />}
-      <ChoiceManager ch={ch} customs={customs} onUpdate={onUpdate} />
-      <InvocationManager ch={ch} onInvocations={onInvocations} />
+      {!shared && <ChoiceManager ch={ch} customs={customs} onUpdate={onUpdate} />}
+      <InvocationManager ch={ch} onInvocations={onInvocations} readOnly={shared} />
 
       <div style={{ ...card, padding: 16, marginTop: 14 }}>
         <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>Class Features</div>
@@ -5825,7 +5848,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
             </div>
           </div>
         ))}
-        <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>Tap a feature to use it — long-press to read. Note: Extra Attack from multiple classes doesn't stack; Unarmored Defense can only be gained once.</div>
+        <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>{shared ? "Tap or hold a feature to read it." : "Tap a feature to use it — long-press to read."} Note: Extra Attack from multiple classes doesn't stack; Unarmored Defense can only be gained once.</div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14, marginTop: 14 }}>
@@ -6524,8 +6547,8 @@ export function SharedView({ token }) {
       <div style={{ maxWidth: 860, margin: "0 auto", padding: "14px 20px 0" }}>
         <div style={{ ...card, padding: "12px 16px", borderColor: `${T.gold}55`, color: T.dim, fontSize: 13, lineHeight: 1.6 }}>
           <Icon name="eye" size={14} style={{ color: T.gold }} />
-          A snapshot of <b style={{ color: T.ink }}>{ch.name}</b>{when ? `, shared ${when}` : ""}. Dice and trackers work right here at the
-          table, but nothing you touch reaches the owner's ledger — and the sheet won't change as the character grows.
+          A snapshot of <b style={{ color: T.ink }}>{ch.name}</b>{when ? `, shared ${when}` : ""}, sealed the day it was shared.
+          Tap anything to roll its dice, hold anything to read its rules — but the sheet itself cannot be changed, here or anywhere.
         </div>
       </div>
       <Sheet shared ch={ch} customs={customs}
