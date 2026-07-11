@@ -1782,8 +1782,8 @@ function StatBlock({ c }) {
   return (
     <div>
       <Rule />
-      <Prop label="Armor Class">{c.ac}{c.acN ? ` (${c.acN})` : ""}</Prop>
-      <Prop label="Hit Points">{c.hp}{c.hd ? ` (${c.hd})` : ""}</Prop>
+      <Prop label="Armor Class">{c.acS || `${c.ac}${c.acN ? ` (${c.acN})` : ""}`}</Prop>
+      <Prop label="Hit Points">{c.hpS || `${c.hp}${c.hd ? ` (${c.hd})` : ""}`}</Prop>
       <Prop label="Speed">{c.spd}</Prop>
       <Rule />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(74px, 1fr))", gap: 6 }}>
@@ -5289,12 +5289,16 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
                 </>
               );
             })()}
-            {form?.stat && (
-              <button data-statblock-btn style={{ ...btn(false), padding: "7px 12px", minHeight: 0, fontSize: 12.5, marginTop: 10 }}
-                onClick={() => __showLore && __showLore("creature:" + form.name)}>
-                <Icon name="book" size={13} /> {form.name} — read the full stat block
-              </button>
-            )}
+            {(() => {
+              /* spirit forms carry a parenthetical mood — the block lives under the base name */
+              const statName = form && (form.stat ? form.name : (creatureByName(form.name) || creatureByName(baseSubName(form.name)))?.name);
+              return statName ? (
+                <button data-statblock-btn style={{ ...btn(false), padding: "7px 12px", minHeight: 0, fontSize: 12.5, marginTop: 10 }}
+                  onClick={() => __showLore && __showLore("creature:" + statName)}>
+                  <Icon name="book" size={13} /> {statName} — read the full stat block
+                </button>
+              ) : null;
+            })()}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
               <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: T.dim, flex: "2 1 150px" }}>
                 Name
@@ -5312,7 +5316,7 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
               {roleSelect(fields, setFields)}
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-              <button style={btn(true)} onClick={() => addMinions(pending, fields, form?.stat ? form.name : null)}>Summon</button>
+              <button style={btn(true)} onClick={() => addMinions(pending, fields, form && (form.stat ? form.name : (creatureByName(form.name) || creatureByName(baseSubName(form.name)))?.name || null))}>Summon</button>
               {!presetDef && <button style={btn(false)} onClick={() => setPending(null)}>Back</button>}
             </div>
           </div>

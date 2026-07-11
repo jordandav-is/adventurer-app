@@ -41,12 +41,14 @@ const stripTags = (s) => {
       if (tag === "chance") return `${parts[0]} percent`;
       if (tag === "recharge") return parts[0] ? `(Recharge ${parts[0]}–6)` : "(Recharge 6)";
       if (tag === "h") return "Hit: ";
-      if (tag === "atk" || tag === "atkr") return { m: "Melee Weapon Attack:", r: "Ranged Weapon Attack:", "m,r": "Melee or Ranged Weapon Attack:", ms: "Melee Spell Attack:", rs: "Ranged Spell Attack:", "ms,rs": "Melee or Ranged Spell Attack:" }[parts[0]] || "Attack:";
-      if (tag === "hitYourSpellAttack" || tag === "dc") return parts[0] || "";
+      if (tag === "atk" || tag === "atkr") return { m: "Melee Attack:", r: "Ranged Attack:", "m,r": "Melee or Ranged Attack:", mw: "Melee Weapon Attack:", rw: "Ranged Weapon Attack:", "mw,rw": "Melee or Ranged Weapon Attack:", ms: "Melee Spell Attack:", rs: "Ranged Spell Attack:", "ms,rs": "Melee or Ranged Spell Attack:" }[parts[0]] || "Attack:";
+      if (tag === "hitYourSpellAttack") return "your spell attack modifier";
+      if (tag === "dcYourSpellSave") return "your spell save DC";
+      if (tag === "dc") return parts[0] || "";
       return (parts[2] && parts[2].trim()) || parts[0] || "";
     });
   }
-  return t;
+  return t.replace(/\bsummonSpellLevel\b/g, "the spell's level");
 };
 function renderEntries(e, out) {
   if (typeof e === "string" || typeof e === "number") out.push(stripTags(e));
@@ -159,8 +161,13 @@ const prune = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !=
 
 function convertMonster(m) {
   const cr = crNum(m.cr);
-  const acBest = acPick(m.ac);
-  const hp = m.hp?.average ?? (m.hp?.special ? parseInt(m.hp.special, 10) || 1 : undefined);
+  /* Summon-spirit blocks state AC and HP as slot formulas ("11 + the level of the
+     spell") — keep the formula text alongside a parsed base number. */
+  const acSpecial = (m.ac || []).find((a) => a && typeof a === "object" && a.special);
+  const acBest = acSpecial ? { value: parseInt(acSpecial.special, 10) || undefined, note: undefined } : acPick(m.ac);
+  const acS = acSpecial ? stripTags(acSpecial.special) : undefined;
+  const hpS = m.hp?.special ? stripTags(m.hp.special) : undefined;
+  const hp = m.hp?.average ?? (hpS ? parseInt(hpS, 10) || 1 : undefined);
   const traits = [...(namedEntries(m.trait) || []), ...spellcastingTraits(m.spellcasting)];
   const acts = [...(namedEntries(m.action) || []), ...(namedEntries(m.bonus) || []).map((x) => ({ n: `${x.n} (Bonus Action)`, t: x.t }))];
   return prune({
@@ -172,7 +179,9 @@ function convertMonster(m) {
     xp: cr != null ? XP_BY_CR[cr] : undefined,
     ac: acBest.value,
     acN: acBest.note,
+    acS,
     hp,
+    hpS,
     hd: m.hp?.formula ? m.hp.formula.replace(/\s/g, "") : undefined,
     spd: speedStr(m.speed),
     ab: { str: m.str, dex: m.dex, con: m.con, int: m.int, wis: m.wis, cha: m.cha },
@@ -231,7 +240,7 @@ for (const code of BEAST_SOURCES) {
     const key = m.name.toLowerCase();
     if (srdNames.has(key)) continue; // the verified SRD block stays canonical
     const c = convertMonster(m);
-    if (c.hp == null || c.ac == null || c.ab.str == null) continue; // stubs without a real block
+    if ((c.hp == null && !c.hpS) || (c.ac == null && !c.acS) || c.ab.str == null) continue; // stubs without a real block
     added.set(key, c); // later-published sources override earlier added versions
   }
 }
