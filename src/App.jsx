@@ -1825,6 +1825,7 @@ const SUMMON_LIB = [
   SM("Feature", "Pact of the Chain", { ends: "manual", role: "Scout", mine: (ch) => ch.pactBoon === "Pact of the Chain", pickNames: ["Imp", "Quasit", "Pseudodragon", "Sprite"], brief: "Your special familiar — imp, quasit, pseudodragon, or sprite — and it can attack in your stead", forms: [
     ["Imp", 10, 13], ["Quasit", 7, 13], ["Pseudodragon", 7, 13], ["Sprite", 2, 15],
   ] }),
+  SM("Feature", "Wildfire Spirit", { ends: "manual", role: "Companion", mine: (ch) => hasSub(ch, "Circle of Wildfire"), hpOf: (ch) => 5 + 5 * classLevel(ch, "Druid"), countHint: "AC 13 · HP 5 + 5 × your druid level", brief: "The Circle of Wildfire's bonded spirit — it ferries allies and scorches what it leaves behind", forms: [["Wildfire Spirit", 30, 13]] }),
   /* ---- The Summon-spirit family (Tasha's, Fizban's): one spirit whose AC and HP
      scale with the slot — `slot` is the base level, AC = acPlus + slot level,
      HP = the form's base + hpStep per slot level above the base. ---- */
@@ -5076,7 +5077,7 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
   const presetDef = preset?.def || null;
   const defaultsFor = (d, f, slot) => ({
     name: f.name, count: "1", role: d.role || "Striker",
-    hp: String(d.spirit ? spiritHp(d, f, slot) : f.hp),
+    hp: String(d.hpOf ? d.hpOf(ch) : d.spirit ? spiritHp(d, f, slot) : f.hp),
     ac: String(d.spirit ? spiritAc(d, f, slot) : (f.ac ?? "")),
   });
   const [q, setQ] = useState("");
@@ -5114,7 +5115,7 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
     setForm(f);
     // a new form refreshes the stats it owns; the count and a hand-typed role survive
     const s = slotNow(pending);
-    setFields((prev) => ({ ...prev, name: f.name, hp: String(pending.spirit ? spiritHp(pending, f, s) : f.hp), ac: String(pending.spirit ? spiritAc(pending, f, s) : (f.ac ?? "")) }));
+    setFields((prev) => ({ ...prev, name: f.name, hp: String(pending.hpOf ? pending.hpOf(ch) : pending.spirit ? spiritHp(pending, f, s) : f.hp), ac: String(pending.spirit ? spiritAc(pending, f, s) : (f.ac ?? "")) }));
   };
   const bumpSlot = (v) => {
     setSlotLv(v);

@@ -32,6 +32,27 @@ const acNote = (e) => {
 };
 const entries = (arr) => (arr && arr.length ? arr.map((a) => ({ n: a.name, t: String(a.desc || "").trim() })).filter((x) => x.n && x.t) : undefined);
 const prune = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== "" && v !== null));
+/* A creature's real AC is its best-equipped line (Azer and Lizardfolk list a bare
+   line first, then the with-shield one) — but spell and condition lines (a mage's
+   mage armor, a dryad's barkskin) are situational and only annotate the note. */
+const acPick = (arr) => {
+  if (!arr || !arr.length) return { value: undefined, note: undefined };
+  const situational = (a) => a.type === "spell" || a.type === "condition";
+  const solid = arr.filter((a) => !situational(a));
+  const pool = solid.length ? solid : arr;
+  const best = pool.reduce((a, b) => (b.value > a.value ? b : a));
+  const notes = [...new Set([
+    ...solid.map(acNote).filter(Boolean),
+    ...arr.filter(situational).map((a) => `${a.value} ${acNote(a)}`),
+  ])];
+  return { value: best.value, note: notes.join(", ") || undefined };
+};
+/* Upstream 5e-bits errors, corrected against the printed stat blocks (verified via
+   the 5etools-src v2.32.1 bestiary): Basilisk AC and Cult Fanatic hit points. */
+const OVERRIDES = {
+  Basilisk: { ac: 15, acN: "natural armor" },
+  "Cult Fanatic": { hp: 33, hd: "6d8+6" },
+};
 
 const monsters = JSON.parse(readFileSync(SRC, "utf8"));
 const bestiary = monsters.map((m) => {
@@ -41,6 +62,7 @@ const bestiary = monsters.map((m) => {
     if (n.startsWith("Saving Throw:")) saves.push(`${n.slice(13).trim()} +${p.value}`);
     else if (n.startsWith("Skill:")) skills.push(`${n.slice(6).trim()} +${p.value}`);
   });
+  const acBest = acPick(m.armor_class);
   return prune({
     name: m.name,
     size: m.size,
@@ -48,8 +70,8 @@ const bestiary = monsters.map((m) => {
     align: m.alignment,
     cr: m.challenge_rating,
     xp: m.xp,
-    ac: (m.armor_class || [])[0]?.value,
-    acN: acNote((m.armor_class || [])[0]),
+    ac: acBest.value,
+    acN: acBest.note,
     hp: m.hit_points,
     hd: m.hit_points_roll || m.hit_dice,
     spd: speedStr(m.speed),
@@ -66,6 +88,7 @@ const bestiary = monsters.map((m) => {
     acts: entries(m.actions),
     reacts: entries(m.reactions),
     leg: entries(m.legendary_actions),
+    ...(OVERRIDES[m.name] || {}),
   });
 }).sort((a, b) => a.name.localeCompare(b.name));
 
