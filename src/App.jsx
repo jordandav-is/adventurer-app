@@ -1746,18 +1746,62 @@ const creatureByName = (n) => {
   const q = String(n || "").trim().toLowerCase();
   return (q && __BESTIARY.find((c) => c.name.toLowerCase() === q)) || null;
 };
-function statBlockText(c) {
-  const lines = [
-    `AC ${c.ac}${c.acN ? ` (${c.acN})` : ""} · HP ${c.hp}${c.hd ? ` (${c.hd})` : ""} · Speed ${c.spd}`,
-    ABILITIES.map((a) => `${a.toUpperCase()} ${c.ab[a]} (${fmtMod(mod(c.ab[a]))})`).join(" · "),
-    [c.saves && `Saving throws ${c.saves}`, c.skills && `Skills ${c.skills}`, c.vuln && `Vulnerable ${c.vuln}`, c.res && `Resistant ${c.res}`, c.imm && `Immune ${c.imm}`, c.cond && `Condition immunities ${c.cond}`, c.sen && `Senses ${c.sen}`, c.lang && `Languages ${c.lang}`].filter(Boolean).join(" · "),
-  ];
-  (c.traits || []).forEach((x) => lines.push(`${x.n}. ${x.t}`));
-  const section = (title, arr) => { if (arr?.length) { lines.push(`— ${title} —`); arr.forEach((x) => lines.push(`${x.n}. ${x.t}`)); } };
-  section("Actions", c.acts);
-  section("Reactions", c.reacts);
-  section("Legendary Actions", c.leg);
-  return lines.filter(Boolean).join("\n");
+/* The stat block, typeset the way the books do it: tapered blood-red rules, the
+   ability array in its own row of cards, bold-italic trait names running into their
+   text, and section headings for Actions and their kin. The grid wraps 6 → 3 ability
+   cards as the sheet narrows, so it reads as well on a phone as on a desktop. */
+function StatBlock({ c }) {
+  const Rule = () => <div style={{ height: 2, margin: "10px 0", borderRadius: 1, background: `linear-gradient(90deg, ${T.blood}, ${T.blood}66 65%, transparent)` }} />;
+  const Prop = ({ label, children }) => (
+    <div style={{ fontSize: 13.5, lineHeight: 1.55, color: T.ink, margin: "1px 0" }}>
+      <span style={{ color: T.gold, fontWeight: 700 }}>{label} </span>{children}
+    </div>
+  );
+  const Entry = ({ e }) => {
+    const [first, ...rest] = String(e.t).split(/\n+/);
+    return (
+      <div style={{ fontSize: 13.5, lineHeight: 1.6, color: T.ink, marginTop: 9 }}>
+        <span style={{ fontWeight: 700, fontStyle: "italic" }}>{e.n}. </span>{first}
+        {rest.map((p, i) => <div key={i} style={{ marginTop: 4, paddingLeft: p.startsWith("• ") ? 14 : 0 }}>{p}</div>)}
+      </div>
+    );
+  };
+  const Section = ({ title, list }) => (!list?.length ? null : (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ fontFamily: "Georgia, serif", fontSize: 17, color: T.gold, borderBottom: `1px solid ${T.blood}aa`, paddingBottom: 3 }}>{title}</div>
+      {list.map((e, i) => <Entry key={i} e={e} />)}
+    </div>
+  ));
+  const props = [
+    c.saves && ["Saving Throws", c.saves], c.skills && ["Skills", c.skills],
+    c.vuln && ["Damage Vulnerabilities", c.vuln], c.res && ["Damage Resistances", c.res],
+    c.imm && ["Damage Immunities", c.imm], c.cond && ["Condition Immunities", c.cond],
+    c.sen && ["Senses", c.sen], ["Languages", c.lang || "—"],
+    c.cr != null && ["Challenge", `${crShow(c.cr)}${c.xp ? ` (${c.xp.toLocaleString()} XP)` : ""}`],
+  ].filter(Boolean);
+  return (
+    <div>
+      <Rule />
+      <Prop label="Armor Class">{c.ac}{c.acN ? ` (${c.acN})` : ""}</Prop>
+      <Prop label="Hit Points">{c.hp}{c.hd ? ` (${c.hd})` : ""}</Prop>
+      <Prop label="Speed">{c.spd}</Prop>
+      <Rule />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(74px, 1fr))", gap: 6 }}>
+        {ABILITIES.map((a) => (
+          <div key={a} style={{ background: T.panel2, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "6px 2px", textAlign: "center" }}>
+            <div style={{ color: T.dim, fontSize: 10, letterSpacing: 1.5 }}>{a.toUpperCase()}</div>
+            <div style={{ fontFamily: "Georgia, serif", fontSize: 15, color: T.ink }}>{c.ab[a]} <span style={{ color: T.gold, fontSize: 12 }}>({fmtMod(mod(c.ab[a]))})</span></div>
+          </div>
+        ))}
+      </div>
+      <Rule />
+      {props.map(([l, v]) => <Prop key={l} label={l}>{v}</Prop>)}
+      {(c.traits || []).length > 0 && <><Rule />{c.traits.map((e, i) => <Entry key={i} e={e} />)}</>}
+      <Section title="Actions" list={c.acts} />
+      <Section title="Reactions" list={c.reacts} />
+      <Section title="Legendary Actions" list={c.leg} />
+    </div>
+  );
 }
 /* The creatures a summon source can call: named picks or a type/CR query against the
    bestiary, each carrying its real HP and AC; the hand-listed forms only stand in
@@ -2173,8 +2217,8 @@ function ClassDetail({ cls, customs }) {
 /* Resolve a name into readable lore, searching compendium imports then built-in tables */
 const creatureInfo = (b) => ({
   title: b.name,
-  meta: [[b.size, b.type].filter(Boolean).join(" "), b.align, b.cr != null && `CR ${crShow(b.cr)}${b.xp ? ` · ${b.xp} XP` : ""}`].filter(Boolean).join(" · "),
-  body: statBlockText(b),
+  meta: [[b.size, b.type].filter(Boolean).join(" "), b.align].filter(Boolean).join(", "),
+  block: b,
   foot: b.src ? `Source: ${b.src}` : "5e SRD bestiary",
 });
 function infoFor(rawName, customs) {
@@ -2308,9 +2352,11 @@ function LoreSheet({ customs }) {
           <div style={{ fontFamily: "Georgia, serif", fontSize: 21, color: T.gold }}>{item.title}</div>
           <span style={{ color: T.dim, cursor: "pointer", fontSize: 20, lineHeight: 1 }} onClick={close}>✕</span>
         </div>
-        {item.meta && <div style={{ color: "#b48ead", fontSize: 13, marginTop: 4 }}>{item.meta}</div>}
+        {item.meta && <div style={{ color: "#b48ead", fontSize: 13, marginTop: 4, fontStyle: item.block ? "italic" : "normal" }}>{item.meta}</div>}
         <div style={{ color: T.ink, fontSize: 14, lineHeight: 1.7, marginTop: 12 }}>
-          {item.body
+          {item.block
+            ? <StatBlock c={item.block} />
+            : item.body
             ? item.body.split(/\n+/).map((p, i) => <p key={i} style={{ margin: "0 0 10px" }}>{p}</p>)
             : <span style={{ color: T.dim }}>No lore recorded for this yet. Import a compendium XML in the Homebrew Forge to fill the library — or consult your books.</span>}
         </div>
@@ -5243,6 +5289,12 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
                 </>
               );
             })()}
+            {form?.stat && (
+              <button data-statblock-btn style={{ ...btn(false), padding: "7px 12px", minHeight: 0, fontSize: 12.5, marginTop: 10 }}
+                onClick={() => __showLore && __showLore("creature:" + form.name)}>
+                <Icon name="book" size={13} /> {form.name} — read the full stat block
+              </button>
+            )}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
               <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: T.dim, flex: "2 1 150px" }}>
                 Name
