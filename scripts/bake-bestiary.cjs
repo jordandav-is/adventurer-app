@@ -7,7 +7,9 @@
    vendor/5e-database/src/2014/5e-SRD-Monsters.json.
 
    Usage: drop the source at data/5e-SRD-Monsters.json, run this, commit the
-   refreshed public/compendium.json, and delete the source again. */
+   refreshed public/compendium.json, and delete the source again.
+   NOTE: this writes the SRD base layer and REPLACES the bestiary key — run
+   scripts/bake-sources.cjs afterwards to re-add the other sourcebooks. */
 const { readFileSync, writeFileSync, existsSync } = require("fs");
 const { join } = require("path");
 

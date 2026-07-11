@@ -1761,7 +1761,7 @@ function summonFormsFor(def) {
       && (def.pick.maxSize == null || SIZE_RANK[c.size] <= SIZE_RANK[def.pick.maxSize]));
     if (hits && hits.length) return hits
       .map((c) => ({ name: c.name, hp: c.hp, ac: c.ac, cr: c.cr, stat: true }))
-      .sort((a, b) => a.cr - b.cr || a.name.localeCompare(b.name));
+      .sort((a, b) => ((a.cr ?? 99) - (b.cr ?? 99)) || a.name.localeCompare(b.name));
   }
   return def.forms;
 }
@@ -2163,7 +2163,7 @@ const creatureInfo = (b) => ({
   title: b.name,
   meta: [[b.size, b.type].filter(Boolean).join(" "), b.align, b.cr != null && `CR ${crShow(b.cr)}${b.xp ? ` · ${b.xp} XP` : ""}`].filter(Boolean).join(" · "),
   body: statBlockText(b),
-  foot: "5e SRD bestiary",
+  foot: b.src ? `Source: ${b.src}` : "5e SRD bestiary",
 });
 function infoFor(rawName, customs) {
   const name = String(rawName || "").trim();
