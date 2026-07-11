@@ -790,6 +790,17 @@ function spellSlots(classes) {
 const totalLevel = (ch) => ch.classes.reduce((s, c) => s + c.level, 0);
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+/* ============ SOURCEBOOK PREFERENCES ============ */
+/* Which books feed the pickers. A disabled source vanishes from spell pick lists and
+   summon musters — but never from a character: known spells still cast, mustered
+   creatures keep their stat blocks, lore still answers. */
+let __SRC_OFF = new Set();
+let __BESTIARY = []; // SRD + sourcebook stat blocks, riding in the base compendium
+const SRD_SRC = "5e SRD";
+const spellSrcOf = (sp) => (((sp.text || "").match(/Source:\s*([^,\n]+)/) || [])[1] || "").trim() || "Homebrew & unsourced";
+const creatureSrcOf = (b) => b.src || SRD_SRC;
+const srcSpells = (list) => (__SRC_OFF.size ? list.filter((sp) => !__SRC_OFF.has(spellSrcOf(sp))) : list);
+
 /* ============ THEME ============ */
 const T = {
   bg: "#161219", panel: "#221c26", panel2: "#2b2330", ink: "#e8dfd0", dim: "#a2937f",
@@ -856,6 +867,7 @@ const ICON_PATHS = {
   up: <><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></>,
   down: <><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></>,
   moon: <><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" /></>,
+  gear: <><circle cx="12" cy="12" r="3.2" /><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.08a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09c0 .68.4 1.3 1.03 1.56a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.08c.26.63.88 1.03 1.56 1.03H21a2 2 0 1 1 0 4h-.09c-.68 0-1.3.4-1.56 1.03Z" /></>,
   axe: <><path d="m14 12-8.5 8.5a2.12 2.12 0 1 1-3-3L11 9" /><path d="M15 13 9 7l4-4 6 6h3a8 8 0 0 1-7 7z" /></>,
   music: <><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></>,
   holy: <><path d="M12 2v20" /><path d="M5 8h14" /><path d="M7.5 21h9" /></>,
@@ -1251,7 +1263,7 @@ const groupMatches = (g, clsName, subclass) => g.cls === clsName && (!g.sub || (
 function choiceOptionsFor(g, customs) {
   if (g.source.list) return g.source.list.map((n) => ({ name: n }));
   if (g.source.spellTag) {
-    return (customs?.spells || []).filter((sp) => isTechnique(sp) && spellFitsClass(sp, g.cls, g.sub))
+    return srcSpells(customs?.spells || []).filter((sp) => isTechnique(sp) && spellFitsClass(sp, g.cls, g.sub))
       .map((sp) => ({ name: sp.name, minLvl: +((sp.text || "").match(/Prerequisite:\s*(\d+)\w*\s*level/i)?.[1] || 0) }))
       .sort((a, b) => (a.minLvl || 0) - (b.minLvl || 0) || a.name.localeCompare(b.name));
   }
@@ -1725,10 +1737,9 @@ function useTrackersFor(ch, customs) {
 const minionsOf = (ch) => (Array.isArray(ch.minions) ? ch.minions : []);
 const MINION_ROLES = ["Striker", "Defender", "Scout", "Skirmisher", "Mount", "Servant", "Healer", "Companion", "Wild Shape"];
 
-/* ---- The bestiary: full SRD stat blocks, riding in the base compendium ----
+/* ---- The bestiary: full stat blocks, riding in the base compendium ----
    Loaded once by fetchBaseCompendium alongside spells and items. Summon sources
    query it by creature type and CR; long-pressing any creature reads its block. */
-let __BESTIARY = [];
 const SIZE_RANK = { Tiny: 0, Small: 1, Medium: 2, Large: 3, Huge: 4, Gargantuan: 5 };
 const crShow = (cr) => (cr === 0.125 ? "⅛" : cr === 0.25 ? "¼" : cr === 0.5 ? "½" : String(cr));
 const creatureByName = (n) => {
@@ -1759,6 +1770,7 @@ function summonFormsFor(def) {
       (!def.pick.types || def.pick.types.some((t) => c.type.startsWith(t)))
       && (def.pick.maxCr == null || c.cr <= def.pick.maxCr)
       && (def.pick.maxSize == null || SIZE_RANK[c.size] <= SIZE_RANK[def.pick.maxSize]));
+    if (hits && __SRC_OFF.size) hits = hits.filter((c) => !__SRC_OFF.has(creatureSrcOf(c)));
     if (hits && hits.length) return hits
       .map((c) => ({ name: c.name, hp: c.hp, ac: c.ac, cr: c.cr, stat: true }))
       .sort((a, b) => ((a.cr ?? 99) - (b.cr ?? 99)) || a.name.localeCompare(b.name));
@@ -2317,6 +2329,15 @@ async function saveChars(chars) {
   try { await window.storage.set(KEY, JSON.stringify(chars)); } catch (e) { console.error("save failed", e); }
 }
 
+/* ---- sourcebook preferences persist beside the characters ---- */
+const SRCKEY = "dnd-source-prefs-v1";
+async function loadSrcPrefs() {
+  try { const r = await window.storage.get(SRCKEY); return new Set(JSON.parse(r.value).off || []); } catch { return new Set(); }
+}
+async function saveSrcPrefs(off) {
+  try { await window.storage.set(SRCKEY, JSON.stringify({ off: [...off] })); } catch (e) { console.error("save failed", e); }
+}
+
 /* ============ CUSTOM (HOMEBREW) CONTENT ============ */
 const CKEY = "dnd-custom-content-v1";
 const EMPTY_CUSTOM = { subs: {}, feats: [], spells: [], items: [], featureTexts: {} };
@@ -2860,7 +2881,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const bgData = BACKGROUNDS[bg] || null; // null = Custom
   const bgLangs = bgData ? bgData.langs : 2; // customized backgrounds take the two-language default
   const langNeed = (RACE_LANGS[race].choose || 0) + bgLangs;
-  const wizCantrips = (customs?.spells || []).filter((x) => x.level === 0 && spellFitsClass(x, "Wizard"));
+  const wizCantrips = srcSpells(customs?.spells || []).filter((x) => x.level === 0 && spellFitsClass(x, "Wizard"));
   // Skills granted by one source shouldn't be selectable from another
   const heSkillsEff = race === "Half-Elf" ? heSkills : [];
   const bgGrantSkills = bgData ? bgData.skills : bgSkills;
@@ -2872,7 +2893,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const castsAt1 = !!CLASSES[cls].caster && CLASSES[cls].caster !== "half";
   const canCap1 = CANTRIPS_KNOWN[cls] ? CANTRIPS_KNOWN[cls](1) : 0;
   const spellCap1 = castsAt1 ? spellCapacity(cls, 1, finalScores).n : 0;
-  const pool1 = (customs?.spells || []).filter((x) => spellFitsClass(x, cls, subclass));
+  const pool1 = srcSpells(customs?.spells || []).filter((x) => spellFitsClass(x, cls, subclass));
   const gearPlan = STARTING_GEAR[cls];
   const slotDone = (i) => {
     const gp = gearPicks[i];
@@ -3617,7 +3638,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   /* ---- BG3-style gained choices: invocations, cantrips, spells, arcanum ---- */
   const effSub = gainsSub ? (gainsTerrain && terrPick ? `${newSub} (${terrPick})` : newSub) : entry?.subclass;
   const book = ch.spells?.[pick] || { cantrips: [], spells: [] };
-  const pool = customs?.spells || [];
+  const pool = srcSpells(customs?.spells || []);
   const fits = (sp) => spellFitsClass(sp, pick, effSub);
 
   // Eldritch invocations — pick new ones when the known cap rises, swap one freely
@@ -4345,7 +4366,7 @@ const PREP_ALL_CLASSES = ["Cleric", "Druid", "Paladin"];
 
 /* Long-rest preparation: swap what's held in mind, from the full class list */
 function PrepareSpells({ ch, customs, onSpells, onClose }) {
-  const pool = customs?.spells || [];
+  const pool = srcSpells(customs?.spells || []);
   const book = ch.spells || {};
   const prepCasters = ch.classes.filter((c) => PREP_ALL_CLASSES.includes(c.name) && spellCapacity(c.name, c.level, ch.abilities).n > 0);
   return (
@@ -4400,7 +4421,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
   const [q, setQ] = useState("");
   if (!casters.length) return null;
   const book = ch.spells || {};
-  const pool = customs?.spells || [];
+  const pool = srcSpells(customs?.spells || []);
 
   const expandedFor = (clsName) => {
     const e = ch.classes.find((c) => c.name === clsName);
@@ -5295,6 +5316,63 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
   );
 }
 
+/* ============ SOURCEBOOK SHEET — choose which books feed the pickers ============ */
+/* Every source found in the compendium gets a toggle. Off means: gone from spell pick
+   lists and summon musters. Known spells, mustered creatures, and lore stay whole. */
+function SourcebookSheet({ customs, off, onToggle, onEnableAll, onClose }) {
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+  const inv = new Map();
+  const bump = (name, kind) => { const e = inv.get(name) || { spells: 0, creatures: 0 }; e[kind]++; inv.set(name, e); };
+  (customs?.spells || []).forEach((sp) => bump(spellSrcOf(sp), "spells"));
+  __BESTIARY.forEach((b) => bump(creatureSrcOf(b), "creatures"));
+  const first = ["Player's Handbook", SRD_SRC];
+  const rows = [...inv.entries()].sort((a, b) => {
+    const ia = first.indexOf(a[0]), ib = first.indexOf(b[0]);
+    return (ia < 0 ? 9 : ia) - (ib < 0 ? 9 : ib) || a[0].localeCompare(b[0]);
+  });
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center", animation: "sheetVeil 200ms ease" }} onClick={onClose}>
+      <div className="sheet-tall"
+        style={{ ...card, width: "min(680px, 100%)", borderRadius: "16px 16px 0 0", display: "flex", flexDirection: "column", overflow: "hidden", animation: "sheetRise 300ms cubic-bezier(0.32, 0.72, 0, 1)" }}
+        onClick={(e) => e.stopPropagation()}>
+        <div style={{ flex: "none", padding: "8px 20px 0" }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: T.edge, margin: "0 auto 10px" }} />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <div style={{ fontFamily: "Georgia, serif", fontSize: 21, color: T.gold }}><Icon name="gear" size={17} /> Sourcebooks</div>
+            <button aria-label="Close" onClick={onClose}
+              style={{ background: "none", border: "none", color: T.dim, cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "10px 4px 10px 14px", margin: "-10px -4px", WebkitTapHighlightColor: "transparent" }}>✕</button>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+            <div style={{ color: T.dim, fontSize: 12.5, lineHeight: 1.5, flex: 1 }}>A disabled book vanishes from spell pickers and summon musters. What a character already knows or has mustered is never touched.</div>
+            {off.size > 0 && <button style={{ ...btn(false), padding: "6px 12px", minHeight: 0, fontSize: 12.5, whiteSpace: "nowrap" }} onClick={onEnableAll}>Enable all</button>}
+          </div>
+        </div>
+        <div className="sheet-body" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "10px 20px calc(20px + env(safe-area-inset-bottom))" }}>
+          <div style={{ display: "grid", gap: 6 }}>
+            {rows.map(([name, n]) => {
+              const on = !off.has(name);
+              return (
+                <div key={name} data-src-row={name} onClick={() => onToggle(name)}
+                  style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 44, boxSizing: "border-box", padding: "8px 12px", borderRadius: 10, cursor: "pointer", background: T.panel2, border: `1px solid ${on ? T.edge : "#8e3b4688"}`, opacity: on ? 1 : 0.6, WebkitTapHighlightColor: "transparent" }}>
+                  <span style={{ fontSize: 17, fontFamily: "Georgia, serif", color: on ? T.gold : T.dim }}>{on ? "◆" : "◇"}</span>
+                  <span style={{ flex: 1, color: T.ink, fontWeight: 700, fontSize: 13.5, textDecoration: on ? "none" : "line-through" }}>{name}</span>
+                  <span style={{ color: T.dim, fontSize: 11.5, textAlign: "right" }}>
+                    {[n.spells && `${n.spells} spell${n.spells > 1 ? "s" : ""}`, n.creatures && `${n.creatures} creature${n.creatures > 1 ? "s" : ""}`].filter(Boolean).join(" · ")}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ============ USE PROMPT — tap a spell or feature, confirm, the sheet does the rest ============ */
 /* The front door for casting and feature use: name, cost, consequences, one confirming tap.
    Slots and tracked uses are spent here; catalog effects raise through the same patch the
@@ -5558,6 +5636,7 @@ const SHEET_GUIDE = [
     items: [
       ["Portrait", "tap it to set a photo from your camera roll."],
       ["Share (the arrow-in-a-box)", "seals a read-only snapshot of this sheet into a link your DM can open — no passphrase, no way to touch your ledger."],
+      ["Sourcebooks (the gear)", "choose which books feed the pickers — a disabled book vanishes from spell lists and summon musters without touching what you already know."],
       ["Level Up", "advance a class — choose new features, take or roll HP, and the whole sheet re-derives itself."],
       ["Proficiency +N", "your proficiency bonus, shown as its own stat card; it scales with total level and feeds every proficient roll."],
       ["Delete", "asks once more before it's final."],
@@ -5788,7 +5867,7 @@ function ShareSheet({ ch, customs, onClose }) {
   );
 }
 
-function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, onInvocations, onUpdate, customs, shared }) {
+function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, onInvocations, onUpdate, onSources, customs, shared }) {
   const lvl = totalLevel(ch);
   const pb = profBonus(lvl);
   const slots = spellSlots(ch.classes);
@@ -6088,6 +6167,10 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           <button style={{ ...btn(false) }} onClick={onBack}>← Roster</button>
         )}
         <div style={{ display: "flex", gap: 10, alignItems: "stretch" }}>
+          {!shared && onSources && (
+            <button aria-label="Sourcebooks" title="Enable or disable sourcebooks" onClick={onSources}
+              style={cornerBtn}><Icon name="gear" size={17} style={{ marginRight: 0 }} /></button>
+          )}
           {!shared && (
             <button aria-label="Share with your DM" title="Share a read-only snapshot" onClick={() => setShareOpen(true)}
               style={{ ...cornerBtn, color: T.gold }}><Icon name="share" size={17} style={{ marginRight: 0 }} /></button>
@@ -6847,10 +6930,20 @@ export default function App() {
   const [customs, setCustoms] = useState(EMPTY_CUSTOM);
   const [ioMsg, setIoMsg] = useState("");
   const [toolsOpen, setToolsOpen] = useState(false); // the quiet drawer: homebrew, export, import
+  const [srcOff, setSrcOff] = useState(() => new Set()); // sourcebooks turned off
+  const [sourcesOpen, setSourcesOpen] = useState(false);
+  const applySrcOff = (next) => { __SRC_OFF = next; setSrcOff(next); saveSrcPrefs(next); };
+  const toggleSource = (name) => {
+    const next = new Set(srcOff);
+    next.has(name) ? next.delete(name) : next.add(name);
+    applySrcOff(next);
+  };
 
   useEffect(() => {
     (async () => {
-      const [cs, stored, base] = await Promise.all([loadChars(), loadCustom(), fetchBaseCompendium()]);
+      const [cs, stored, base, srcPrefs] = await Promise.all([loadChars(), loadCustom(), fetchBaseCompendium(), loadSrcPrefs()]);
+      __SRC_OFF = srcPrefs;
+      setSrcOff(srcPrefs);
       let effective = stored;
       if (base) {
         // stored customs layer over the built-in compendium; the user's versions win
@@ -6929,6 +7022,10 @@ export default function App() {
                 <Icon name="d20" size={19} /> Forge a New Character
               </div>
             </button>
+            <button aria-label="Sourcebooks" title="Enable or disable sourcebooks" onClick={() => setSourcesOpen(true)}
+              style={{ flex: "0 0 auto", width: 48, borderRadius: 14, border: `1px solid ${srcOff.size ? T.gold : T.edge}`, background: T.panel,
+                color: srcOff.size ? T.gold : T.dim, lineHeight: 1, cursor: "pointer", WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>
+              <Icon name="gear" size={19} style={{ marginRight: 0 }} /></button>
             <button aria-label="Ledger tools" title="Homebrew, export & import" onClick={() => setToolsOpen(!toolsOpen)}
               style={{ flex: "0 0 auto", width: 48, borderRadius: 14, border: `1px solid ${toolsOpen ? T.gold : T.edge}`, background: T.panel,
                 color: toolsOpen ? T.gold : T.dim, fontSize: 22, lineHeight: 1, cursor: "pointer", WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>⋯</button>
@@ -7009,12 +7106,18 @@ export default function App() {
           onNotes={(n) => persist(chars.map((c) => (c.id === active.id ? { ...c, notes: n } : c)))}
           onInvocations={(inv) => persist(chars.map((c) => (c.id === active.id ? { ...c, invocations: inv } : c)))} onLevelUp={() => setLeveling(true)}
           onDelete={() => { persist(chars.filter((c) => c.id !== active.id)); setView("roster"); }}
-          onPhoto={(p) => persist(chars.map((c) => (c.id === active.id ? { ...c, photo: p } : c)))} />
+          onPhoto={(p) => persist(chars.map((c) => (c.id === active.id ? { ...c, photo: p } : c)))}
+          onSources={() => setSourcesOpen(true)} />
       )}
 
       {leveling && active && (
         <LevelUp ch={active} customs={customs} onCancel={() => setLeveling(false)}
           onDone={(next) => { persist(chars.map((c) => (c.id === next.id ? next : c))); setLeveling(false); }} />
+      )}
+
+      {sourcesOpen && (
+        <SourcebookSheet customs={customs} off={srcOff} onToggle={toggleSource}
+          onEnableAll={() => applySrcOff(new Set())} onClose={() => setSourcesOpen(false)} />
       )}
 
       <LoreSheet customs={customs} />
