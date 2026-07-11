@@ -1964,9 +1964,23 @@ function minionAttackRolls(c) {
       if (m[4]) bonus += (m[3] === "-" ? -1 : 1) * +m[4];
     }
     const scaled = /the spell's level/i.test(first);
-    if (hit || dice.length) out.push({ name: a.n.replace(/\s*\(.*$/, ""), atk: hit ? +hit[1] : null, dice, bonus, scaled });
+    const useSpellAtk = /your spell attack/i.test(first);
+    if (hit || dice.length) out.push({ name: a.n.replace(/\s*\(.*$/, ""), atk: hit ? +hit[1] : null, dice, bonus, scaled, useSpellAtk });
   });
   return out;
+}
+/* A spirit swings with its summoner's spell attack: proficiency plus the casting
+   ability of whichever class knows the source spell (first caster as a fallback). */
+function summonerSpellAtk(ch, spellName) {
+  let cls = null;
+  for (const c of ch.classes) {
+    const b = (ch.spells || {})[c.name];
+    if (b && (["cantrips", "spells"].some((k) => (b[k] || []).includes(spellName)) || Object.values(b.arcanum || {}).includes(spellName))) { cls = c.name; break; }
+  }
+  if (!cls && (ch.tomeCantrips || []).includes(spellName)) cls = "Warlock";
+  if (!cls) cls = ch.classes.find((c) => CLASSES[c.name].caster)?.name || null;
+  const abil = SPELL_ABILITY[cls];
+  return abil ? profBonus(totalLevel(ch)) + mod(ch.abilities[abil]) : null;
 }
 /* Saves use the block's listed proficiencies where they exist, the bare modifier
    elsewhere; skills come straight off the block's own line. */
@@ -5173,6 +5187,9 @@ function MinionsCard({ ch, customs, onUpdate, onSummon, onRoll, onDice, readOnly
         const attacks = minionAttackRolls(c);
         const saves = minionSaves(c);
         const skills = minionSkills(c);
+        const slot = rolling.slot || null; // spirits remember the slot that called them
+        const spellAtk = attacks.some((a) => a.useSpellAtk) ? summonerSpellAtk(ch, rolling.source) : null;
+        const dmgBonus = (a) => a.bonus + (a.scaled && slot ? slot : 0);
         /* the roll trays sit at z 60, beneath this sheet — it steps aside before the dice fall */
         const closeThen = (fn) => { setRolling(null); fn(); };
         const pill = { ...btn(false), padding: "7px 12px", minHeight: 0, fontSize: 12.5, fontFamily: "inherit" };
@@ -5180,7 +5197,7 @@ function MinionsCard({ ch, customs, onUpdate, onSummon, onRoll, onDice, readOnly
         const diceLabel = (a) => {
           const g = {};
           a.dice.forEach((s) => { g[s] = (g[s] || 0) + 1; });
-          return Object.entries(g).map(([s, n]) => `${n}d${s}`).join(" + ") + (a.bonus ? fmtMod(a.bonus) : "");
+          return Object.entries(g).map(([s, n]) => `${n}d${s}`).join(" + ") + (dmgBonus(a) ? fmtMod(dmgBonus(a)) : "");
         };
         return (
           <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center", animation: "sheetVeil 200ms ease" }} onClick={() => setRolling(null)}>
@@ -5197,23 +5214,26 @@ function MinionsCard({ ch, customs, onUpdate, onSummon, onRoll, onDice, readOnly
                 <>
                   <div style={secTitle}>Attacks — to hit, then damage</div>
                   <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
-                    {attacks.map((a) => (
-                      <div key={a.name} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                        <span style={{ color: T.ink, fontWeight: 700, fontSize: 13.5, flex: "1 1 110px" }}>{a.name}{a.scaled && <span title="Also add the summoning slot's level to damage" style={{ color: T.gold, fontSize: 11 }}> ✦ +slot</span>}</span>
-                        {a.atk != null ? (
-                          <button style={pill} onClick={() => closeThen(() => onRoll({ title: `${rolling.name} — ${a.name}`, parts: [{ label: "to hit", value: a.atk }], kind: "attack", minion: true }))}>
-                            <Icon name="sword" size={13} /> {fmtMod(a.atk)} to hit
-                          </button>
-                        ) : (
-                          <span style={{ color: T.dim, fontSize: 12 }}>uses your spell attack</span>
-                        )}
-                        {a.dice.length > 0 && onDice && (
-                          <button style={{ ...pill, color: "#d76a76", borderColor: T.blood }} onClick={() => closeThen(() => onDice({ title: `${rolling.name} — ${a.name} damage`, dice: a.dice.map((s) => ({ sides: s, value: roll(s) })), bonus: a.bonus, bonusLabel: "damage", note: a.scaled ? "Add the summoning slot's level, then apply it." : "Apply it to the target." }))}>
-                            {diceLabel(a)}
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                    {attacks.map((a) => {
+                      const hitMod = a.atk ?? (a.useSpellAtk ? spellAtk : null);
+                      return (
+                        <div key={a.name} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <span style={{ color: T.ink, fontWeight: 700, fontSize: 13.5, flex: "1 1 110px" }}>{a.name}{a.scaled && !slot && <span title="Also add the summoning slot's level to damage" style={{ color: T.gold, fontSize: 11 }}> ✦ +slot</span>}</span>
+                          {hitMod != null ? (
+                            <button style={pill} onClick={() => closeThen(() => onRoll({ title: `${rolling.name} — ${a.name}`, parts: [{ label: a.atk != null ? "to hit" : "your spell attack", value: hitMod }], kind: "attack", minion: true }))}>
+                              <Icon name="sword" size={13} /> {fmtMod(hitMod)} to hit
+                            </button>
+                          ) : (
+                            <span style={{ color: T.dim, fontSize: 12 }}>uses your spell attack</span>
+                          )}
+                          {a.dice.length > 0 && onDice && (
+                            <button style={{ ...pill, color: "#d76a76", borderColor: T.blood }} onClick={() => closeThen(() => onDice({ title: `${rolling.name} — ${a.name} damage`, dice: a.dice.map((s) => ({ sides: s, value: roll(s) })), bonus: dmgBonus(a), bonusLabel: "damage", note: a.scaled && !slot ? "Add the summoning slot's level, then apply it." : "Apply it to the target." }))}>
+                              {diceLabel(a)}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </>
               )}
@@ -5300,7 +5320,7 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
     const s = Math.max(pending.slot, Math.min(9, parseInt(v, 10) || pending.slot));
     setFields((prev) => ({ ...prev, hp: String(spiritHp(pending, form, s)), ac: String(spiritAc(pending, form, s)) }));
   };
-  const addMinions = (def, f, stat) => {
+  const addMinions = (def, f, stat, slot) => {
     const nm = (f.name || "").trim() || def.source;
     const count = Math.max(1, Math.min(20, parseInt(f.count, 10) || 1));
     const hp = Math.max(1, parseInt(f.hp, 10) || 1);
@@ -5313,6 +5333,7 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
       name: count === 1 && already === 0 ? nm : `${nm} ${already + i + 1}`,
       maxHp: hp, dmg: 0, tempHp: 0, ...(ac ? { ac } : {}), ends: def.ends || "manual",
       ...(stat ? { stat } : {}),
+      ...(slot ? { slot } : {}),
       ...(def.key === "custom" && f.note ? { note: f.note } : {}),
     }));
     onUpdate({
@@ -5418,7 +5439,7 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
               {numField("AC", "ac", fields, setFields)}
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-              <button style={btn(true)} onClick={() => addMinions(pending, fields, form && (form.stat ? form.name : (creatureByName(form.name) || creatureByName(baseSubName(form.name)))?.name || null))}>Summon</button>
+              <button style={btn(true)} onClick={() => addMinions(pending, fields, form && (form.stat ? form.name : (creatureByName(form.name) || creatureByName(baseSubName(form.name)))?.name || null), pending.spirit ? slotNow(pending) : null)}>Summon</button>
               {!presetDef && <button style={btn(false)} onClick={() => setPending(null)}>Back</button>}
             </div>
           </div>
