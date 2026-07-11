@@ -1156,8 +1156,10 @@ function rollNotes(ch, kind, abil) {
   return n;
 }
 
-function RollTray({ title, mode, parts, kind, abil, proficient, extra, ch, onClose, onDamage }) {
-  const f = rollFeatures(ch);
+/* minion: the bones belong to a summoned creature — the character's own features
+   (Lucky, Reliable Talent, expanded crits) and effect notes stay out of its roll */
+function RollTray({ title, mode, parts, kind, abil, proficient, extra, ch, minion, onClose, onDamage }) {
+  const f = minion ? { critRange: 20 } : rollFeatures(ch);
   // roll once, in the state initializer — re-renders must not re-throw the bones
   const [res] = useState(() => {
     const dice = [{ v: roll(20) }];
@@ -1180,7 +1182,7 @@ function RollTray({ title, mode, parts, kind, abil, proficient, extra, ch, onClo
   const nat = res.dice[res.kept].v;
   const crit = kind === "attack" && nat >= f.critRange;
   const fumble = nat === 1 && !res.floored;
-  const notes = [...res.notes, ...rollNotes(ch, kind, abil), ...(extra || [])];
+  const notes = [...res.notes, ...(minion ? [] : rollNotes(ch, kind, abil)), ...(extra || [])];
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000000c8", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }} onClick={onClose}>
       <div style={{ ...card, padding: 28, textAlign: "center", minWidth: 320, maxWidth: "92vw" }} onClick={(e) => e.stopPropagation()}>
@@ -1735,7 +1737,6 @@ function useTrackersFor(ch, customs) {
    soaked first — plus a role so the table remembers what each body is for.
    Instance shape: { id, key, kind, name, role, source, maxHp, dmg, tempHp, ac, ends, note } */
 const minionsOf = (ch) => (Array.isArray(ch.minions) ? ch.minions : []);
-const MINION_ROLES = ["Striker", "Defender", "Scout", "Skirmisher", "Mount", "Servant", "Healer", "Companion", "Wild Shape"];
 
 /* ---- The bestiary: full stat blocks, riding in the base compendium ----
    Loaded once by fetchBaseCompendium alongside spells and items. Summon sources
@@ -1945,6 +1946,43 @@ function spiritDefFromSpell(sp) {
     forms: [{ name: sp.name.replace(/^summon\s+/i, "") + " Spirit", hp: hpM ? +hpM[1] : 20 }],
   };
 }
+/* ---- Reading the dice out of a stat block ----
+   An attack action names its to-hit bonus and its damage dice in prose; every
+   parenthesized dice group in the Hit clause rolls together (a bite's piercing
+   plus its venom). Spirit attacks that scale with the slot keep a reminder note. */
+function minionAttackRolls(c) {
+  const out = [];
+  (c?.acts || []).forEach((a) => {
+    const first = String(a.t).split(/\n/)[0];
+    if (!/Attack:/i.test(first)) return;
+    const hit = first.match(/([+-]\d+)\s*to hit/i);
+    const hitClause = first.match(/Hit:\s*([^.]*)/i);
+    const dice = [];
+    let bonus = 0;
+    if (hitClause) for (const m of hitClause[1].matchAll(/(\d+)d(\d+)(?:\s*([+-])\s*(\d+))?/g)) {
+      for (let i = 0; i < Math.min(20, +m[1]); i++) dice.push(+m[2]);
+      if (m[4]) bonus += (m[3] === "-" ? -1 : 1) * +m[4];
+    }
+    const scaled = /the spell's level/i.test(first);
+    if (hit || dice.length) out.push({ name: a.n.replace(/\s*\(.*$/, ""), atk: hit ? +hit[1] : null, dice, bonus, scaled });
+  });
+  return out;
+}
+/* Saves use the block's listed proficiencies where they exist, the bare modifier
+   elsewhere; skills come straight off the block's own line. */
+function minionSaves(c) {
+  const listed = {};
+  (c?.saves || "").split(",").forEach((s) => {
+    const m = s.trim().match(/^([A-Za-z]{3})[a-z]*\s*([+-]\d+)/);
+    if (m) listed[m[1].toLowerCase()] = +m[2];
+  });
+  return ABILITIES.map((a) => ({ a, mod: listed[a] ?? mod(c.ab[a]), prof: a in listed }));
+}
+const minionSkills = (c) => (c?.skills || "").split(",").map((s) => {
+  const m = s.trim().match(/^(.+?)\s*([+-]\d+)$/);
+  return m && { name: m[1], mod: +m[2] };
+}).filter(Boolean);
+
 /* Damage a minion the same way the character takes it: temp HP soaks first, then the wound
    is recorded; healing unwinds recorded damage and never overshoots the maximum. */
 const minionHp = (m) => Math.max(0, (m.maxHp || 1) - Math.max(0, m.dmg || 0));
@@ -5054,9 +5092,10 @@ function AddEffectSheet({ ch, customs, existing, onAdd, onClose }) {
    way the character's is. The amount field arms both buttons — one tap wounds or heals one
    minion, so a wolf pack under a fireball is eight taps, not eight sums.
    readOnly (shared sheets): the menagerie shows, nothing bleeds. */
-function MinionsCard({ ch, customs, onUpdate, onSummon, readOnly }) {
+function MinionsCard({ ch, customs, onUpdate, onSummon, onRoll, onDice, readOnly }) {
   const minions = minionsOf(ch);
   const [amt, setAmt] = useState(1);
+  const [rolling, setRolling] = useState(null); // the minion whose dice are out
   if (readOnly && minions.length === 0) return null;
   const n = Math.max(1, parseInt(amt, 10) || 1);
   const patchOne = (id, fn) => onUpdate({ minions: minions.map((m) => (m.id === id ? fn(m) : m)) });
@@ -5104,13 +5143,10 @@ function MinionsCard({ ch, customs, onUpdate, onSummon, readOnly }) {
                       {m.stat && m.stat !== m.name ? `${m.stat} · ` : ""}{m.source}{m.ac ? ` · AC ${m.ac}` : ""}{m.note ? ` · ${m.note}` : ""}
                     </div>
                   </div>
-                  {readOnly ? (
-                    <span style={{ color: T.dim, fontSize: 12 }}>{m.role}</span>
-                  ) : (
-                    <select value={m.role || ""} title="Role" onChange={(e) => patchOne(m.id, (x) => ({ ...x, role: e.target.value }))}
-                      style={{ ...fieldStyle, width: "auto", padding: "6px 8px", fontSize: 12.5 }}>
-                      {(MINION_ROLES.includes(m.role) ? MINION_ROLES : [m.role || "—", ...MINION_ROLES]).map((r) => <option key={r} value={r}>{r}</option>)}
-                    </select>
+                  {m.stat && onRoll && (
+                    <button data-minion-roll style={{ ...pillBtn, width: "auto", padding: "0 9px" }} title="Roll for this creature" onClick={() => setRolling(m)}>
+                      <Icon name="d20" size={15} style={{ marginRight: 0 }} />
+                    </button>
                   )}
                   <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 8 }}>
                     {!readOnly && <button style={{ ...pillBtn, color: "#d76a76", opacity: down ? 0.4 : 1 }} disabled={down} title={`Deal ${n} damage`} onClick={() => patchOne(m.id, (x) => minionApplyHp(x, -n))}>−</button>}
@@ -5131,6 +5167,81 @@ function MinionsCard({ ch, customs, onUpdate, onSummon, readOnly }) {
           </div>
         </>
       )}
+      {rolling && (() => {
+        const c = creatureByName(rolling.stat);
+        if (!c) return null;
+        const attacks = minionAttackRolls(c);
+        const saves = minionSaves(c);
+        const skills = minionSkills(c);
+        /* the roll trays sit at z 60, beneath this sheet — it steps aside before the dice fall */
+        const closeThen = (fn) => { setRolling(null); fn(); };
+        const pill = { ...btn(false), padding: "7px 12px", minHeight: 0, fontSize: 12.5, fontFamily: "inherit" };
+        const secTitle = { color: T.dim, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 14 };
+        const diceLabel = (a) => {
+          const g = {};
+          a.dice.forEach((s) => { g[s] = (g[s] || 0) + 1; });
+          return Object.entries(g).map(([s, n]) => `${n}d${s}`).join(" + ") + (a.bonus ? fmtMod(a.bonus) : "");
+        };
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center", animation: "sheetVeil 200ms ease" }} onClick={() => setRolling(null)}>
+            <div className="sheet-cap" style={{ ...card, width: "min(620px, 100%)", overflowY: "auto", borderRadius: "16px 16px 0 0", padding: 20, paddingBottom: "calc(20px + env(safe-area-inset-bottom))", animation: "sheetRise 300ms cubic-bezier(0.32, 0.72, 0, 1)" }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+                <div style={{ fontFamily: "Georgia, serif", fontSize: 21, color: T.gold }}><Icon name="d20" size={17} /> {rolling.name}</div>
+                <span style={{ color: T.dim, cursor: "pointer", fontSize: 20, lineHeight: 1 }} onClick={() => setRolling(null)}>✕</span>
+              </div>
+              <div style={{ color: T.dim, fontSize: 12.5, marginTop: 2 }}>
+                {c.name} · the sheet's Advantage / Disadvantage toggle rides along ·{" "}
+                <span style={{ textDecoration: "underline dotted", cursor: "pointer" }} onClick={() => closeThen(() => __showLore && __showLore("creature:" + c.name))}>stat block</span>
+              </div>
+              {attacks.length > 0 && (
+                <>
+                  <div style={secTitle}>Attacks — to hit, then damage</div>
+                  <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+                    {attacks.map((a) => (
+                      <div key={a.name} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <span style={{ color: T.ink, fontWeight: 700, fontSize: 13.5, flex: "1 1 110px" }}>{a.name}{a.scaled && <span title="Also add the summoning slot's level to damage" style={{ color: T.gold, fontSize: 11 }}> ✦ +slot</span>}</span>
+                        {a.atk != null ? (
+                          <button style={pill} onClick={() => closeThen(() => onRoll({ title: `${rolling.name} — ${a.name}`, parts: [{ label: "to hit", value: a.atk }], kind: "attack", minion: true }))}>
+                            <Icon name="sword" size={13} /> {fmtMod(a.atk)} to hit
+                          </button>
+                        ) : (
+                          <span style={{ color: T.dim, fontSize: 12 }}>uses your spell attack</span>
+                        )}
+                        {a.dice.length > 0 && onDice && (
+                          <button style={{ ...pill, color: "#d76a76", borderColor: T.blood }} onClick={() => closeThen(() => onDice({ title: `${rolling.name} — ${a.name} damage`, dice: a.dice.map((s) => ({ sides: s, value: roll(s) })), bonus: a.bonus, bonusLabel: "damage", note: a.scaled ? "Add the summoning slot's level, then apply it." : "Apply it to the target." }))}>
+                            {diceLabel(a)}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              <div style={secTitle}>Saving throws {saves.some((s) => s.prof) && <span style={{ textTransform: "none" }}>· ● proficient</span>}</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                {saves.map((s) => (
+                  <button key={s.a} style={pill} onClick={() => closeThen(() => onRoll({ title: `${rolling.name} — ${ABIL_NAMES[s.a]} save`, parts: [{ label: `${ABIL_NAMES[s.a]} save`, value: s.mod }], kind: "save", minion: true }))}>
+                    {s.a.toUpperCase()} {fmtMod(s.mod)}{s.prof ? " ●" : ""}
+                  </button>
+                ))}
+              </div>
+              <div style={secTitle}>Ability checks</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                {ABILITIES.map((a) => (
+                  <button key={a} style={pill} onClick={() => closeThen(() => onRoll({ title: `${rolling.name} — ${ABIL_NAMES[a]} check`, parts: [{ label: ABIL_NAMES[a], value: mod(c.ab[a]) }], kind: "check", minion: true }))}>
+                    {a.toUpperCase()} {fmtMod(mod(c.ab[a]))}
+                  </button>
+                ))}
+                {skills.map((sk) => (
+                  <button key={sk.name} style={{ ...pill, borderColor: T.gold }} onClick={() => closeThen(() => onRoll({ title: `${rolling.name} — ${sk.name}`, parts: [{ label: sk.name, value: sk.mod }], kind: "check", minion: true }))}>
+                    {sk.name} {fmtMod(sk.mod)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -5143,7 +5254,7 @@ function MinionsCard({ ch, customs, onUpdate, onSummon, readOnly }) {
 function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
   const presetDef = preset?.def || null;
   const defaultsFor = (d, f, slot) => ({
-    name: f.name, count: "1", role: d.role || "Striker",
+    name: f.name, count: "1",
     hp: String(d.hpOf ? d.hpOf(ch) : d.spirit ? spiritHp(d, f, slot) : f.hp),
     ac: String(d.spirit ? spiritAc(d, f, slot) : (f.ac ?? "")),
   });
@@ -5200,7 +5311,7 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
     const insts = Array.from({ length: count }, (_, i) => ({
       id: uid(), key: def.key, kind: def.kind, source: def.source,
       name: count === 1 && already === 0 ? nm : `${nm} ${already + i + 1}`,
-      role: f.role || "Striker", maxHp: hp, dmg: 0, tempHp: 0, ...(ac ? { ac } : {}), ends: def.ends || "manual",
+      maxHp: hp, dmg: 0, tempHp: 0, ...(ac ? { ac } : {}), ends: def.ends || "manual",
       ...(stat ? { stat } : {}),
       ...(def.key === "custom" && f.note ? { note: f.note } : {}),
     }));
@@ -5210,7 +5321,7 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
     });
     onClose();
   };
-  const blankCustom = { name: "", source: "", role: "Striker", count: "1", hp: "10", ac: "", note: "", ends: "manual" };
+  const blankCustom = { name: "", source: "", count: "1", hp: "10", ac: "", note: "", ends: "manual" };
   const submitCustom = () => addMinions(
     { key: "custom", kind: "Custom", source: (custom.source || "").trim() || "Custom summon", ends: custom.ends },
     custom, creatureByName(custom.name)?.name || null
@@ -5220,14 +5331,6 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
     <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: T.dim, flex: width }}>
       {label}
       <input type="number" min={0} value={obj[f]} onChange={(e) => setObj({ ...obj, [f]: e.target.value })} style={sheetField} />
-    </label>
-  );
-  const roleSelect = (obj, setObj) => (
-    <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: T.dim, flex: "1 1 110px" }}>
-      Role
-      <select value={obj.role} onChange={(e) => setObj({ ...obj, role: e.target.value })} style={sheetField}>
-        {MINION_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-      </select>
     </label>
   );
   return (
@@ -5313,7 +5416,6 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
               {numField("How many", "count", fields, setFields)}
               {numField("HP each", "hp", fields, setFields)}
               {numField("AC", "ac", fields, setFields)}
-              {roleSelect(fields, setFields)}
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
               <button style={btn(true)} onClick={() => addMinions(pending, fields, form && (form.stat ? form.name : (creatureByName(form.name) || creatureByName(baseSubName(form.name)))?.name || null))}>Summon</button>
@@ -5328,7 +5430,6 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
               {numField("How many", "count", custom, setCustom)}
               {numField("HP each", "hp", custom, setCustom)}
               {numField("AC", "ac", custom, setCustom)}
-              {roleSelect(custom, setCustom)}
               <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: T.dim, flex: "1 1 150px" }}>
                 It lasts
                 <select value={custom.ends} onChange={(e) => setCustom({ ...custom, ends: e.target.value })} style={sheetField}>
@@ -5737,7 +5838,8 @@ const SHEET_GUIDE = [
     items: [
       ["＋ Summon", "muster anything you can call — conjured beasts, a familiar, skeletons, a steed, a wild shape form, or any creature in the SRD bestiary."],
       ["Cast to summon", "casting a conjuring spell opens the muster automatically, with the slot level in hand and the legal creatures already filtered by type and CR."],
-      ["Each body, its own pool", "every creature tracks its own HP — set the amount, tap its − or ＋ — and wears a role you can change mid-fight."],
+      ["Each body, its own pool", "every creature tracks its own HP — set the amount, tap its − or ＋."],
+      ["Tap a creature's d20", "roll its attacks and damage, saving throws, and checks — straight off its stat block, with the Advantage toggle riding along."],
       ["Long-press a creature", "its full stat block — abilities, attacks, traits — rises like any other lore."],
       ["They know when to leave", "concentration menageries dissolve on a rest; familiars, steeds, and the raised dead stay until dismissed."],
     ],
@@ -6370,7 +6472,8 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
 
       <EffectsCard ch={ch} customs={customs} fx={fx} onUpdate={onUpdate} readOnly={shared} />
 
-      <MinionsCard ch={ch} customs={customs} onUpdate={onUpdate} onSummon={() => setSummoning({})} readOnly={shared} />
+      <MinionsCard ch={ch} customs={customs} onUpdate={onUpdate} onSummon={() => setSummoning({})}
+        onRoll={setRollSpec} onDice={setDmgRoll} readOnly={shared} />
       {summoning && !shared && <AddMinionSheet ch={ch} customs={customs} preset={summoning.def ? summoning : null} onUpdate={onUpdate} onClose={() => setSummoning(null)} />}
 
       <div style={{ ...card, padding: 14, marginTop: 14 }}>
@@ -6584,7 +6687,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
 
       {rollSpec && (
         <RollTray key={JSON.stringify(rollSpec) + advMode} title={rollSpec.title} mode={advMode} parts={rollSpec.parts}
-          kind={rollSpec.kind} abil={rollSpec.abil} proficient={rollSpec.proficient} extra={rollSpec.extra} ch={ch}
+          kind={rollSpec.kind} abil={rollSpec.abil} proficient={rollSpec.proficient} extra={rollSpec.extra} ch={ch} minion={rollSpec.minion}
           onClose={() => { setRollSpec(null); setPendingDmg(null); }}
           onDamage={pendingDmg ? () => { const d = pendingDmg; setPendingDmg(null); setRollSpec(null); setDmgRoll(d); } : undefined} />
       )}
