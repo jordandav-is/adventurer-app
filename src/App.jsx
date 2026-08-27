@@ -3799,18 +3799,13 @@ function CreateWizard({ onDone, onCancel, customs }) {
           )}
           {raceData.feat && (
             <div style={{ ...card, padding: 14, marginTop: 14 }}>
-              <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 4 }}>Your 1st-level feat</div>
-              <div style={{ color: T.dim, fontSize: 12.5, marginBottom: 10, lineHeight: 1.6 }}>
-                {race} grants one feat. Prerequisites are checked against your scores <i>with</i> racial bonuses
-                ({ABILITIES.map((a) => `${a.toUpperCase()} ${preFeatScores[a]}`).join(" · ")}) but before the feat's own +1.
-              </div>
+              <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>Your 1st-level feat</div>
               <FeatChooser customs={customs} abilities={preFeatScores} level={1} caster={castsAt1 || CLASSES[cls].caster === "half"}
                 skillsTaken={[...bgGrantSkills, ...raceSkillsEff, ...skills]} styles={style ? [style] : []}
                 knownCantrips={[...(racialCantrip ? [racialCantrip] : []), ...spellPicks.cantrips]}
                 knownLangs={[...RACE_LANGS[race].fixed, ...langPicks]}
                 profSkills={[...skills, ...bgGrantSkills, ...raceSkillsEff]}
-                value={raceFeat} onChange={setRaceFeat} allowEpic={false} waiveLevel
-                note="Long-press a feat to read it in full. A lineage feat waives the usual level-4 gate on general feats, so anything but an Epic Boon is open — ability prerequisites still bind. Feats that hand out spells add them from the Grimoire; the +1, proficiencies, HP, and speed the sheet applies for you." />
+                value={raceFeat} onChange={setRaceFeat} allowEpic={false} waiveLevel />
               {raceFeat?.name && !featPickDone(raceFeatDef, raceFeat) && (
                 <div style={{ color: T.blood, fontSize: 12, marginTop: 8 }}>{raceFeat.name} still needs its own choices made above.</div>
               )}
@@ -4655,8 +4650,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                   <FeatChooser customs={customs} abilities={ch.abilities} level={lvl + 1} caster={isCaster}
                     held={ch.feats || []} styles={ch.styles || []} skillsTaken={[...ch.skills, ...(mcSkill ? [mcSkill] : [])]}
                     knownCantrips={allKnownCantrips(ch)} knownLangs={ch.languages || []} profSkills={ch.skills}
-                    value={featSel} onChange={setFeatSel}
-                    note="Long-press any feat to read it in full. Feats that hand out spells add them from the Grimoire; the rest of what they grant — the +1, proficiencies, HP, speed — the sheet applies for you." />
+                    value={featSel} onChange={setFeatSel} />
                 )}
                 {asiMode === "asi" && (
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
