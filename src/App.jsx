@@ -11,13 +11,20 @@ const profBonus = (lvl) => Math.ceil(lvl / 4) + 1;
 const RACES = {
   "Hill Dwarf": { bonus: { con: 2, wis: 1 }, speed: 25, traits: ["Darkvision 60 ft", "Dwarven Resilience (adv. vs poison)", "Dwarven Toughness (+1 HP/level)", "Stonecunning"] },
   "High Elf": { bonus: { dex: 2, int: 1 }, speed: 30, traits: ["Darkvision 60 ft", "Fey Ancestry", "Trance", "Keen Senses (Perception)", "One wizard cantrip"] },
-  "Lightfoot Halfling": { bonus: { dex: 2, cha: 1 }, speed: 25, traits: ["Lucky (reroll 1s)", "Brave", "Halfling Nimbleness", "Naturally Stealthy"] },
+  "Lightfoot Halfling": { bonus: { dex: 2, cha: 1 }, speed: 25, traits: ["Halfling Luck (reroll 1s)", "Brave", "Halfling Nimbleness", "Naturally Stealthy"] },
   "Human": { bonus: { str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1 }, speed: 30, traits: ["+1 to all ability scores"] },
   "Dragonborn": { bonus: { str: 2, cha: 1 }, speed: 30, traits: ["Draconic Ancestry", "Breath Weapon", "Damage Resistance (ancestry type)"] },
   "Rock Gnome": { bonus: { int: 2, con: 1 }, speed: 25, traits: ["Darkvision 60 ft", "Gnome Cunning (adv. on Int/Wis/Cha saves vs magic)", "Artificer's Lore", "Tinker"] },
-  "Half-Elf": { bonus: { cha: 2 }, choose: 2, speed: 30, traits: ["Darkvision 60 ft", "Fey Ancestry", "Two extra skills", "+1 to two abilities of your choice"] },
+  "Half-Elf": { bonus: { cha: 2 }, choose: 2, chooseNot: ["cha"], skills: 2, speed: 30, traits: ["Darkvision 60 ft", "Fey Ancestry", "Two extra skills", "+1 to two abilities of your choice"] },
   "Half-Orc": { bonus: { str: 2, con: 1 }, speed: 30, traits: ["Darkvision 60 ft", "Relentless Endurance", "Savage Attacks", "Menacing (Intimidation)"] },
   "Tiefling": { bonus: { cha: 2, int: 1 }, speed: 30, traits: ["Darkvision 60 ft", "Hellish Resistance (fire)", "Infernal Legacy (thaumaturgy)"] },
+  /* ---- Lineages that trade fixed racial bonuses for a feat at 1st level. Not SRD:
+     these are optional rules many tables run, so they are offered alongside the SRD
+     folk and marked as such wherever the sheet names their source. ---- */
+  "Variant Human": { bonus: {}, choose: 2, chooseAmt: 1, skills: 1, feat: true, speed: 30, optional: true,
+    traits: ["+1 to two different ability scores", "One extra skill proficiency", "One feat of your choice at 1st level"] },
+  "Custom Lineage": { bonus: {}, choose: 1, chooseAmt: 2, feat: true, lineageTrait: true, speed: 30, optional: true,
+    traits: ["+2 to one ability score of your choice", "Darkvision 60 ft or one extra skill", "One feat of your choice at 1st level", "Size Small or Medium (your choice)"] },
 };
 
 const LANGS = ["Common","Dwarvish","Elvish","Giant","Gnomish","Goblin","Halfling","Orc","Abyssal","Celestial","Deep Speech","Draconic","Infernal","Primordial","Sylvan","Undercommon"];
@@ -27,6 +34,7 @@ const RACE_LANGS = {
   "Dragonborn": { fixed: ["Common", "Draconic"], choose: 0 }, "Rock Gnome": { fixed: ["Common", "Gnomish"], choose: 0 },
   "Half-Elf": { fixed: ["Common", "Elvish"], choose: 1 }, "Half-Orc": { fixed: ["Common", "Orc"], choose: 0 },
   "Tiefling": { fixed: ["Common", "Infernal"], choose: 0 },
+  "Variant Human": { fixed: ["Common"], choose: 1 }, "Custom Lineage": { fixed: ["Common"], choose: 1 },
 };
 const ANCESTRIES = { Black: "Acid", Blue: "Lightning", Brass: "Fire", Bronze: "Lightning", Copper: "Acid", Gold: "Fire", Green: "Poison", Red: "Fire", Silver: "Cold", White: "Cold" };
 const ALL_SKILLS = ["Acrobatics","Animal Handling","Arcana","Athletics","Deception","History","Insight","Intimidation","Investigation","Medicine","Nature","Perception","Performance","Persuasion","Religion","Sleight of Hand","Stealth","Survival"];
@@ -421,6 +429,9 @@ const CLASS_BLURB = {
 /* Class feature rules text, keyed by feature name stripped of any parenthetical.
    "Class:Name" keys disambiguate features that differ between classes. */
 const FEATURE_TEXT = {
+  /* racial traits that would otherwise collide with a feat of the same name */
+  "Halfling Luck": "When you roll a 1 on the d20 for an attack roll, ability check, or saving throw, you can reroll the die and must use the new roll. (This is the halfling trait, not the Lucky feat — the sheet applies it to every d20 automatically.)",
+  "Darkvision 60 ft": "Within 60 feet you can see in dim light as if it were bright light, and in darkness as if it were dim light — discerning shapes and movement, though only in shades of grey.",
   /* markers for the subclass choice itself */
   "Primal Path": "Choose the Primal Path that shapes the nature of your rage. It grants features at 3rd, 6th, 10th, and 14th level.",
   "Bard College": "Choose a Bard College reflecting how you honed your craft. It grants features at 3rd, 6th, and 14th level.",
@@ -677,18 +688,235 @@ function featureBody(rawName, cls, customs) {
     || (/\bfeature\b$/i.test(strip) ? "Granted by your subclass at this level — read its entry for the details." : null);
 }
 
-/* Feats available under CC-BY (SRD 5.1 + SRD 5.2 origin & fighting style feats) */
+/* ============ FEATS (CC-BY: SRD 5.1 + the full SRD 5.2 feat chapter) ============
+   Every entry carries what the sheet can actually act on, not just prose:
+
+     cat      Origin | General | Fighting Style | Epic Boon — how the picker groups them
+     desc     one line for the list; text is the full rules entry the lore panel shows
+     prereq   the printed prerequisite, always displayed
+     min      { str: 13 } — ALL of these ability minimums must be met
+     minAny   { str: 13, dex: 13 } — ANY one of them suffices ("Strength or Dexterity 13+")
+     lvl      minimum character level; caster — needs the Spellcasting feature
+     bump     abilities the feat's own +1 may be spent on (the picker asks, then applies it)
+     pick     further choices the feat forces — { skills: { n, from } }
+     fx       what the sheet derives from holding it: hpPerLevel, speed, init,
+              saveFromBump, mediumDexCap, style. Anything absent here is rules text
+              the player applies at the table (see featEffects below). */
 const FEATS = [
-  { name: "Grappler", desc: "Adv. on attacks vs creatures you grapple; grapple as part of Attack" },
-  { name: "Alert", desc: "Add proficiency bonus to initiative; swap initiative with a willing ally" },
-  { name: "Magic Initiate", desc: "Two cantrips and one 1st-level spell from a class list" },
-  { name: "Savage Attacker", desc: "Once per turn, roll melee weapon damage twice and take either" },
-  { name: "Skilled", desc: "Proficiency in any three skills or tools" },
-  { name: "Fighting Style: Archery", desc: "+2 to ranged weapon attack rolls" },
-  { name: "Fighting Style: Defense", desc: "+1 AC while wearing armor" },
-  { name: "Fighting Style: Dueling", desc: "+2 damage with a one-handed melee weapon" },
-  { name: "Fighting Style: Great Weapon Fighting", desc: "Reroll 1s and 2s on two-handed weapon damage" },
+  /* ---- Origin feats: no prerequisite, and the usual fare for a 1st-level lineage feat ---- */
+  { name: "Alert", cat: "Origin", desc: "Add your proficiency bonus to initiative; swap initiative with a willing ally", fx: { init: true },
+    text: "Initiative Proficiency. When you roll Initiative, you can add your Proficiency Bonus to the roll.\nInitiative Swap. Immediately after you roll Initiative, you can swap your Initiative with the Initiative of one willing ally in the same combat. You can't make this swap if you or the ally has the Incapacitated condition." },
+  { name: "Crafter", cat: "Origin", desc: "Three artisan's tool proficiencies, a 20% discount on gear, and faster crafting",
+    text: "Tool Proficiency. You gain proficiency with three different Artisan's Tools of your choice.\nDiscount. Whenever you buy a nonmagical item, you receive a 20 percent discount on it.\nFast Crafting. When you finish a Long Rest, you can craft one piece of gear from the Fast Crafting table, provided you have the tool proficiency the item requires and have the raw materials to hand. The item lasts until you finish another Long Rest, when it falls apart unless you spend the materials again." },
+  { name: "Healer", cat: "Origin", desc: "Revive a downed ally, and heal with a Healer's Kit as a Utilize action",
+    text: "Battle Medic. If you have a Healer's Kit, you can expend one use of it and tend to a creature within 5 feet as a Utilize action. That creature can spend one Hit Point Die: roll the die, add your Proficiency Bonus, and the creature regains that many Hit Points.\nHealing Rerolls. Whenever you roll a die to determine the number of Hit Points you restore with a spell or with this feat's Battle Medic, you can reroll the die if it rolls a 1, and you must use the new roll." },
+  { name: "Lucky", cat: "Origin", desc: "Luck Points equal to your proficiency bonus: buy advantage, or impose disadvantage on an attacker",
+    text: "Luck Points. You have a number of Luck Points equal to your Proficiency Bonus and can spend them as described below. You regain all expended Luck Points when you finish a Long Rest.\nAdvantage. When you roll a d20 Test, you can spend 1 Luck Point to give yourself Advantage on the roll.\nDisadvantage. When a creature rolls a d20 Test against you, you can spend 1 Luck Point to impose Disadvantage on that roll." },
+  { name: "Magic Initiate", cat: "Origin", desc: "Two cantrips and one 1st-level spell from a chosen class list — add them in the Grimoire",
+    text: "Choose one class: Cleric, Druid, or Wizard. You learn two cantrips of your choice from that class's spell list, and choose one 1st-level spell from the same list. You always have that spell prepared; you can cast it once without a spell slot, regaining that use on a Long Rest, and can also cast it using any spell slots you have. Your spellcasting ability for these spells is the one used by the chosen class.\nWhenever you gain a new level, you can replace one of these spells with another of the same level from that list.\n(Add the cantrips and the spell to your sheet from the Grimoire — the ledger tracks them like any other known spell.)" },
+  { name: "Musician", cat: "Origin", desc: "Three instrument proficiencies; play after a rest to grant allies Heroic Inspiration",
+    text: "Instrument Training. You gain proficiency with three Musical Instruments of your choice.\nEncouraging Song. As you finish a Short or Long Rest, you can play a song on a Musical Instrument you have proficiency with and give Heroic Inspiration to allies who hear the song. The number of allies you can affect equals your Proficiency Bonus." },
+  { name: "Savage Attacker", cat: "Origin", desc: "Once per turn, roll your melee weapon's damage dice twice and keep either result",
+    text: "You've trained to deal particularly damaging strikes. Once per turn when you hit a target with a weapon, you can roll the weapon's damage dice twice and use either roll against the target." },
+  { name: "Skilled", cat: "Origin", desc: "Proficiency in any three skills or tools", pick: { skills: { n: 3 } },
+    text: "You gain proficiency in any combination of three skills or tools of your choice.\n(The sheet asks you for three skills and marks them proficient. If you'd rather take a tool, pick fewer skills here and note the tool on your sheet — the ledger doesn't track tool proficiencies.)" },
+  { name: "Tavern Brawler", cat: "Origin", desc: "d4 unarmed strikes with damage rerolls, a push on a hit, and improvised-weapon proficiency", bump: ["str", "con"],
+    text: "Ability Score Increase. Increase your Strength or Constitution by 1, to a maximum of 20.\nDamage Rerolls. Whenever you roll a damage die for your Unarmed Strike, you can reroll the die if it rolls a 1, and you must use the new roll.\nImproved Unarmed Strike. Your Unarmed Strike uses a d4 for damage.\nPush. When you hit a creature with an Unarmed Strike as part of the Attack action on your turn, you can deal damage and also push the target 5 feet, once per turn.\nProficiency. You have proficiency with improvised weapons." },
+  { name: "Tough", cat: "Origin", desc: "Your hit point maximum increases by 2 per character level", fx: { hpPerLevel: 2 },
+    text: "Your Hit Point maximum increases by an amount equal to twice your character level when you gain this feat. Whenever you gain a level thereafter, your Hit Point maximum increases by an additional 2 Hit Points.\n(The sheet applies the full amount for your current level automatically, and keeps it in step as you level.)" },
+
+  /* ---- General feats: level 4+, and each carries its own +1 ---- */
+  { name: "Actor", cat: "General", desc: "Advantage on Deception & Performance when passing as someone else; mimic voices", prereq: "Level 4+, Charisma 13+", lvl: 4, min: { cha: 13 }, bump: ["cha"],
+    text: "Ability Score Increase. Increase your Charisma by 1, to a maximum of 20.\nImpersonation. While you're disguised as a real or fictional person, you have Advantage on Charisma (Deception or Performance) checks to convince others that you are that person.\nMimicry. You can mimic the sounds of other creatures, including speech. A creature that hears the mimicry must succeed on a Wisdom (Insight) check against a DC of 8 plus your Charisma modifier and Proficiency Bonus to determine the sounds are faked." },
+  { name: "Athlete", cat: "General", desc: "Stand from prone cheaply, climb at full speed, and run long jumps off 5 feet", prereq: "Level 4+, Strength or Dexterity 13+", lvl: 4, minAny: { str: 13, dex: 13 }, bump: ["str", "dex"],
+    text: "Ability Score Increase. Increase your Strength or Dexterity by 1, to a maximum of 20.\nStand Up. When you have the Prone condition, you can right yourself with only 5 feet of movement.\nClimb Speed. You gain a Climb Speed equal to your Speed.\nLong Jump and High Jump. You can make a running Long or High Jump after moving only 5 feet." },
+  { name: "Charger", cat: "General", desc: "Dash then Shove for 10 feet, or add damage to a charging attack", prereq: "Level 4+, Strength or Dexterity 13+", lvl: 4, minAny: { str: 13, dex: 13 }, bump: ["str", "dex"],
+    text: "Ability Score Increase. Increase your Strength or Dexterity by 1, to a maximum of 20.\nImproved Dash. When you take the Dash action, your Speed increases by 10 feet for that action.\nCharge Attack. If you move at least 10 feet in a straight line immediately before hitting with a melee attack as part of the Attack action, choose one: the target takes extra damage equal to your Proficiency Bonus, or you push the target up to 10 feet away if it is Large or smaller. You can use this once per turn." },
+  { name: "Chef", cat: "General", desc: "Cook meals that grant temporary hit points, and treats that speed a short rest", prereq: "Level 4+", lvl: 4, bump: ["con", "wis"],
+    text: "Ability Score Increase. Increase your Constitution or Wisdom by 1, to a maximum of 20.\nCook's Utensils. You gain proficiency with Cook's Utensils if you don't already have it.\nReplenishing Meal. As part of a Short Rest, you can cook special food if you have Cook's Utensils and suitable ingredients. Up to five creatures who eat the food and spend Hit Point Dice regain an extra 1d8 Hit Points.\nBolstering Treats. With 1 hour of cooking, you can make a number of treats equal to your Proficiency Bonus. They last 8 hours; a creature can eat one as a Bonus Action to gain Temporary Hit Points equal to your Proficiency Bonus." },
+  { name: "Crossbow Expert", cat: "General", desc: "Ignore Loading, no disadvantage in melee, and a bonus-action hand crossbow shot", prereq: "Level 4+, proficiency with a martial weapon", lvl: 4, bump: ["dex"],
+    text: "Ability Score Increase. Increase your Dexterity by 1, to a maximum of 20.\nIgnore Loading. The Loading property doesn't reduce the number of attacks you can make with a crossbow you're proficient with.\nFiring in Melee. Being within 5 feet of an enemy doesn't impose Disadvantage on your attack rolls with a crossbow.\nDual Wielding. When you make an extra attack with the Light property, you can add your ability modifier to that attack's damage if the weapon is a hand crossbow." },
+  { name: "Crusher", cat: "General", desc: "Shove a creature 5 feet on bludgeoning damage; crits give attackers advantage on it", prereq: "Level 4+", lvl: 4, bump: ["str", "con"],
+    text: "Ability Score Increase. Increase your Strength or Constitution by 1, to a maximum of 20.\nPush. Once per turn, when you hit a creature with an attack that deals Bludgeoning damage, you can move it 5 feet to an unoccupied space if it is no more than one size larger than you.\nEnhanced Critical. When you score a Critical Hit that deals Bludgeoning damage, attack rolls against that creature have Advantage until the start of your next turn." },
+  { name: "Defensive Duelist", cat: "General", desc: "Reaction with a finesse weapon: add your proficiency bonus to AC against one melee hit", prereq: "Level 4+, Dexterity 13+", lvl: 4, min: { dex: 13 }, bump: ["dex"],
+    text: "Ability Score Increase. Increase your Dexterity by 1, to a maximum of 20.\nParry. If you're holding a Finesse weapon you're proficient with and another creature hits you with a melee attack, you can take a Reaction to add your Proficiency Bonus to your Armor Class against that attack, possibly turning the hit into a miss.\n(Toggle the Defensive Duelist effect on your sheet when you parry — the AC bonus is applied for you.)" },
+  { name: "Dual Wielder", cat: "General", desc: "Two-weapon fighting with any light-or-not weapons, plus a quick extra draw", prereq: "Level 4+", lvl: 4, bump: ["str", "dex"],
+    text: "Ability Score Increase. Increase your Strength or Dexterity by 1, to a maximum of 20.\nEnhanced Dual Wielding. When you take the Attack action on your turn and attack with a weapon that has the Light property, you can make one extra attack as a Bonus Action later that turn with a different weapon, which doesn't need the Light property. That attack adds your ability modifier to its damage.\nQuick Draw. You can draw or stow two weapons when you would normally draw or stow only one." },
+  { name: "Durable", cat: "General", desc: "Spend Hit Point Dice as a bonus action to heal in the thick of it", prereq: "Level 4+", lvl: 4, bump: ["con"],
+    text: "Ability Score Increase. Increase your Constitution by 1, to a maximum of 20.\nHeroic Rally. As a Bonus Action, you can expend one of your Hit Point Dice and roll it, regaining Hit Points equal to the roll plus your Constitution modifier (minimum 1 Hit Point)." },
+  { name: "Elemental Adept", cat: "General", desc: "Your spells of one damage type ignore resistance and never roll a 1 for damage", prereq: "Level 4+, Spellcasting or Pact Magic feature", lvl: 4, caster: true, bump: ["int", "wis", "cha"],
+    text: "Ability Score Increase. Increase your Intelligence, Wisdom, or Charisma by 1, to a maximum of 20.\nEnergy Mastery. Choose one damage type: Acid, Cold, Fire, Lightning, or Thunder. Spells you cast ignore Resistance to that damage type. In addition, when you roll damage for a spell and the roll is a 1, you treat it as a 2.\nYou can take this feat more than once, choosing a different damage type each time." },
+  { name: "Fey-Touched", cat: "General", desc: "Misty Step plus one 1st-level Divination or Enchantment spell, free once a day", prereq: "Level 4+", lvl: 4, bump: ["int", "wis", "cha"],
+    text: "Ability Score Increase. Increase your Intelligence, Wisdom, or Charisma by 1, to a maximum of 20.\nFey Magic. Choose one 1st-level spell from the Divination or Enchantment school. You always have that spell and the Misty Step spell prepared. You can cast each of them once without a spell slot, regaining that use on a Long Rest, and can also cast them using spell slots you have. Your spellcasting ability for them is the ability you increased with this feat.\n(Add both spells from the Grimoire so the sheet tracks them.)" },
+  { name: "Grappler", cat: "General", desc: "Advantage on attacks against creatures you grapple, and grapple as part of the Attack action", prereq: "Level 4+, Strength or Dexterity 13+", lvl: 4, minAny: { str: 13, dex: 13 }, bump: ["str", "dex"],
+    text: "Ability Score Increase. Increase your Strength or Dexterity by 1, to a maximum of 20.\nGrapple Attack. You have Advantage on attack rolls against a creature you have Grappled.\nFast Wrestle. You can use the Unarmed Strike (Grapple) option in place of one of the attacks granted by the Attack action.\nPunch and Grab. When you hit a creature with an Unarmed Strike, you can use both the Damage and the Grapple option, but only once per turn." },
+  { name: "Great Weapon Master", cat: "General", desc: "Heavy-weapon crits and kills grant a bonus attack; take −5 to hit for +10 damage", prereq: "Level 4+, proficiency with a martial weapon", lvl: 4, bump: ["str"],
+    text: "Ability Score Increase. Increase your Strength by 1, to a maximum of 20.\nHeavy Weapon Mastery. When you hit a creature with a weapon that has the Heavy property as part of the Attack action on your turn, you can cause the weapon to deal extra damage — take a −5 penalty to the attack roll for +10 damage.\nPush Your Luck. Immediately after you score a Critical Hit or reduce a creature to 0 Hit Points with a Heavy weapon, you can make one attack with that weapon as a Bonus Action.\n(Toggle the Great Weapon Master effect on your sheet when you take the −5.)" },
+  { name: "Heavily Armored", cat: "General", desc: "Proficiency with heavy armor", prereq: "Level 4+, proficiency with medium armor", lvl: 4, bump: ["str"],
+    text: "Ability Score Increase. Increase your Strength by 1, to a maximum of 20.\nArmor Training. You gain training with Heavy armor." },
+  { name: "Heavy Armor Master", cat: "General", desc: "In heavy armor, reduce most weapon damage by your proficiency bonus", prereq: "Level 4+, proficiency with heavy armor", lvl: 4, bump: ["str", "con"],
+    text: "Ability Score Increase. Increase your Strength or Constitution by 1, to a maximum of 20.\nDamage Reduction. While you're wearing Heavy armor, you have Resistance-like protection: Bludgeoning, Piercing, and Slashing damage you take from weapons is reduced by an amount equal to your Proficiency Bonus." },
+  { name: "Inspiring Leader", cat: "General", desc: "A 10-minute speech grants temporary hit points to your whole party", prereq: "Level 4+", lvl: 4, bump: ["wis", "cha"],
+    text: "Ability Score Increase. Increase your Wisdom or Charisma by 1, to a maximum of 20.\nBolstering Performance. When you finish a Short or Long Rest, you can give an inspiring speech, performance, or prayer. Choose up to six allies (which can include yourself) within 30 feet who can see or hear you. Each gains Temporary Hit Points equal to your character level plus the ability modifier you increased with this feat. A creature can't gain them again from this feat until it finishes a rest." },
+  { name: "Keen Mind", cat: "General", desc: "Study as a bonus action; perfect recall of the last month", prereq: "Level 4+", lvl: 4, bump: ["int"],
+    text: "Ability Score Increase. Increase your Intelligence by 1, to a maximum of 20.\nBonus Action Study. You can take the Study action as a Bonus Action.\nRecall. You always know which way is north and the number of hours left before the next sunrise or sunset, and you can accurately recall anything you have seen or heard within the past month." },
+  { name: "Lightly Armored", cat: "General", desc: "Proficiency with light armor", prereq: "Level 4+", lvl: 4, bump: ["str", "dex"],
+    text: "Ability Score Increase. Increase your Strength or Dexterity by 1, to a maximum of 20.\nArmor Training. You gain training with Light armor." },
+  { name: "Mage Slayer", cat: "General", desc: "Punish concentration, and turn advantage on your saves against spells", prereq: "Level 4+", lvl: 4, bump: ["str", "dex"],
+    text: "Ability Score Increase. Increase your Strength or Dexterity by 1, to a maximum of 20.\nConcentration Breaker. When you damage a creature that is concentrating, it has Disadvantage on the saving throw it makes to maintain Concentration.\nGuarded Mind. If you fail a saving throw against a spell, you can end one effect on yourself as a Reaction, at the cost of taking damage equal to your character level." },
+  { name: "Martial Weapon Training", cat: "General", desc: "Proficiency with all martial weapons", prereq: "Level 4+", lvl: 4, bump: ["str", "dex"],
+    text: "Ability Score Increase. Increase your Strength or Dexterity by 1, to a maximum of 20.\nWeapon Proficiency. You gain proficiency with all Martial weapons." },
+  { name: "Medium Armor Master", cat: "General", desc: "Medium armor allows a Dex bonus up to +3 and never hampers Stealth", prereq: "Level 4+, proficiency with medium armor", lvl: 4, bump: ["str", "dex"], fx: { mediumDexCap: 3 },
+    text: "Ability Score Increase. Increase your Strength or Dexterity by 1, to a maximum of 20.\nDexterous Wearer. While wearing Medium armor, you can add 3, rather than 2, to your Armor Class if you have a Dexterity of 16 or higher, and wearing Medium armor doesn't impose Disadvantage on your Dexterity (Stealth) checks.\n(The sheet raises the Dex cap on your AC automatically.)" },
+  { name: "Moderately Armored", cat: "General", desc: "Proficiency with medium armor and shields", prereq: "Level 4+, proficiency with light armor", lvl: 4, bump: ["str", "dex"],
+    text: "Ability Score Increase. Increase your Strength or Dexterity by 1, to a maximum of 20.\nArmor Training. You gain training with Medium armor and Shields." },
+  { name: "Mounted Combatant", cat: "General", desc: "Advantage against unmounted foes, and redirect attacks aimed at your mount", prereq: "Level 4+", lvl: 4, bump: ["str", "dex", "wis"],
+    text: "Ability Score Increase. Increase your Strength, Dexterity, or Wisdom by 1, to a maximum of 20.\nMounted Strike. While mounted, you have Advantage on attack rolls against any unmounted creature within 5 feet of your mount that is smaller than the mount.\nLeap Aside. If your mount is subjected to an effect that allows it to make a Dexterity saving throw for half damage, it instead takes no damage on a success and half on a failure — provided it isn't Incapacitated.\nVeer. While mounted, you can force an attack that hits your mount to hit you instead." },
+  { name: "Observant", cat: "General", desc: "Search as a bonus action; proficiency in Insight, Investigation, or Perception", prereq: "Level 4+", lvl: 4, bump: ["int", "wis"], pick: { skills: { n: 1, from: ["Insight", "Investigation", "Perception"] } },
+    text: "Ability Score Increase. Increase your Intelligence or Wisdom by 1, to a maximum of 20.\nSkill Proficiency. You gain proficiency in one of the following skills of your choice: Insight, Investigation, or Perception.\nQuick Search. You can take the Search action as a Bonus Action." },
+  { name: "Piercer", cat: "General", desc: "Reroll one piercing damage die per turn; crits add an extra die", prereq: "Level 4+", lvl: 4, bump: ["str", "dex"],
+    text: "Ability Score Increase. Increase your Strength or Dexterity by 1, to a maximum of 20.\nPuncture. Once per turn, when you hit a creature with an attack that deals Piercing damage, you can reroll one of the attack's damage dice, and you must use the new roll.\nEnhanced Critical. When you score a Critical Hit that deals Piercing damage, you can roll one additional damage die when determining the extra Piercing damage the target takes." },
+  { name: "Poisoner", cat: "General", desc: "Coat a weapon in potent poison; ignore poison resistance", prereq: "Level 4+", lvl: 4, bump: ["dex", "int"],
+    text: "Ability Score Increase. Increase your Dexterity or Intelligence by 1, to a maximum of 20.\nPoison Proficiency. You gain proficiency with the Poisoner's Kit.\nPotent Poison. When you make a damage roll that deals Poison damage, it ignores Resistance to that damage type.\nApply Poison. As a Bonus Action, you can apply poison from a Poisoner's Kit to a weapon or piece of ammunition. A creature you hit takes an extra 2d8 Poison damage and must succeed on a Constitution saving throw (DC 8 plus your Proficiency Bonus and the ability modifier you increased) or gain the Poisoned condition until the end of your next turn." },
+  { name: "Polearm Master", cat: "General", desc: "A bonus-action butt-end strike, and reach weapons that punish approach", prereq: "Level 4+", lvl: 4, bump: ["str", "dex"],
+    text: "Ability Score Increase. Increase your Strength or Dexterity by 1, to a maximum of 20.\nPole Strike. Immediately after you take the Attack action and attack with a Quarterstaff, a Spear, or a weapon with the Heavy and Reach properties, you can use a Bonus Action to make a melee attack with the opposite end of the weapon, dealing 1d4 Bludgeoning damage plus your ability modifier.\nReactive Strike. While holding such a weapon, you can take an Opportunity Attack when a creature enters the reach you have with it." },
+  { name: "Resilient", cat: "General", desc: "+1 to one ability and proficiency in its saving throws", prereq: "Level 4+", lvl: 4, bump: ["str", "dex", "con", "int", "wis", "cha"], fx: { saveFromBump: true },
+    text: "Ability Score Increase. Increase one ability score of your choice by 1, to a maximum of 20.\nSaving Throw Proficiency. You gain proficiency in saving throws using the chosen ability.\n(The sheet grants the save proficiency to whichever ability you raise.)" },
+  { name: "Ritual Caster", cat: "General", desc: "A ritual book of spells you can cast as rituals, growing as you find more", prereq: "Level 4+, Spellcasting or Pact Magic feature", lvl: 4, caster: true, bump: ["int", "wis", "cha"],
+    text: "Ability Score Increase. Increase your Intelligence, Wisdom, or Charisma by 1, to a maximum of 20.\nRitual Book. You have a book holding ritual spells. Choose two 1st-level spells that have the Ritual tag from the Cleric, Druid, or Wizard spell list; they are copied into the book. When you find a spell with the Ritual tag of a level you can cast, you can copy it into the book over a period of hours and a cost in materials.\nRitual Casting. You can cast the spells in your book as Rituals — and only as Rituals. Your spellcasting ability for them is the ability you increased with this feat." },
+  { name: "Sentinel", cat: "General", desc: "Opportunity attacks that stop movement, and punish foes who ignore you", prereq: "Level 4+", lvl: 4, bump: ["str", "dex"],
+    text: "Ability Score Increase. Increase your Strength or Dexterity by 1, to a maximum of 20.\nGuardian. Immediately after a creature within 5 feet of you takes the Disengage action, or hits a target other than you with an attack, you can make an Opportunity Attack against it.\nHalt. When you hit a creature with an Opportunity Attack, that creature's Speed becomes 0 for the rest of the turn." },
+  { name: "Shadow-Touched", cat: "General", desc: "Invisibility plus one 1st-level Illusion or Necromancy spell, free once a day", prereq: "Level 4+", lvl: 4, bump: ["int", "wis", "cha"],
+    text: "Ability Score Increase. Increase your Intelligence, Wisdom, or Charisma by 1, to a maximum of 20.\nShadow Magic. Choose one 1st-level spell from the Illusion or Necromancy school. You always have that spell and the Invisibility spell prepared. You can cast each of them once without a spell slot, regaining that use on a Long Rest, and can also cast them using spell slots you have. Your spellcasting ability for them is the ability you increased with this feat.\n(Add both spells from the Grimoire so the sheet tracks them.)" },
+  { name: "Sharpshooter", cat: "General", desc: "Ignore cover and long-range penalties; take −5 to hit for +10 damage", prereq: "Level 4+, proficiency with a martial weapon", lvl: 4, bump: ["dex"],
+    text: "Ability Score Increase. Increase your Dexterity by 1, to a maximum of 20.\nBypass Cover. Your ranged attacks with weapons ignore Half Cover and Three-Quarters Cover.\nFiring in Melee. Being within 5 feet of an enemy doesn't impose Disadvantage on your ranged attack rolls with weapons.\nLong Shots. Attacking at long range doesn't impose Disadvantage on your ranged attack rolls with weapons, and you can take a −5 penalty to the attack roll for +10 damage.\n(Toggle the Sharpshooter effect on your sheet when you take the −5.)" },
+  { name: "Shield Master", cat: "General", desc: "Shove with your shield, interpose it against Dex saves, and dive behind it", prereq: "Level 4+, proficiency with shields", lvl: 4, bump: ["str"],
+    text: "Ability Score Increase. Increase your Strength by 1, to a maximum of 20.\nShield Bash. If you take the Attack action on your turn while holding a Shield, you can use a Bonus Action to try to shove one creature within 5 feet with the Shield. The target must succeed on a Strength saving throw (DC 8 plus your Strength modifier and Proficiency Bonus) or take 1d4 Bludgeoning damage and either be pushed 5 feet or gain the Prone condition.\nInterpose Shield. If you're subjected to an effect that allows a Dexterity saving throw for half damage, you can take a Reaction to add your Shield's AC bonus to that save.\nShield Cover. While holding a Shield, you gain Half Cover against attacks and effects originating from the opposite side." },
+  { name: "Skulker", cat: "General", desc: "Hide lightly obscured, attack from hiding without giving yourself away", prereq: "Level 4+, Dexterity 13+", lvl: 4, min: { dex: 13 }, bump: ["dex"],
+    text: "Ability Score Increase. Increase your Dexterity by 1, to a maximum of 20.\nBlindsense. If you can hear, you have Blindsight with a range of 10 feet.\nSniper. If you make an attack roll while Hidden and the roll misses, making the attack doesn't reveal your position.\nSudden Strike. Once per turn when you make an attack, you can move up to half your Speed immediately before or after the attack without provoking Opportunity Attacks." },
+  { name: "Slasher", cat: "General", desc: "Slashing damage slows your target; crits give it disadvantage on attacks", prereq: "Level 4+", lvl: 4, bump: ["str", "dex"],
+    text: "Ability Score Increase. Increase your Strength or Dexterity by 1, to a maximum of 20.\nHamstring. Once per turn when you hit a creature with an attack that deals Slashing damage, you can reduce its Speed by 10 feet until the start of your next turn.\nEnhanced Critical. When you score a Critical Hit that deals Slashing damage, the target has Disadvantage on attack rolls until the start of your next turn." },
+  { name: "Speedy", cat: "General", desc: "+10 feet of speed, and Dashing through difficult terrain costs nothing extra", prereq: "Level 4+, Dexterity 13+", lvl: 4, min: { dex: 13 }, bump: ["dex", "con"], fx: { speed: 10 },
+    text: "Ability Score Increase. Increase your Dexterity or Constitution by 1, to a maximum of 20.\nDash Over Difficult Terrain. When you take the Dash action on your turn, Difficult Terrain doesn't cost you extra movement for the rest of that turn.\nAgile Movement. Your Speed increases by 10 feet.\nSurprise Withdrawal. When you take the Dash action, you don't provoke an Opportunity Attack from the first creature you move away from.\n(The sheet adds the 10 feet to your Speed automatically.)" },
+  { name: "Spell Sniper", cat: "General", desc: "Double the range of your attack spells and ignore cover with them", prereq: "Level 4+, Spellcasting or Pact Magic feature", lvl: 4, caster: true, bump: ["int", "wis", "cha"],
+    text: "Ability Score Increase. Increase your Intelligence, Wisdom, or Charisma by 1, to a maximum of 20.\nCareful Aim. Once per turn when you make an attack roll for a spell, you can treat a d20 roll of 9 or lower as a 10.\nIncreased Range. When you cast a spell that requires an attack roll, the spell's range increases by 60 feet.\nThrough Cover. Your attack rolls for spells ignore Half Cover and Three-Quarters Cover." },
+  { name: "Telekinetic", cat: "General", desc: "Mage Hand at will, and a bonus-action shove by force of mind", prereq: "Level 4+", lvl: 4, bump: ["int", "wis", "cha"],
+    text: "Ability Score Increase. Increase your Intelligence, Wisdom, or Charisma by 1, to a maximum of 20.\nTelekinetic Shove. As a Bonus Action, you can try to telekinetically shove one creature you can see within 30 feet. The target must succeed on a Strength saving throw (DC 8 plus your Proficiency Bonus and the ability modifier you increased) or be moved 5 feet toward or away from you.\nMage Hand. You always have the Mage Hand spell prepared. You can cast it without Verbal or Somatic components, and you can make the hand Invisible." },
+  { name: "Telepathic", cat: "General", desc: "Speak mind to mind at 60 feet, and Detect Thoughts once a day", prereq: "Level 4+", lvl: 4, bump: ["int", "wis", "cha"],
+    text: "Ability Score Increase. Increase your Intelligence, Wisdom, or Charisma by 1, to a maximum of 20.\nTelepathic Utterance. You can speak telepathically to any creature you can see within 60 feet. Your telepathic utterances are in a language you know, and the creature understands you only if it knows that language. Your communication doesn't give the creature the ability to respond to you telepathically.\nDetect Thoughts. You always have the Detect Thoughts spell prepared. You can cast it once without a spell slot, regaining that use on a Long Rest, and can also cast it using spell slots you have. Your spellcasting ability for it is the ability you increased with this feat." },
+  { name: "War Caster", cat: "General", desc: "Advantage on concentration saves, somatic casting with full hands, and spell opportunity attacks", prereq: "Level 4+, Spellcasting or Pact Magic feature", lvl: 4, caster: true, bump: ["int", "wis", "cha"],
+    text: "Ability Score Increase. Increase your Intelligence, Wisdom, or Charisma by 1, to a maximum of 20.\nConcentration. You have Advantage on Constitution saving throws that you make to maintain Concentration.\nReactive Spell. When a creature provokes an Opportunity Attack from you, you can take that Reaction to cast a spell rather than making an Opportunity Attack. The spell must take an action to cast and must target only that creature.\nSomatic Components. You can perform the Somatic components of spells even when you have weapons or a Shield in one or both hands." },
+
+  /* ---- Fighting Style feats: the same styles a Fighter picks, taken as a feat ---- */
+  { name: "Fighting Style: Archery", cat: "Fighting Style", desc: "+2 to ranged weapon attack rolls", prereq: "Fighting Style feature", fx: { style: "Archery" },
+    text: "You gain a +2 bonus to attack rolls you make with Ranged weapons.\n(The sheet folds this into every ranged attack line.)" },
+  { name: "Fighting Style: Blind Fighting", cat: "Fighting Style", desc: "Blindsight 10 ft — you see anything not behind total cover, even while blinded", prereq: "Fighting Style feature",
+    text: "You have Blindsight with a range of 10 feet. Within that range, you can effectively see anything that isn't behind Total Cover, even if you have the Blinded condition or are in Darkness. Moreover, in that radius you can see something that has the Invisible condition." },
+  { name: "Fighting Style: Defense", cat: "Fighting Style", desc: "+1 AC while wearing armor", prereq: "Fighting Style feature", fx: { style: "Defense" },
+    text: "While you're wearing Light, Medium, or Heavy armor, you gain a +1 bonus to Armor Class.\n(The sheet adds it to your AC whenever armor is equipped.)" },
+  { name: "Fighting Style: Dueling", cat: "Fighting Style", desc: "+2 damage with a one-handed melee weapon", prereq: "Fighting Style feature", fx: { style: "Dueling" },
+    text: "When you're wielding a melee weapon in one hand and no other weapons, you gain a +2 bonus to damage rolls with that weapon." },
+  { name: "Fighting Style: Great Weapon Fighting", cat: "Fighting Style", desc: "Reroll 1s and 2s on two-handed weapon damage", prereq: "Fighting Style feature", fx: { style: "Great Weapon Fighting" },
+    text: "When you roll damage for an attack you make with a melee weapon that you are holding with two hands, you can treat any roll of 1 or 2 on a damage die as a 3. The weapon must have the Two-Handed or Versatile property to gain this benefit." },
+  { name: "Fighting Style: Interception", cat: "Fighting Style", desc: "Reaction: reduce damage to a nearby ally by 1d10 + your proficiency bonus", prereq: "Fighting Style feature",
+    text: "When a creature you can see hits a target, other than you, within 5 feet of you with an attack, you can take a Reaction to reduce the damage the target takes by 1d10 plus your Proficiency Bonus (to a minimum of 0 damage). You must be wielding a Shield or a Simple or Martial weapon to use this Reaction." },
+  { name: "Fighting Style: Protection", cat: "Fighting Style", desc: "Reaction with a shield: impose disadvantage on an attack against a nearby ally", prereq: "Fighting Style feature", fx: { style: "Protection" },
+    text: "When a creature you can see attacks a target other than you that is within 5 feet of you, you can take a Reaction to interpose your Shield and impose Disadvantage on the attack roll. You must be wielding a Shield." },
+  { name: "Fighting Style: Thrown Weapon Fighting", cat: "Fighting Style", desc: "Draw a thrown weapon free of cost and add +2 to its damage", prereq: "Fighting Style feature",
+    text: "When you hit with a ranged attack roll using a weapon that has the Thrown property, you gain a +2 bonus to the damage roll. You can also draw such a weapon as part of the attack." },
+  { name: "Fighting Style: Two-Weapon Fighting", cat: "Fighting Style", desc: "Add your ability modifier to off-hand damage", prereq: "Fighting Style feature", fx: { style: "Two-Weapon Fighting" },
+    text: "When you engage in two-weapon fighting, you can add your ability modifier to the damage of the second attack." },
+  { name: "Fighting Style: Unarmed Fighting", cat: "Fighting Style", desc: "d6 unarmed strikes (d8 with hands free), and damage to those you grapple", prereq: "Fighting Style feature",
+    text: "Your Unarmed Strikes deal 1d6 Bludgeoning damage on a hit — 1d8 if you aren't wielding any weapons or a Shield. In addition, at the start of each of your turns, you can deal 1d4 Bludgeoning damage to one creature you have Grappled." },
+
+  /* ---- Epic Boons: the rewards of 19th level ---- */
+  { name: "Boon of Combat Prowess", cat: "Epic Boon", desc: "Once per turn, turn a miss into an automatic hit", prereq: "Level 19+", lvl: 19, bump: ["str", "dex", "con", "int", "wis", "cha"],
+    text: "Ability Score Increase. Increase one ability score of your choice by 1, to a maximum of 30.\nPeerless Aim. When you miss with an attack roll against a creature, you can hit instead. Once you use this benefit, you can't use it again until the start of your next turn." },
+  { name: "Boon of Dimensional Travel", cat: "Epic Boon", desc: "Teleport 30 feet after taking an action, once per turn", prereq: "Level 19+", lvl: 19, bump: ["str", "dex", "con", "int", "wis", "cha"],
+    text: "Ability Score Increase. Increase one ability score of your choice by 1, to a maximum of 30.\nBlink Steps. Immediately after you take a Magic action or an Attack action, you can teleport up to 30 feet to an unoccupied space you can see. Once you use this benefit, you can't use it again until the start of your next turn." },
+  { name: "Boon of Fate", cat: "Epic Boon", desc: "Add 2d4 to another creature's d20 Test, or subtract it", prereq: "Level 19+", lvl: 19, bump: ["str", "dex", "con", "int", "wis", "cha"],
+    text: "Ability Score Increase. Increase one ability score of your choice by 1, to a maximum of 30.\nA Hand in Fate. When you or another creature within 60 feet of you succeeds or fails on a d20 Test, you can roll 2d4 and apply the total as a bonus or penalty to that roll. Once you use this benefit, you can't use it again until you roll Initiative or finish a Short or Long Rest." },
+  { name: "Boon of Irresistible Offense", cat: "Epic Boon", desc: "Your weapon and unarmed hits pierce all resistance; crits add your ability score", prereq: "Level 19+", lvl: 19, bump: ["str", "dex"],
+    text: "Ability Score Increase. Increase your Strength or Dexterity by 1, to a maximum of 30.\nOvercome Defenses. The Bludgeoning, Piercing, and Slashing damage you deal always ignores Resistance.\nOverwhelming Strike. When you roll a 20 on the d20 for an attack roll, you can deal extra damage to the target equal to the ability score increased by this feat. The extra damage is the same type dealt by the attack." },
+  { name: "Boon of Recovery", cat: "Epic Boon", desc: "Drop to half your hit points instead of 0, and heal on a rest", prereq: "Level 19+", lvl: 19, bump: ["str", "dex", "con", "int", "wis", "cha"],
+    text: "Ability Score Increase. Increase one ability score of your choice by 1, to a maximum of 30.\nLast Stand. As a Bonus Action, you can regain a number of Hit Points equal to half your Hit Point maximum. Once you use this benefit, you can't use it again until you finish a Long Rest.\nRise Again. When you would be reduced to 0 Hit Points, you can drop to half your Hit Point maximum instead, and you use Last Stand's rest requirement for it." },
+  { name: "Boon of Skill", cat: "Epic Boon", desc: "Proficiency in every skill, and expertise in three", prereq: "Level 19+", lvl: 19, bump: ["str", "dex", "con", "int", "wis", "cha"],
+    text: "Ability Score Increase. Increase one ability score of your choice by 1, to a maximum of 30.\nEnhanced Versatility. You gain proficiency in all skills, and you gain Expertise in three skills of your choice.\n(Mark the skills on your sheet — the ledger doesn't grant them for you.)" },
+  { name: "Boon of Speed", cat: "Epic Boon", desc: "+30 feet of speed, and Disengage as a bonus action", prereq: "Level 19+", lvl: 19, bump: ["str", "dex", "con", "int", "wis", "cha"], fx: { speed: 30 },
+    text: "Ability Score Increase. Increase one ability score of your choice by 1, to a maximum of 30.\nQuickness. Your Speed increases by 30 feet.\nNimbleness. You can take the Disengage action as a Bonus Action.\n(The sheet adds the 30 feet to your Speed automatically.)" },
+  { name: "Boon of the Night Spirit", cat: "Epic Boon", desc: "Become invisible in dim light or darkness, and strike from it", prereq: "Level 19+", lvl: 19, bump: ["str", "dex", "con", "int", "wis", "cha"],
+    text: "Ability Score Increase. Increase one ability score of your choice by 1, to a maximum of 30.\nMerge with Shadows. While entirely within Dim Light or Darkness, you can give yourself the Invisible condition as a Magic action. It ends immediately after you make an attack roll, deal damage, or cast a spell.\nShadowy Form. While Invisible in this way, you have Resistance to all damage except Psychic and Radiant, and you can move through creatures and objects as if they were Difficult Terrain." },
+  { name: "Boon of Truesight", cat: "Epic Boon", desc: "Truesight out to 60 feet", prereq: "Level 19+", lvl: 19, bump: ["str", "dex", "con", "int", "wis", "cha"],
+    text: "Ability Score Increase. Increase one ability score of your choice by 1, to a maximum of 30.\nTruesight. You have Truesight with a range of 60 feet." },
 ];
+const FEAT_INDEX = new Map(FEATS.map((f) => [f.name, f]));
+const FEAT_CATS = ["Origin", "General", "Fighting Style", "Epic Boon", "Imported"];
+
+/* What the sheet actually computes from a feat, keyed by the feat's exact name — so it
+   covers the built-in catalogue AND the names an imported compendium uses for the same
+   ground (the 2014 books split a feat's ability choice into "Resilient (Constitution)"
+   and friends, and carry feats like Mobile that the SRD has under another name). */
+const FEAT_MECHANICS = {
+  ...Object.fromEntries(FEATS.filter((f) => f.fx).map((f) => [f.name, f.fx])),
+  /* ---- names that only an imported compendium brings ---- */
+  "Mobile": { speed: 10 },
+  "Squat Nimbleness (Dexterity)": { speed: 5 },
+  "Squat Nimbleness (Strength)": { speed: 5 },
+  // the importer can't read "increase the chosen ability score" out of Resilient's prose,
+  // so the variant's own name supplies both the +1 and the save proficiency
+  ...Object.fromEntries(ABILITIES.map((a) => [`Resilient (${ABIL_NAMES[a]})`, { save: a, bump: [a] }])),
+};
+
+/* A feat's own choices live on the character as featChoices[name] = { bump, skills } */
+const featChoiceOf = (ch, name) => (ch?.featChoices || {})[name] || {};
+
+/* Everything the sheet derives from the feats a character holds. Only mechanics the
+   ledger can compute honestly live here — the rest is rules text on the feat itself.
+   `customs` is optional: pass it and the numbers follow the entry the player actually
+   reads, which is how Alert lands on +5 from a 2014 compendium and on the proficiency
+   bonus from the SRD 5.2 entry. */
+function featEffects(ch, customs) {
+  const out = { hpPerLevel: 0, speed: 0, init: null, saves: [], mediumDexCap: 2, styles: [], sources: [] };
+  const defs = customs ? new Map(allFeats(customs).map((f) => [f.name, f])) : FEAT_INDEX;
+  (ch?.feats || []).forEach((n) => {
+    const f = FEAT_MECHANICS[n];
+    if (!f) return;
+    if (f.hpPerLevel) { out.hpPerLevel += f.hpPerLevel; out.sources.push(n); }
+    if (f.speed) { out.speed += f.speed; out.sources.push(n); }
+    if (f.mediumDexCap) out.mediumDexCap = Math.max(out.mediumDexCap, f.mediumDexCap);
+    if (f.style) out.styles.push(f.style);
+    if (f.save) out.saves.push({ abil: f.save, from: n });
+    if (f.saveFromBump) { const b = featChoiceOf(ch, n).bump; if (b) out.saves.push({ abil: b, from: n }); }
+    if (f.init) {
+      // the 2014 wording hands out a flat +5; the SRD 5.2 wording hands out your proficiency bonus
+      const flat = (defs.get(n)?.text || "").match(/\+\s*(\d+)\s*bonus to initiative/i);
+      out.init = { label: n, value: flat ? +flat[1] : profBonus(totalLevel(ch)) };
+    }
+  });
+  return out;
+}
+/* A fighting style is yours whether a class granted it or a feat bought it */
+const hasStyle = (ch, name) => (ch?.styles || []).includes(name) || (ch?.feats || []).includes(`Fighting Style: ${name}`);
+/* Tough and its kin read the same in every edition, so max HP needs no compendium */
+const featHpBonus = (ch) => featEffects(ch).hpPerLevel * totalLevel(ch);
+
+/* Structured prerequisites the picker can actually enforce; everything else stays advisory */
+function featBlockedBy(def, { abilities, level, caster }) {
+  if (!def) return null;
+  if (def.lvl && level < def.lvl) return `needs character level ${def.lvl}`;
+  if (def.caster && !caster) return "needs a spellcasting feature";
+  if (def.min && ABILITIES.some((a) => def.min[a] && (abilities?.[a] ?? 0) < def.min[a]))
+    return "needs " + ABILITIES.filter((a) => def.min[a]).map((a) => `${a.toUpperCase()} ${def.min[a]}`).join(" & ");
+  if (def.minAny) {
+    const opts = ABILITIES.filter((a) => def.minAny[a]);
+    if (opts.length && !opts.some((a) => (abilities?.[a] ?? 0) >= def.minAny[a]))
+      return "needs " + opts.map((a) => `${a.toUpperCase()} ${def.minAny[a]}`).join(" or ");
+  }
+  return null;
+}
+/* A feat is only fully chosen once its own sub-choices are made */
+const featPickDone = (def, v) =>
+  !!v?.name && (!def?.bump?.length || !!v.bump) && (!def?.pick?.skills || (v.skills || []).length === def.pick.skills.n);
 
 /* Warlock invocations known by class level */
 const INVOCATIONS = (l) => (l >= 18 ? 8 : l >= 15 ? 7 : l >= 12 ? 6 : l >= 9 ? 5 : l >= 7 ? 4 : l >= 5 ? 3 : l >= 2 ? 2 : 0);
@@ -1123,9 +1351,10 @@ function rollFeatures(ch) {
     diamondSoul: clsLv("Monk") >= 14,                                        // proficiency in all saves
     slipperyMind: clsLv("Rogue") >= 15,                                      // WIS save proficiency
     critRange: champLvl >= 15 ? 18 : champLvl >= 3 ? 19 : 20,                // Improved/Superior Critical
-    archery: (ch.styles || []).includes("Archery") ? 2 : 0,
+    archery: hasStyle(ch, "Archery") ? 2 : 0,
     barbarian: clsLv("Barbarian"),
     savageAttacks: ch.race === "Half-Orc",
+    savageAttacker: hasFeat(ch, "Savage Attacker"),
   };
 }
 
@@ -1146,7 +1375,11 @@ function rollNotes(ch, kind, abil) {
   if (kind === "attack") {
     if (f.barbarian >= 2 && abil === "str" && !hasEffect(ch, "reckless-attack")) n.push("Reckless Attack: take advantage now, grant it until your next turn");
     if (f.savageAttacks) n.push("Savage Attacks: one extra damage die on a melee crit");
+    if (f.savageAttacker) n.push("Savage Attacker: once per turn, roll the weapon's damage dice twice and keep either");
   }
+  /* Feats the dice can't spend for you */
+  if (hasFeat(ch, "Lucky")) n.push("Lucky: you may spend a Luck Point on this roll — long-press the feat for your table's wording");
+  if (kind === "save" && abil === "con" && hasFeat(ch, "War Caster")) n.push("War Caster: advantage on Constitution saves to maintain Concentration");
   const fx = fxMods(ch);
   /* Effect notes are plain strings, or { t, abil } scoped to the ability being rolled */
   (fx.notes[kind === "skill" ? "check" : kind] || []).forEach((note) => {
@@ -1394,7 +1627,7 @@ function armorClass(ch, customs, fx = fxMods(ch)) {
   let ac;
   if (armor) {
     if (armor.type === "HA") { ac = armor.ac; parts.push(`${armor.name} ${armor.ac}`); }
-    else if (armor.type === "MA") { ac = armor.ac + Math.min(2, dex); parts.push(`${armor.name} ${armor.ac}`, `Dex ${fmtMod(Math.min(2, dex))} (max +2)`); }
+    else if (armor.type === "MA") { const cap = featEffects(ch, customs).mediumDexCap; ac = armor.ac + Math.min(cap, dex); parts.push(`${armor.name} ${armor.ac}`, `Dex ${fmtMod(Math.min(cap, dex))} (max +${cap}${cap > 2 ? ", Medium Armor Master" : ""})`); }
     else { ac = armor.ac + dex; parts.push(`${armor.name} ${armor.ac}`, `Dex ${fmtMod(dex)}`); }
   } else {
     const barb = ch.classes.some((c) => c.name === "Barbarian");
@@ -1407,7 +1640,7 @@ function armorClass(ch, customs, fx = fxMods(ch)) {
   }
   if (!armor && fx.acBase && fx.acBase.value + dex > ac) { ac = fx.acBase.value + dex; parts.splice(0, parts.length, `${fx.acBase.label} ${fx.acBase.value}`, `Dex ${fmtMod(dex)}`); }
   if (shield) { ac += shield.ac || 2; parts.push(`${shield.name} +${shield.ac || 2}`); }
-  if (armor && (ch.styles || []).includes("Defense")) { ac += 1; parts.push("Defense style +1"); }
+  if (armor && hasStyle(ch, "Defense")) { ac += 1; parts.push("Defense style +1"); }
   fx.ac.forEach((b) => { ac += b.value; parts.push(`${b.label} ${fmtMod(b.value)}`); });
   if (fx.acFloor && ac < fx.acFloor.value) { ac = fx.acFloor.value; parts.push(`${fx.acFloor.label} (AC can't drop below ${fx.acFloor.value})`); }
   return { ac, parts, armor, shield };
@@ -1625,9 +1858,11 @@ function fxMods(ch) {
   return out;
 }
 
-/* Effective max HP: base + effect increases, halved by deep exhaustion */
+/* Effective max HP: base + feats that scale with level (Tough) + effect increases,
+   halved by deep exhaustion. Feat HP is derived, never banked into ch.maxHp, so it
+   stays correct the moment you level — or if the feat is ever taken back. */
 function effMaxHp(ch, fx = fxMods(ch)) {
-  const t = ch.maxHp + fx.maxHp;
+  const t = ch.maxHp + featHpBonus(ch) + fx.maxHp;
   return Math.max(1, fx.halveMaxHp ? Math.floor(t / 2) : t);
 }
 
@@ -1639,6 +1874,8 @@ function speedOf(ch, customs, fx = fxMods(ch)) {
   const monk = classLevel(ch, "Monk"), barb = classLevel(ch, "Barbarian");
   if (monk >= 2 && !armor && !shield) { const b = monk >= 18 ? 30 : monk >= 14 ? 25 : monk >= 10 ? 20 : monk >= 6 ? 15 : 10; v += b; parts.push(`Unarmored Movement +${b}`); }
   if (barb >= 5 && (!armor || armor.type !== "HA")) { v += 10; parts.push("Fast Movement +10"); }
+  const fe = featEffects(ch, customs);
+  if (fe.speed) { v += fe.speed; parts.push(`feats +${fe.speed}`); }
   fx.speedAdd.forEach((s) => { v += s.value; parts.push(`${s.label} ${fmtMod(s.value)}`); });
   if (fx.speedMult !== 1) { v = Math.floor(v * fx.speedMult); parts.push(fx.speedMult > 1 ? `×${fx.speedMult}` : "halved"); }
   if (fx.speedZero) { v = 0; parts.push("held at 0"); }
@@ -2304,7 +2541,8 @@ function infoFor(rawName, customs) {
   if (METAMAGIC_INFO[name]) return { title: name, meta: "Metamagic", body: METAMAGIC_INFO[name] };
   if (BOON_INFO[name]) return { title: name, meta: "Pact Boon", body: BOON_INFO[name] };
   const fs = strip.replace(/^Fighting Style:\s*/, "");
-  if (STYLE_DESC[fs]) return { title: `Fighting Style: ${fs}`, meta: "Fighting Style", body: STYLE_DESC[fs] };
+  // a "Fighting Style: X" name is the feat — let its fuller entry answer before the one-liner
+  if (STYLE_DESC[fs] && fs === strip) return { title: `Fighting Style: ${fs}`, meta: "Fighting Style", body: STYLE_DESC[fs] };
   if (LANG_INFO[name]) return { title: name, meta: "Language", body: LANG_INFO[name] };
   if (ABILITY_INFO[name]) return { title: name, meta: "Ability score", body: ABILITY_INFO[name] };
   if (SKILL_ABIL[name]) return { title: name, meta: `Skill · ${ABIL_NAMES[SKILL_ABIL[name]]}`, body: SKILL_INFO[name] };
@@ -2532,7 +2770,20 @@ const customSubFeats = (subclass, level, customs) => {
 const allSubFeats = (subclass, level, customs) => subFeatsFor(subclass, level).concat(customSubFeats(subclass, level, customs));
 const allFeats = (customs) => {
   const map = new Map(FEATS.map((f) => [f.name, f]));
-  (customs?.feats || []).forEach((f) => map.set(f.name, f)); // imported full text shadows the stub
+  /* An imported compendium is the table's own rulebook: where it names a feat the built-in
+     catalogue also carries, its wording, prerequisites and ability bump win outright — the
+     SRD entry is the fallback for tables that import nothing. Only the picker's forced
+     sub-choices (which proficiencies a feat makes you pick) carry over, since the importer
+     has no way to express them. */
+  (customs?.feats || []).forEach((f) => {
+    const base = map.get(f.name);
+    const fx = FEAT_MECHANICS[f.name];
+    map.set(f.name, {
+      cat: base?.cat || "Imported", ...f,
+      ...(base?.pick ? { pick: base.pick } : {}),
+      ...(!f.bump?.length && fx?.bump ? { bump: fx.bump } : {}),
+    });
+  });
   return [...map.values()];
 };
 
@@ -2829,10 +3080,13 @@ function Portrait({ photo, size = 72, name }) {
 const STD_ARRAY = [15, 14, 13, 12, 10, 8];
 const PB_COST = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
 
-function AbilityStep({ scores, setScores, method, setMethod }) {
+const ABIL_MIN = 1, ABIL_MAX = 30; // Direct Entry trusts the table: anything a DM can hand out
+
+function AbilityStep({ scores, setScores, method, setMethod, children }) {
   const [rolling, setRolling] = useState(null); // {dice, targetIdx}
   const [rolled, setRolled] = useState([]); // pool of rolled totals
   const [assignIdx, setAssignIdx] = useState({}); // ability -> pool index
+  const [typed, setTyped] = useState({}); // Direct Entry: raw text, so a field can sit empty mid-edit
 
   const pbSpent = ABILITIES.reduce((s, a) => s + (PB_COST[scores[a]] ?? 0), 0);
 
@@ -2843,14 +3097,26 @@ function AbilityStep({ scores, setScores, method, setMethod }) {
   return (
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        {["Standard Array", "Point Buy", "Roll 4d6"].map((m) => (
-          <button key={m} style={{ ...btn(method === m), padding: "8px 14px" }} onClick={() => { setMethod(m); setAssignIdx({}); if (m !== "Roll 4d6") setRolled([]); setScores(Object.fromEntries(ABILITIES.map((a) => [a, 8]))); }}>{m}</button>
+        {["Standard Array", "Point Buy", "Roll 4d6", "Direct Entry"].map((m) => (
+          <button key={m} style={{ ...btn(method === m), padding: "8px 14px" }} onClick={() => {
+            setMethod(m); setAssignIdx({}); setTyped({});
+            if (m !== "Roll 4d6") setRolled([]);
+            setScores(Object.fromEntries(ABILITIES.map((a) => [a, m === "Direct Entry" ? 10 : 8])));
+          }}>{m}</button>
         ))}
       </div>
 
       {method === "Point Buy" && (
         <div style={{ color: pbSpent > 27 ? T.blood : T.dim, marginBottom: 10, fontSize: 14 }}>
           Points spent: <b style={{ color: pbSpent > 27 ? T.blood : T.gold }}>{pbSpent} / 27</b>
+        </div>
+      )}
+
+      {method === "Direct Entry" && (
+        <div style={{ color: T.dim, marginBottom: 10, fontSize: 13, lineHeight: 1.6 }}>
+          Type each score straight in — for a character rolled at the table, ported from another sheet,
+          or handed out by your DM. No budget is enforced; {ABIL_MIN}–{ABIL_MAX} is the only limit.
+          <b style={{ color: T.gold }}> Enter the raw scores</b> — your race's bonuses are added on the Confirm page, as with every other method.
         </div>
       )}
 
@@ -2884,6 +3150,21 @@ function AbilityStep({ scores, setScores, method, setMethod }) {
                 <button style={{ ...btn(false), padding: "2px 10px" }} onClick={() => scores[a] < 15 && setScores({ ...scores, [a]: scores[a] + 1 })}>+</button>
               </div>
             )}
+            {method === "Direct Entry" && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 8 }}>
+                <button style={{ ...btn(false), padding: "2px 10px" }} onClick={() => { setTyped({ ...typed, [a]: undefined }); setScores({ ...scores, [a]: Math.max(ABIL_MIN, scores[a] - 1) }); }}>−</button>
+                <input type="number" inputMode="numeric" min={ABIL_MIN} max={ABIL_MAX} value={typed[a] ?? scores[a]}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setTyped({ ...typed, [a]: raw });
+                    const n = parseInt(raw, 10);
+                    if (!Number.isNaN(n)) setScores({ ...scores, [a]: Math.max(ABIL_MIN, Math.min(ABIL_MAX, n)) });
+                  }}
+                  onBlur={() => setTyped({ ...typed, [a]: undefined })}
+                  style={{ width: 62, textAlign: "center", background: T.panel, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 6, padding: "6px 4px", fontSize: 20, fontFamily: "Georgia, serif" }} />
+                <button style={{ ...btn(false), padding: "2px 10px" }} onClick={() => { setTyped({ ...typed, [a]: undefined }); setScores({ ...scores, [a]: Math.min(ABIL_MAX, scores[a] + 1) }); }}>＋</button>
+              </div>
+            )}
             {method === "Roll 4d6" && (
               <select value={assignIdx[a] ?? ""} onChange={(e) => {
                 const v = e.target.value === "" ? undefined : +e.target.value;
@@ -2906,6 +3187,11 @@ function AbilityStep({ scores, setScores, method, setMethod }) {
       {method === "Standard Array" && (
         <div style={{ color: T.dim, fontSize: 12, marginTop: 8 }}>Assign 15, 14, 13, 12, 10, 8 — each once.</div>
       )}
+      {method === "Direct Entry" && (
+        <div style={{ color: T.dim, fontSize: 12, marginTop: 8 }}>Total {ABILITIES.reduce((s, a) => s + scores[a], 0)} · modifiers {ABILITIES.map((a) => `${a.toUpperCase()} ${fmtMod(mod(scores[a]))}`).join(" · ")}</div>
+      )}
+
+      {children}
 
       {rolling && (
         <DiceTray title={`Rolling 4d6 — score ${rolled.length + 1} of 6`} dice={rolling.dice} dropLowest
@@ -2938,7 +3224,9 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const [name, setName] = useState("");
   const [photo, setPhoto] = useState(null);
   const [race, setRace] = useState("Human");
-  const [halfElfPicks, setHalfElfPicks] = useState([]);
+  const [raceAbilPicks, setRaceAbilPicks] = useState([]); // abilities the lineage lets you raise
+  const [raceFeat, setRaceFeat] = useState(null); // { name, bump, skills } for lineages that grant a feat
+  const [lineageTrait, setLineageTrait] = useState(null); // Custom Lineage: 'darkvision' | 'skill'
   const [cls, setCls] = useState("Fighter");
   const [subclass, setSubclass] = useState(null);
   const [skills, setSkills] = useState([]);
@@ -2960,7 +3248,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const [shopQ, setShopQ] = useState("");
   const [langPicks, setLangPicks] = useState([]);
   const [ancestry, setAncestry] = useState(null);
-  const [heSkills, setHeSkills] = useState([]);
+  const [raceSkills, setRaceSkills] = useState([]); // extra skills the lineage itself grants
   const [heCantrip, setHeCantrip] = useState("");
   const [method, setMethod] = useState("Standard Array");
   const [scores, setScores] = useState(Object.fromEntries(ABILITIES.map((a) => [a, 8])));
@@ -2968,11 +3256,23 @@ function CreateWizard({ onDone, onCancel, customs }) {
 
   const raceData = RACES[race];
   const clsData = CLASSES[cls];
-  const finalScores = { ...scores };
-  ABILITIES.forEach((a) => { finalScores[a] += raceData.bonus[a] || 0; });
-  if (race === "Half-Elf") halfElfPicks.forEach((a) => { finalScores[a] += 1; });
+  /* Lineages that let you place their bonuses (Half-Elf, Variant Human, Custom Lineage)
+     share one picker: `choose` says how many abilities, `chooseAmt` how much each gets. */
+  const raceChooseAmt = raceData.chooseAmt || 1;
+  const raceAbilOpts = ABILITIES.filter((a) => !(raceData.chooseNot || []).includes(a));
+  const raceFeatDef = raceData.feat && raceFeat?.name ? allFeats(customs).find((f) => f.name === raceFeat.name) : null;
+  const raceFeatFx = raceFeat?.name ? FEAT_MECHANICS[raceFeat.name] : null;
+  const featScoreCap = raceFeatDef?.cat === "Epic Boon" ? 30 : 20;
+  /* Scores before the lineage feat's own +1 — that's what its prerequisites are read against */
+  const preFeatScores = { ...scores };
+  ABILITIES.forEach((a) => { preFeatScores[a] += raceData.bonus[a] || 0; });
+  raceAbilPicks.forEach((a) => { preFeatScores[a] += raceChooseAmt; });
+  const finalScores = { ...preFeatScores };
+  if (raceFeat?.bump) finalScores[raceFeat.bump] = Math.min(featScoreCap, finalScores[raceFeat.bump] + 1);
 
+  const featSkillsEff = raceData.feat ? (raceFeat?.skills || []) : [];
   const conMod = mod(finalScores.con);
+  const toughBonus = raceFeatFx?.hpPerLevel || 0; // level 1, so exactly one level's worth
   const hp = clsData.die + conMod + (race === "Hill Dwarf" ? 1 : 0);
 
   const steps = ["Identity", "Race", "Origins", "Class", "Abilities", "Spells", "Gear", "Confirm"];
@@ -2981,9 +3281,10 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const langNeed = (RACE_LANGS[race].choose || 0) + bgLangs;
   const wizCantrips = srcSpells(customs?.spells || []).filter((x) => x.level === 0 && spellFitsClass(x, "Wizard"));
   // Skills granted by one source shouldn't be selectable from another
-  const heSkillsEff = race === "Half-Elf" ? heSkills : [];
+  const raceSkillNeed = (raceData.skills || 0) + (race === "Custom Lineage" && lineageTrait === "skill" ? 1 : 0);
+  const raceSkillsEff = raceSkills.slice(0, raceSkillNeed);
   const bgGrantSkills = bgData ? bgData.skills : bgSkills;
-  const skillsElsewhere = [...bgGrantSkills, ...heSkillsEff];
+  const skillsElsewhere = [...bgGrantSkills, ...raceSkillsEff, ...featSkillsEff];
   let clsSkillOpts = clsData.skills.filter((s) => !skillsElsewhere.includes(s));
   if (clsSkillOpts.length < clsData.nSkills) // all overlapping — open up the remaining skills (PHB duplicate-proficiency rule)
     clsSkillOpts = [...clsSkillOpts, ...ALL_SKILLS.filter((s) => !skillsElsewhere.includes(s) && !clsData.skills.includes(s))];
@@ -3019,9 +3320,10 @@ function CreateWizard({ onDone, onCancel, customs }) {
   };
   const canNext =
     step === 0 ? name.trim().length > 0 :
-    step === 1 ? (race !== "Half-Elf" || halfElfPicks.length === 2) :
-    step === 2 ? langPicks.length === langNeed && (bg !== "Custom" || bgSkills.length === 2) && (race !== "Dragonborn" || ancestry) && (race !== "Half-Elf" || heSkills.length === 2) && (race !== "High Elf" || heCantrip.trim()) :
+    step === 1 ? raceAbilPicks.length === (raceData.choose || 0) && (!raceData.lineageTrait || !!lineageTrait) :
+    step === 2 ? langPicks.length === langNeed && (bg !== "Custom" || bgSkills.length === 2) && (race !== "Dragonborn" || ancestry) && raceSkills.length === raceSkillNeed && (race !== "High Elf" || heCantrip.trim()) :
     step === 3 ? skills.length === clsData.nSkills && (clsData.subLvl > 1 || subclass) && (cls !== "Fighter" || style) && (cls !== "Rogue" || rogueExp.length === 2) && (cls !== "Ranger" || (favEnemy && natTerrain)) :
+    step === 4 ? (!raceData.feat || featPickDone(raceFeatDef, raceFeat)) :
     step === 6 ? (gearMode === "standard" ? standardReady : gearMode === "gold" ? gold !== null : false) :
     true;
 
@@ -3037,11 +3339,18 @@ function CreateWizard({ onDone, onCancel, customs }) {
       spells: castsAt1 && (spellPicks.cantrips.length || spellPicks.spells.length) ? { [cls]: spellPicks } : {},
       abilities: finalScores, method,
       classes: [{ name: cls, level: 1, subclass: clsData.subLvl === 1 ? subclass : null }],
-      skills: [...skills, ...heSkillsEff, ...bgGrantSkills].filter((v, i, a) => a.indexOf(v) === i),
+      skills: [...skills, ...raceSkillsEff, ...bgGrantSkills, ...featSkillsEff].filter((v, i, a) => a.indexOf(v) === i),
+      // Tough and friends are derived from the feat itself, never banked into maxHp
+      feats: raceFeat?.name ? [raceFeat.name] : [],
+      featChoices: raceFeat?.name ? { [raceFeat.name]: { bump: raceFeat.bump || null, skills: raceFeat.skills || [] } } : {},
       languages: [...RACE_LANGS[race].fixed, ...langPicks],
-      racialChoices: { ancestry: race === "Dragonborn" ? ancestry : null, cantrip: race === "High Elf" ? heCantrip.trim() : null },
+      racialChoices: {
+        ancestry: race === "Dragonborn" ? ancestry : null,
+        cantrip: race === "High Elf" ? heCantrip.trim() : null,
+        lineage: raceData.lineageTrait ? lineageTrait : null,
+      },
       maxHp: hp, hpLog: [{ cls, gained: hp, how: "1st level (max)" }],
-      log: [`Created as ${race} ${cls} 1${style ? ` · ${style}` : ""} · ${bg} · ${alignment}${gearMode === "standard" ? " · standard gear" : ` · bought gear (${Math.max(0, goldLeft)} gp left)`}`],
+      log: [`Created as ${race} ${cls} 1${style ? ` · ${style}` : ""} · ${bg} · ${alignment}${raceFeat?.name ? ` · Feat: ${raceFeat.name}` : ""}${gearMode === "standard" ? " · standard gear" : ` · bought gear (${Math.max(0, goldLeft)} gp left)`}`],
     });
   };
 
@@ -3079,25 +3388,60 @@ function CreateWizard({ onDone, onCancel, customs }) {
       {step === 1 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 10 }}>
           {Object.entries(RACES).map(([r, d]) => (
-            <div key={r} onClick={() => { setRace(r); setHalfElfPicks([]); setHeSkills([]); setHeCantrip(""); setAncestry(null); setLangPicks(langPicks.filter((l) => !RACE_LANGS[r].fixed.includes(l))); }}
+            <div key={r} onClick={() => {
+              setRace(r); setRaceAbilPicks([]); setRaceSkills([]); setHeCantrip(""); setAncestry(null);
+              setRaceFeat(null); setLineageTrait(null);
+              setLangPicks(langPicks.filter((l) => !RACE_LANGS[r].fixed.includes(l)));
+            }}
               style={{ ...card, padding: 14, cursor: "pointer", borderColor: race === r ? T.gold : T.edge, background: race === r ? T.panel2 : T.panel }}>
-              <div style={{ fontFamily: "Georgia, serif", fontSize: 17, color: race === r ? T.gold : T.ink }}>{r}</div>
+              <div style={{ fontFamily: "Georgia, serif", fontSize: 17, color: race === r ? T.gold : T.ink }}>
+                {r}{d.optional && <span style={{ color: T.dim, fontSize: 10.5, letterSpacing: 0.6 }}> · optional rule</span>}
+              </div>
               <div style={{ color: T.dim, fontSize: 12, marginTop: 4 }}>
-                {ABILITIES.filter((a) => d.bonus[a]).map((a) => `${a.toUpperCase()} +${d.bonus[a]}`).join(", ")}{d.choose ? ", +1 to two others" : ""} · {d.speed} ft
+                {[
+                  ABILITIES.filter((a) => d.bonus[a]).map((a) => `${a.toUpperCase()} +${d.bonus[a]}`).join(", "),
+                  d.choose ? `+${d.chooseAmt || 1} to ${d.choose === 1 ? "one ability" : `${d.choose} abilities`} of your choice` : "",
+                  d.feat ? "a feat at 1st level" : "",
+                ].filter(Boolean).join(", ")} · {d.speed} ft
               </div>
               <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>{d.traits.slice(0, 3).join(" · ")}</div>
             </div>
           ))}
-          {race === "Half-Elf" && (
+          {raceData.choose > 0 && (
             <div style={{ gridColumn: "1 / -1", ...card, padding: 14 }}>
-              <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>Choose two abilities for +1 (not Charisma)</div>
+              <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>
+                Choose {raceData.choose === 1 ? "one ability" : `${raceData.choose} different abilities`} for +{raceChooseAmt}
+                {raceData.chooseNot?.length ? ` (not ${raceData.chooseNot.map((a) => ABIL_NAMES[a]).join(", ")})` : ""} ({raceAbilPicks.length}/{raceData.choose})
+              </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {ABILITIES.filter((a) => a !== "cha").map((a) => (
-                  <button key={a} style={{ ...btn(halfElfPicks.includes(a)), padding: "6px 12px" }}
-                    onClick={() => setHalfElfPicks(halfElfPicks.includes(a) ? halfElfPicks.filter((x) => x !== a) : halfElfPicks.length < 2 ? [...halfElfPicks, a] : halfElfPicks)}>
+                {raceAbilOpts.map((a) => (
+                  <button key={a} style={{ ...btn(raceAbilPicks.includes(a)), padding: "6px 12px" }}
+                    onClick={() => setRaceAbilPicks(raceAbilPicks.includes(a) ? raceAbilPicks.filter((x) => x !== a) : raceAbilPicks.length < raceData.choose ? [...raceAbilPicks, a] : raceAbilPicks)}>
                     {ABIL_NAMES[a]}
                   </button>
                 ))}
+              </div>
+            </div>
+          )}
+          {raceData.lineageTrait && (
+            <div style={{ gridColumn: "1 / -1", ...card, padding: 14 }}>
+              <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>Your lineage's gift — choose one</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button style={{ ...btn(lineageTrait === "darkvision"), padding: "6px 12px" }} onClick={() => { setLineageTrait("darkvision"); setRaceSkills([]); }}>Darkvision 60 ft</button>
+                <button style={{ ...btn(lineageTrait === "skill"), padding: "6px 12px" }} onClick={() => setLineageTrait("skill")}>One skill proficiency</button>
+              </div>
+              <div style={{ color: T.dim, fontSize: 12, marginTop: 8 }}>
+                {lineageTrait === "skill" ? "Pick the skill on the Origins step." : "You also choose your size — Small or Medium — with your DM; the sheet doesn't track it."}
+              </div>
+            </div>
+          )}
+          {raceData.feat && (
+            <div style={{ gridColumn: "1 / -1", ...card, padding: 14 }}>
+              <div style={{ color: T.gold, fontSize: 14 }}>A feat at 1st level</div>
+              <div style={{ color: T.dim, fontSize: 12.5, marginTop: 6, lineHeight: 1.6 }}>
+                {race} trades fixed racial traits for a feat straight out of the gate. You'll choose it on the
+                <b style={{ color: T.ink }}> Abilities</b> step, once your scores are set — feats with an ability
+                prerequisite need to know them first.
               </div>
             </div>
           )}
@@ -3115,7 +3459,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
                   setBg(b); setBgSkills([]);
                   // skills this background grants can't also be picked elsewhere; language quota may shrink
                   const keep = (s) => !(d ? d.skills : []).includes(s);
-                  setHeSkills(heSkills.filter(keep)); setSkills(skills.filter(keep)); setRogueExp(rogueExp.filter(keep));
+                  setRaceSkills(raceSkills.filter(keep)); setSkills(skills.filter(keep)); setRogueExp(rogueExp.filter(keep));
                   setLangPicks(langPicks.slice(0, (RACE_LANGS[race].choose || 0) + (d ? d.langs : 2)));
                 };
                 return (
@@ -3141,7 +3485,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
               <div>
                 <div style={{ color: T.dim, fontSize: 12, marginBottom: 6 }}>Per background customization rules: choose any two skills ({bgSkills.length}/2) and two languages (below).</div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {ALL_SKILLS.filter((sk) => !heSkillsEff.includes(sk) && !skills.includes(sk)).map((sk) => (
+                  {ALL_SKILLS.filter((sk) => !raceSkillsEff.includes(sk) && !featSkillsEff.includes(sk) && !skills.includes(sk)).map((sk) => (
                     <button key={sk} style={{ ...btn(bgSkills.includes(sk)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
                       onClick={() => setBgSkills(bgSkills.includes(sk) ? bgSkills.filter((x) => x !== sk) : bgSkills.length < 2 ? [...bgSkills, sk] : bgSkills)}>{sk}</button>
                   ))}
@@ -3177,13 +3521,15 @@ function CreateWizard({ onDone, onCancel, customs }) {
               </div>
             </div>
           )}
-          {race === "Half-Elf" && (
+          {raceSkillNeed > 0 && (
             <div style={{ ...card, padding: 14 }}>
-              <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>Skill Versatility — choose two ({heSkills.length}/2)</div>
+              <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>
+                {race === "Half-Elf" ? "Skill Versatility" : `${race} skill`} — choose {raceSkillNeed === 1 ? "one" : "two"} ({raceSkills.length}/{raceSkillNeed})
+              </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {ALL_SKILLS.filter((sk) => !bgGrantSkills.includes(sk) && !skills.includes(sk)).map((sk) => (
-                  <button key={sk} style={{ ...btn(heSkills.includes(sk)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
-                    onClick={() => setHeSkills(heSkills.includes(sk) ? heSkills.filter((x) => x !== sk) : heSkills.length < 2 ? [...heSkills, sk] : heSkills)}>{sk}</button>
+                {ALL_SKILLS.filter((sk) => !bgGrantSkills.includes(sk) && !featSkillsEff.includes(sk) && !skills.includes(sk)).map((sk) => (
+                  <button key={sk} style={{ ...btn(raceSkills.includes(sk)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
+                    onClick={() => setRaceSkills(raceSkills.includes(sk) ? raceSkills.filter((x) => x !== sk) : raceSkills.length < raceSkillNeed ? [...raceSkills, sk] : raceSkills)}>{sk}</button>
                 ))}
               </div>
             </div>
@@ -3285,7 +3631,24 @@ function CreateWizard({ onDone, onCancel, customs }) {
       )}
 
       {step === 4 && (
-        <AbilityStep scores={scores} setScores={setScores} method={method} setMethod={setMethod} />
+        <AbilityStep scores={scores} setScores={setScores} method={method} setMethod={setMethod}>
+          {raceData.feat && (
+            <div style={{ ...card, padding: 14, marginTop: 14 }}>
+              <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 4 }}>Your 1st-level feat</div>
+              <div style={{ color: T.dim, fontSize: 12.5, marginBottom: 10, lineHeight: 1.6 }}>
+                {race} grants one feat. Prerequisites are checked against your scores <i>with</i> racial bonuses
+                ({ABILITIES.map((a) => `${a.toUpperCase()} ${preFeatScores[a]}`).join(" · ")}) but before the feat's own +1.
+              </div>
+              <FeatChooser customs={customs} abilities={preFeatScores} level={1} caster={castsAt1 || CLASSES[cls].caster === "half"}
+                skillsTaken={[...bgGrantSkills, ...raceSkillsEff, ...skills]} styles={style ? [style] : []}
+                value={raceFeat} onChange={setRaceFeat} allowEpic={false} waiveLevel
+                note="Long-press a feat to read it in full. A lineage feat waives the usual level-4 gate on general feats, so anything but an Epic Boon is open — ability prerequisites still bind. Feats that hand out spells add them from the Grimoire; the +1, proficiencies, HP, and speed the sheet applies for you." />
+              {raceFeat?.name && !featPickDone(raceFeatDef, raceFeat) && (
+                <div style={{ color: T.blood, fontSize: 12, marginTop: 8 }}>{raceFeat.name} still needs its own choices made above.</div>
+              )}
+            </div>
+          )}
+        </AbilityStep>
       )}
 
       {step === 5 && (
@@ -3496,7 +3859,18 @@ function CreateWizard({ onDone, onCancel, customs }) {
               })()}
             </div>
           </div>
-          <div style={{ marginTop: 14, color: T.ink }}>HP <b style={{ color: T.gold }}>{hp}</b> (max d{clsData.die} + CON{race === "Hill Dwarf" ? " + Dwarven Toughness" : ""}) · Speed {raceData.speed} ft · Prof +2</div>
+          {raceFeat?.name && (
+            <div style={{ marginTop: 14, color: T.dim, fontSize: 13 }}>
+              Feat: <span {...lorePress(raceFeat.name)} style={{ color: T.gold, cursor: "pointer" }}>{raceFeat.name}</span>
+              {raceFeat.bump ? ` (+1 ${raceFeat.bump.toUpperCase()}${raceFeatFx?.saveFromBump ? `, ${raceFeat.bump.toUpperCase()} save proficiency` : ""})` : ""}
+              {raceFeat.skills?.length ? ` · ${raceFeat.skills.join(", ")}` : ""}
+            </div>
+          )}
+          <div style={{ marginTop: 14, color: T.ink }}>
+            HP <b style={{ color: T.gold }}>{hp + toughBonus}</b> (max d{clsData.die} + CON{race === "Hill Dwarf" ? " + Dwarven Toughness" : ""}{toughBonus ? " + Tough" : ""})
+            {" · "}Speed {raceData.speed + (raceFeatFx?.speed || 0)} ft · Prof +2
+            {raceFeatFx?.init ? ` · Initiative +${(raceFeatDef?.text || "").match(/\+\s*(\d+)\s*bonus to initiative/i)?.[1] || 2} (${raceFeat.name})` : ""}
+          </div>
         </div>
       )}
 
@@ -3581,6 +3955,94 @@ function SpellPickGrid({ options, picks, cap, onChange, placeholder = "Search sp
   );
 }
 
+/* ============ FEAT PICKER ============
+   One picker serves both places a feat is ever taken: the forge (a lineage that grants
+   one at 1st level) and the ASI at level-up. It carries the feat's own choices with it —
+   the +1 it hands out, and any proficiencies it forces — so nothing is silently dropped.
+   value: { name, bump, skills: [] } | null */
+function FeatChooser({ customs, abilities, level, caster, held = [], styles = [], skillsTaken = [], value, onChange, allowEpic = true, waiveLevel = false, note }) {
+  const [cat, setCat] = useState("All");
+  const [q, setQ] = useState("");
+  const pool = allFeats(customs)
+    .filter((f) => !held.includes(f.name))
+    .filter((f) => !(f.fx?.style && styles.includes(f.fx.style))) // the style is already yours
+    .filter((f) => allowEpic || f.cat !== "Epic Boon");
+  const cats = ["All", ...FEAT_CATS.filter((c) => pool.some((f) => f.cat === c))];
+  const needle = q.trim().toLowerCase();
+  const shown = pool.filter((f) =>
+    (cat === "All" || f.cat === cat) &&
+    (!needle || f.name.toLowerCase().includes(needle) || (f.desc || "").toLowerCase().includes(needle)));
+  // a lineage feat at 1st level waives the level gate the general feats otherwise carry
+  const ctx = { abilities, level: waiveLevel ? Infinity : level, caster };
+
+  const set = (patch) => onChange({ ...(value || {}), ...patch });
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        {cats.map((c) => (
+          <button key={c} style={{ ...btn(cat === c), padding: "4px 10px", fontSize: 12, minHeight: 0 }} onClick={() => setCat(c)}>{c}</button>
+        ))}
+      </div>
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the feats…"
+        style={{ width: "100%", boxSizing: "border-box", background: T.panel, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 10px", fontSize: 14, marginBottom: 8 }} />
+      {note && <div style={{ color: T.dim, fontSize: 11.5, marginBottom: 8, lineHeight: 1.5 }}>{note}</div>}
+      <div style={{ display: "grid", gap: 6, maxHeight: 360, overflowY: "auto" }}>
+        {shown.length === 0 && <div style={{ color: T.dim, fontSize: 13 }}>No feat matches.</div>}
+        {shown.map((f) => {
+          const blocked = featBlockedBy(f, ctx);
+          const on = value?.name === f.name;
+          const cap = f.cat === "Epic Boon" ? 30 : 20;
+          const skillPool = (f.pick?.skills?.from || ALL_SKILLS).filter((s) => !skillsTaken.includes(s));
+          return (
+            <div key={f.name} {...lorePress(f.name)}
+              onClick={() => !blocked && onChange(on ? null : { name: f.name, bump: null, skills: [] })}
+              style={{ ...card, background: on ? T.panel : T.panel2, borderColor: on ? T.gold : T.edge, padding: "8px 12px", cursor: blocked ? "default" : "pointer", opacity: blocked ? 0.45 : 1 }}>
+              <span style={{ color: on ? T.gold : T.ink, fontWeight: 700 }}>{f.name}</span>
+              {f.cat && <span style={{ color: T.dim, fontSize: 10.5, letterSpacing: 0.6, textTransform: "uppercase" }}> · {f.cat}</span>}
+              <span style={{ color: T.dim, fontSize: 12 }}> — {f.desc}</span>
+              {(() => {
+                // a waived level gate shouldn't still be printed as a prerequisite
+                const req = waiveLevel ? f.prereq?.replace(/^Level \d+\+(,\s*)?/, "") : f.prereq;
+                return req ? <div style={{ color: blocked ? T.blood : T.dim, fontSize: 11, marginTop: 2 }}>Prerequisite: {req}{blocked ? ` — ${blocked}` : ""}</div> : null;
+              })()}
+              {on && f.bump?.length > 0 && (
+                <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ color: T.gold, fontSize: 12 }}>+1 to{FEAT_MECHANICS[f.name]?.saveFromBump ? " (and save proficiency in)" : ""}:</span>
+                  {f.bump.map((a) => (
+                    <button key={a} disabled={(abilities[a] ?? 0) >= cap}
+                      style={{ ...btn(value.bump === a), padding: "4px 10px", fontSize: 13, minHeight: 0 }}
+                      onClick={(e) => { e.stopPropagation(); set({ bump: a }); }}>
+                      {a.toUpperCase()} {abilities[a]}{value.bump === a ? ` → ${Math.min(cap, abilities[a] + 1)}` : ""}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {on && f.pick?.skills && (
+                <div style={{ marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
+                  <div style={{ color: T.gold, fontSize: 12, marginBottom: 4 }}>
+                    Skill proficiencies ({(value.skills || []).length}/{f.pick.skills.n})
+                  </div>
+                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                    {skillPool.map((s) => {
+                      const picked = (value.skills || []).includes(s);
+                      return (
+                        <button key={s} style={{ ...btn(picked), padding: "4px 9px", fontSize: 12, minHeight: 0 }}
+                          onClick={() => set({ skills: picked ? value.skills.filter((x) => x !== s) : (value.skills || []).length < f.pick.skills.n ? [...(value.skills || []), s] : value.skills })}>
+                          {s}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ============ LEVEL UP (with full multiclassing) ============ */
 function LevelUp({ ch, onDone, onCancel, customs }) {
   const lvl = totalLevel(ch);
@@ -3590,8 +4052,10 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const [hpGain, setHpGain] = useState(null);
   const [asiMode, setAsiMode] = useState(null); // 'asi' | 'feat'
   const [asiPicks, setAsiPicks] = useState([]);
-  const [featPick, setFeatPick] = useState(null);
-  const [featBump, setFeatBump] = useState(null);
+  const [featSel, setFeatSel] = useState(null); // { name, bump, skills }
+  const featPick = featSel?.name || null;
+  const featBump = featSel?.bump || null;
+  const featSkills = featSel?.skills || [];
   const [stylePick, setStylePick] = useState(null);
   const [terrPick, setTerrPick] = useState(null);
   const [expPicks, setExpPicks] = useState([]);
@@ -3651,6 +4115,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const avg = pickData ? Math.floor(pickData.die / 2) + 1 : 0;
 
   const gainsASI = pickData && pickData.asi.includes(newClsLevel);
+  const isCaster = ch.classes.some((c) => !!CLASSES[c.name].caster) || !!pickData?.caster;
   const gainsSub = pickData && newClsLevel === pickData.subLvl && !(entry?.subclass);
   const gainsMcSkill = pick && !entry && MC_SKILL_GRANT[pick];
   const featSub = gainsSub ? newSub : entry?.subclass;
@@ -3666,9 +4131,10 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     const abilities = { ...ch.abilities };
     let logBits = [`${pick} → ${newClsLevel}`];
     if (asiMode === "asi") { asiPicks.forEach((a) => { abilities[a] = Math.min(20, abilities[a] + 1); }); logBits.push(`ASI: ${asiPicks.map((a) => "+" + 1 + " " + a.toUpperCase()).join(", ")}`); }
+    const featDef = asiMode === "feat" ? allFeats(customs).find((f) => f.name === featPick) : null;
     if (asiMode === "feat") {
-      logBits.push(`Feat: ${featPick}${featBump ? ` (+1 ${featBump.toUpperCase()})` : ""}`);
-      if (featBump) abilities[featBump] = Math.min(20, abilities[featBump] + 1);
+      logBits.push(`Feat: ${featPick}${featBump ? ` (+1 ${featBump.toUpperCase()})` : ""}${featSkills.length ? ` (${featSkills.join(", ")})` : ""}`);
+      if (featBump) abilities[featBump] = Math.min(featDef?.cat === "Epic Boon" ? 30 : 20, abilities[featBump] + 1);
     }
     if (gainsSub && newSub) logBits.push(gainsTerrain ? `${newSub} (${terrPick})` : newSub);
     if (stylePick) logBits.push(`Fighting Style: ${stylePick}`);
@@ -3707,9 +4173,12 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
       choices = { ...choices, [d.g.key]: [...d.held, ...grants, ...picksArr] };
       if (picksArr.length) logBits.push(`${d.g.key}: ${picksArr.join(", ")}`);
     }
-    const skills = mcSkill ? [...ch.skills, mcSkill] : ch.skills;
+    const skills = [...ch.skills, ...(mcSkill ? [mcSkill] : []), ...featSkills].filter((v, i, a) => a.indexOf(v) === i);
+    const featChoices = asiMode === "feat" && featPick
+      ? { ...(ch.featChoices || {}), [featPick]: { bump: featBump || null, skills: featSkills } }
+      : ch.featChoices;
     onDone({
-      ...ch, classes, abilities, skills, invocations, spells: spellsBook,
+      ...ch, classes, abilities, skills, invocations, spells: spellsBook, featChoices,
       boasRituals, tomeCantrips, rangerChoices, choices,
       maxHp: ch.maxHp + hpGain + conM + dwarfBonus,
       hpLog: [...ch.hpLog, { cls: pick, gained: hpGain + conM + dwarfBonus, how: hpGain === avg ? "average" : `rolled ${hpGain}` }],
@@ -3724,7 +4193,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
 
   const styleClass = pick === "Fighter" || (entry?.subclass === "Champion" && newClsLevel === 10) ? "Fighter" : pick;
   const gainsStyle = feats.some((f) => /Fighting Style/.test(f)) && FIGHTING_STYLES[styleClass];
-  const styleOptions = gainsStyle ? FIGHTING_STYLES[styleClass].filter((f) => !(ch.styles || []).includes(f)) : [];
+  const styleOptions = gainsStyle ? FIGHTING_STYLES[styleClass].filter((f) => !hasStyle(ch, f)) : [];
   const gainsTerrain = gainsSub && newSub === "Circle of the Land";
   const gainsExpertise = feats.some((f) => f.startsWith("Expertise"));
   const expPool = ch.skills.filter((sk) => !(ch.expertise || []).includes(sk));
@@ -3832,7 +4301,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     gainsBoAS || gainsTome || gainsSecrets || gainsFavEnemy || gainsNatTerrain || gainsMastery || gainsSignature ||
     choiceGroupsDue.length > 0;
   const extrasDone =
-    (!gainsASI || (asiMode === "feat" && featPick && (!(allFeats(customs).find((f) => f.name === featPick)?.bump?.length) || featBump)) || (asiMode === "asi" && asiPicks.length === 2)) &&
+    (!gainsASI || (asiMode === "feat" && featPickDone(allFeats(customs).find((f) => f.name === featPick), featSel)) || (asiMode === "asi" && asiPicks.length === 2)) &&
     (!gainsSub || newSub) && (!gainsMcSkill || mcSkill) && (!gainsStyle || stylePick) && (!gainsTerrain || terrPick) &&
     (!gainsExpertise || expPicks.length === Math.min(2, expPool.length)) && (!gainsMeta || metaPicks.length === metaNeed) && (!gainsBoon || boonPick) &&
     invPicks.length >= invNeed && !!invSwapOut === !!invSwapIn &&
@@ -3934,32 +4403,14 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
               <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
                 <div style={{ color: T.gold, marginBottom: 8 }}>Ability Score Improvement</div>
                 <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                  <button style={{ ...btn(asiMode === "asi"), padding: "6px 12px" }} onClick={() => { setAsiMode("asi"); setFeatPick(null); }}>+1 to two abilities</button>
+                  <button style={{ ...btn(asiMode === "asi"), padding: "6px 12px" }} onClick={() => { setAsiMode("asi"); setFeatSel(null); }}>+1 to two abilities</button>
                   <button style={{ ...btn(asiMode === "feat"), padding: "6px 12px" }} onClick={() => { setAsiMode("feat"); setAsiPicks([]); }}>Take a feat</button>
                 </div>
                 {asiMode === "feat" && (
-                  <div style={{ display: "grid", gap: 6 }}>
-                    {allFeats(customs).filter((f) => !(ch.feats || []).includes(f.name)).map((f) => (
-                      <div key={f.name} {...lorePress(f.name)} onClick={() => { setFeatPick(f.name); setFeatBump(null); }}
-                        style={{ ...card, background: featPick === f.name ? T.panel : T.panel2, borderColor: featPick === f.name ? T.gold : T.edge, padding: "8px 12px", cursor: "pointer" }}>
-                        <span style={{ color: featPick === f.name ? T.gold : T.ink, fontWeight: 700 }}>{f.name}</span>
-                        <span style={{ color: T.dim, fontSize: 12 }}> — {f.desc}</span>
-                        {f.prereq && <div style={{ color: T.blood, fontSize: 11, marginTop: 2 }}>Prerequisite: {f.prereq}</div>}
-                        {featPick === f.name && f.bump?.length > 0 && (
-                          <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                            <span style={{ color: T.gold, fontSize: 12 }}>+1 to:</span>
-                            {f.bump.map((a) => (
-                              <button key={a} disabled={ch.abilities[a] >= 20}
-                                style={{ ...btn(featBump === a), padding: "4px 10px", fontSize: 13, minHeight: 0 }}
-                                onClick={(e) => { e.stopPropagation(); setFeatBump(a); }}>
-                                {a.toUpperCase()} {ch.abilities[a]}{featBump === a ? ` → ${ch.abilities[a] + 1}` : ""}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  <FeatChooser customs={customs} abilities={ch.abilities} level={lvl + 1} caster={isCaster}
+                    held={ch.feats || []} styles={ch.styles || []} skillsTaken={[...ch.skills, ...(mcSkill ? [mcSkill] : [])]}
+                    value={featSel} onChange={setFeatSel}
+                    note="Long-press any feat to read it in full. Feats that hand out spells add them from the Grimoire; the rest of what they grant — the +1, proficiencies, HP, speed — the sheet applies for you." />
                 )}
                 {asiMode === "asi" && (
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -6153,8 +6604,10 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     return t ? Math.min(usedFeats[t.key] || 0, t.max) >= t.max : false;
   };
   const feats = rollFeatures(ch);
-  const saveProfFor = (a) => CLASSES[ch.classes[0].name].saves.includes(a) || feats.diamondSoul || (feats.slipperyMind && a === "wis");
-  const saveProfLabel = (a) => (CLASSES[ch.classes[0].name].saves.includes(a) ? "proficiency" : feats.diamondSoul ? "Diamond Soul" : "Slippery Mind");
+  const fEff = featEffects(ch, customs);
+  const featSave = (a) => fEff.saves.find((s) => s.abil === a);
+  const saveProfFor = (a) => CLASSES[ch.classes[0].name].saves.includes(a) || feats.diamondSoul || (feats.slipperyMind && a === "wis") || !!featSave(a);
+  const saveProfLabel = (a) => (CLASSES[ch.classes[0].name].saves.includes(a) ? "proficiency" : featSave(a) ? featSave(a).from : feats.diamondSoul ? "Diamond Soul" : "Slippery Mind");
   const halfProf = (a) => {
     const athlete = ["str", "dex", "con"].includes(a) ? feats.athlete : 0;
     if (!athlete && !feats.jack) return null;
@@ -6171,6 +6624,8 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     const hp2 = halfProf(a);
     return [{ label: ABIL_NAMES[a], value: mod(ch.abilities[a]) }, ...(hp2 ? [hp2] : [])];
   };
+  /* Initiative is a Dexterity check that the Alert feat alone adds proficiency to */
+  const initPartsFor = () => [...checkPartsFor("dex"), ...(fEff.init ? [{ label: fEff.init.label, value: fEff.init.value }] : [])];
   const skillPartsFor = (sk) => {
     const a = SKILL_ABIL[sk];
     const prof = ch.skills.includes(sk);
@@ -6230,7 +6685,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     if (!m) return;
     const abil = weaponAbility(it);
     const props = (it.property || "").split(",").map((x) => x.trim());
-    const dueling = (ch.styles || []).includes("Dueling") && it.type === "M" && !props.includes("2H") ? 2 : 0;
+    const dueling = hasStyle(ch, "Dueling") && it.type === "M" && !props.includes("2H") ? 2 : 0;
     const extras = fxDmg(it.type === "R" ? "ranged" : "melee", abil, props);
     const bonus = mod(ch.abilities[abil]) + dueling + extras.reduce((s, b) => s + b.value, 0);
     const dmgNotes = rollNotes(ch, "dmg", abil);
@@ -6238,7 +6693,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
       title: `${it.name} damage`,
       dice: Array.from({ length: +m[1] }, () => ({ sides: +m[2], value: roll(+m[2]) })),
       bonus, bonusLabel: [weaponAbilLabel(it, abil), dueling ? "Dueling" : null, ...extras.map((b) => b.label)].filter(Boolean).join(" + "),
-      note: `${DMG_TYPES[it.dmgType] || "damage"}${it.dmg2 && !shillTarget(it) ? ` · versatile: ${it.dmg2} two-handed` : ""}${(ch.styles || []).includes("Great Weapon Fighting") && props.includes("2H") ? " · GWF: you may reroll 1s and 2s" : ""}${dmgNotes.length ? " · " + dmgNotes.join(" · ") : ""}`,
+      note: `${DMG_TYPES[it.dmgType] || "damage"}${it.dmg2 && !shillTarget(it) ? ` · versatile: ${it.dmg2} two-handed` : ""}${hasStyle(ch, "Great Weapon Fighting") && props.includes("2H") ? " · GWF: you may reroll 1s and 2s" : ""}${dmgNotes.length ? " · " + dmgNotes.join(" · ") : ""}`,
     });
   };
   /* Booming/Green-Flame Blade: a weapon attack carrying a scaling elemental rider. The bones
@@ -6258,7 +6713,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     const props = (it.property || "").split(",").map((x) => x.trim());
     const atkParts = [{ label: weaponAbilLabel(it, abil), value: mod(ch.abilities[abil]) }, { label: "proficiency", value: pb }, ...fxAtk("melee", abil, props)];
     const md = weaponDie(it).match(/(\d+)d(\d+)/);
-    const dueling = (ch.styles || []).includes("Dueling") && it.type === "M" && !props.includes("2H") ? 2 : 0;
+    const dueling = hasStyle(ch, "Dueling") && it.type === "M" && !props.includes("2H") ? 2 : 0;
     const extras = fxDmg("melee", abil, props);
     const bonus = mod(ch.abilities[abil]) + dueling + extras.reduce((s, b) => s + b.value, 0);
     const wpnDice = md ? Array.from({ length: +md[1] }, () => ({ sides: +md[2], value: roll(+md[2]) })) : [];
@@ -6418,12 +6873,17 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           <div style={{ height: 4, borderRadius: 2, background: T.panel2, marginTop: 6, overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${hpRatio * 100}%`, background: hpColor, transition: "width 240ms ease" }} />
           </div>
-          {(fx.maxHp !== 0 || fx.halveMaxHp) && <div style={{ color: T.dim, fontSize: 10, marginTop: 4 }}>{fx.halveMaxHp ? "max halved by Exhaustion" : `max ${fmtMod(fx.maxHp)} from effects`}</div>}
+          {(fx.maxHp !== 0 || fx.halveMaxHp || fEff.hpPerLevel > 0) && (
+            <div style={{ color: T.dim, fontSize: 10, marginTop: 4 }}>
+              {fx.halveMaxHp ? "max halved by Exhaustion" : [fEff.hpPerLevel > 0 ? `Tough +${featHpBonus(ch)}` : null, fx.maxHp !== 0 ? `${fmtMod(fx.maxHp)} from effects` : null].filter(Boolean).join(" · ")}
+            </div>
+          )}
         </div>
         <div style={{ ...card, padding: 12, textAlign: "center", cursor: "pointer" }} title="Roll initiative"
-          onClick={() => rollIt("Initiative", checkPartsFor("dex"), "check", "dex")}>
+          onClick={() => rollIt("Initiative", initPartsFor(), "check", "dex")}>
           <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Initiative <Icon name="d20" size={11} style={{ marginRight: 0 }} /></div>
-          <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: T.ink }}>{fmtMod(checkPartsFor("dex").reduce((s, p) => s + p.value, 0))}</div>
+          <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: fEff.init ? T.gold : T.ink }}>{fmtMod(initPartsFor().reduce((s, p) => s + p.value, 0))}</div>
+          {fEff.init && <div style={{ color: T.dim, fontSize: 10, lineHeight: 1.4 }}>{fEff.init.label} +{fEff.init.value}</div>}
         </div>
         <div style={{ ...card, padding: 12, textAlign: "center" }} title={`+${pb} at character level ${lvl} — added to attack rolls, saving throws, and skills you're proficient with (doubled for Expertise)`}>
           <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase" }}>Proficiency</div>
@@ -6526,7 +6986,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
               const props = (it.property || "").split(",").map((x) => x.trim());
               const atkParts = [{ label: weaponAbilLabel(it, abil), value: mod(ch.abilities[abil]) }, { label: "proficiency", value: pb }, ...(it.type === "R" && feats.archery ? [{ label: "Archery", value: feats.archery }] : []), ...fxAtk(it.type === "R" ? "ranged" : "melee", abil, props)];
               const atkMod = atkParts.reduce((s, p) => s + p.value, 0);
-              const dmgBonus = mod(ch.abilities[abil]) + ((ch.styles || []).includes("Dueling") && it.type === "M" && !props.includes("2H") ? 2 : 0) + fxDmg(it.type === "R" ? "ranged" : "melee", abil, props).reduce((s, b) => s + b.value, 0);
+              const dmgBonus = mod(ch.abilities[abil]) + (hasStyle(ch, "Dueling") && it.type === "M" && !props.includes("2H") ? 2 : 0) + fxDmg(it.type === "R" ? "ranged" : "melee", abil, props).reduce((s, b) => s + b.value, 0);
               return (
                 <span key={it.name} style={{ display: "inline-flex", border: `1px solid ${T.edge}`, borderRadius: 10, overflow: "hidden" }}>
                   <button {...lorePress(it.name)} style={{ ...btn(false), border: "none", borderRadius: 0, padding: "8px 12px" }}
@@ -6667,7 +7127,18 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
             })}
           </div>
           <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>● proficient · ★ expertise (double proficiency) · tap any skill to roll it{feats.jack ? " · Jack of All Trades adds +" + feats.jack + " to the rest" : ""}{feats.reliable ? " · Reliable Talent floors proficient checks at 10" : ""}</div>
-          {ch.feats?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Feats: {ch.feats.map((f, i) => <span key={f} {...lorePress(f)} onClick={() => openUse(f)} style={{ cursor: "pointer" }}>{i > 0 ? ", " : ""}{f}</span>)}</div>}
+          {ch.feats?.length > 0 && (
+            <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Feats: {ch.feats.map((f, i) => {
+              const c = featChoiceOf(ch, f);
+              const detail = [c.bump ? `+1 ${c.bump.toUpperCase()}` : null, ...(c.skills || [])].filter(Boolean).join(", ");
+              return (
+                <span key={f}>{i > 0 ? ", " : ""}
+                  <span {...lorePress(f)} onClick={() => openUse(f)} style={{ cursor: "pointer" }}>{f}</span>
+                  {detail ? <span style={{ opacity: 0.75 }}> ({detail})</span> : null}
+                </span>
+              );
+            })}</div>
+          )}
           {ch.metamagic?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Metamagic: {ch.metamagic.map((m, i) => <span key={m} {...lorePress(m)} onClick={() => openUse(m)} style={{ cursor: "pointer" }}>{i > 0 ? ", " : ""}{m}</span>)}</div>}
           {ch.rangerChoices && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Favored Enemy: {[ch.rangerChoices.favEnemy, ...(ch.rangerChoices.extraEnemies || [])].filter(Boolean).join(", ")} · Natural Explorer: {[ch.rangerChoices.natTerrain, ...(ch.rangerChoices.extraTerrains || [])].filter(Boolean).join(", ")}</div>}
           {ch.choices && Object.entries(ch.choices).filter(([k]) => !CHOICE_KEYS.has(k)).map(([k, v]) => (
@@ -6676,7 +7147,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           {ch.styles?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Fighting Styles: {ch.styles.map((f) => `${f} (${STYLE_DESC[f]})`).join(" · ")}</div>}
           <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Proficiencies ({ch.classes[0].name}): {PROF_TEXT[ch.classes[0].name]}{ch.classes.length > 1 ? " — plus multiclass grants (see Chronicle)" : ""}</div>
           {ch.languages?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Languages: {ch.languages.map((l, i) => <span key={l + i} {...lorePress(l)}>{i > 0 ? ", " : ""}{l}</span>)}</div>}
-          <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Racial traits: {RACES[ch.race].traits.map((t, i) => <span key={t} {...lorePress(t.replace(/\s*\(.*$/, ""))} onClick={() => openUse(t.replace(/\s*\(.*$/, ""))} style={{ cursor: "pointer" }}>{i > 0 ? " · " : ""}{t}</span>)}{ch.racialChoices?.ancestry ? ` · ${ch.racialChoices.ancestry} dragon ancestry (${ANCESTRIES[ch.racialChoices.ancestry]})` : ""}{ch.racialChoices?.cantrip ? ` · Cantrip: ${ch.racialChoices.cantrip}` : ""}</div>
+          <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Racial traits: {RACES[ch.race].traits.map((t, i) => <span key={t} {...lorePress(t.replace(/\s*\(.*$/, ""))} onClick={() => openUse(t.replace(/\s*\(.*$/, ""))} style={{ cursor: "pointer" }}>{i > 0 ? " · " : ""}{t}</span>)}{ch.racialChoices?.ancestry ? ` · ${ch.racialChoices.ancestry} dragon ancestry (${ANCESTRIES[ch.racialChoices.ancestry]})` : ""}{ch.racialChoices?.cantrip ? ` · Cantrip: ${ch.racialChoices.cantrip}` : ""}{ch.racialChoices?.lineage ? ` · Lineage gift: ${ch.racialChoices.lineage === "darkvision" ? "Darkvision 60 ft" : "an extra skill proficiency"}` : ""}</div>
         </div>
         <div style={{ ...card, padding: 16 }}>
           <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>Notes & Inventory</div>
