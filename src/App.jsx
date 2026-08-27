@@ -3261,6 +3261,8 @@ function HorizonArt() {
 /* ============ CREATION WIZARD ============ */
 function CreateWizard({ onDone, onCancel, customs }) {
   const [step, setStep] = useState(0);
+  // each step is its own page — land at its top, not wherever the last one left the scroll
+  useEffect(() => { window.scrollTo(0, 0); }, [step]);
   const [name, setName] = useState("");
   const [photo, setPhoto] = useState(null);
   const [race, setRace] = useState("Human");
@@ -4086,6 +4088,9 @@ function FeatChooser({ customs, abilities, level, caster, held = [], styles = []
 function LevelUp({ ch, onDone, onCancel, customs }) {
   const lvl = totalLevel(ch);
   const [stage, setStage] = useState("class"); // class -> hp -> extras -> done
+  // the overlay scrolls its own container — snap it back to the top on each stage
+  const scrollRef = useRef(null);
+  useEffect(() => { scrollRef.current?.scrollTo(0, 0); }, [stage]);
   const [pick, setPick] = useState(() => [...ch.classes].sort((a, b) => b.level - a.level)[0]?.name || null);
   const [rollingHp, setRollingHp] = useState(false);
   const [hpGain, setHpGain] = useState(null);
@@ -4355,7 +4360,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     choiceGroupsDue.every((d) => (groupPicks[d.g.key] || []).length >= d.need);
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 50, overflowY: "auto", padding: "calc(30px + env(safe-area-inset-top)) 14px calc(30px + env(safe-area-inset-bottom))" }}>
+    <div ref={scrollRef} style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 50, overflowY: "auto", padding: "calc(30px + env(safe-area-inset-top)) 14px calc(30px + env(safe-area-inset-bottom))" }}>
       <div style={{ ...card, maxWidth: 640, margin: "0 auto", padding: 22 }}>
         <div style={{ fontFamily: "Georgia, serif", fontSize: 22, color: T.gold, marginBottom: 4 }}>Level {lvl} → {lvl + 1}</div>
         <div style={{ color: T.dim, fontSize: 13, marginBottom: 16 }}>{ch.name} · proficiency bonus becomes +{profBonus(lvl + 1)}</div>
