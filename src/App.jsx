@@ -25,9 +25,62 @@ const RACES = {
     traits: ["+1 to two different ability scores", "One extra skill proficiency", "One feat of your choice at 1st level"] },
   "Custom Lineage": { bonus: {}, choose: 1, chooseAmt: 2, feat: true, lineageTrait: true, speed: 30, optional: true,
     traits: ["+2 to one ability score of your choice", "Darkvision 60 ft or one extra skill", "One feat of your choice at 1st level", "Size Small or Medium (your choice)"] },
+
+  /* ---- Expanded races (Volo's, the Elemental Evil folk, Tortle, Eberron), 2014
+     printings. Not SRD, but the compendium already carries that era in full. Beyond
+     the shared fields, these can carry: grantSkills (fixed proficiencies),
+     skillsFrom (a restricted pool for `skills` picks), grantSpells (innate casting,
+     keyed by the character level it arrives), natArmor (base + Dex), natArmorFlat
+     (a fixed AC, Dex ignored), and acBonus (always-on AC). ---- */
+  "Aasimar (Protector)": { bonus: { cha: 2, wis: 1 }, speed: 30, group: "expanded", grantSpells: { 1: ["Light"] },
+    traits: ["Darkvision 60 ft", "Celestial Resistance (necrotic, radiant)", "Healing Hands", "Light Bearer (light cantrip)", "Radiant Soul (from 3rd level)"] },
+  "Aasimar (Scourge)": { bonus: { cha: 2, con: 1 }, speed: 30, group: "expanded", grantSpells: { 1: ["Light"] },
+    traits: ["Darkvision 60 ft", "Celestial Resistance (necrotic, radiant)", "Healing Hands", "Light Bearer (light cantrip)", "Radiant Consumption (from 3rd level)"] },
+  "Aasimar (Fallen)": { bonus: { cha: 2, str: 1 }, speed: 30, group: "expanded", grantSpells: { 1: ["Light"] },
+    traits: ["Darkvision 60 ft", "Celestial Resistance (necrotic, radiant)", "Healing Hands", "Light Bearer (light cantrip)", "Necrotic Shroud (from 3rd level)"] },
+  "Firbolg": { bonus: { wis: 2, str: 1 }, speed: 30, group: "expanded", grantSpells: { 1: ["Detect Magic", "Disguise Self"] },
+    traits: ["Firbolg Magic (detect magic & disguise self, 1/rest)", "Hidden Step", "Powerful Build", "Speech of Beast and Leaf"] },
+  "Goliath": { bonus: { str: 2, con: 1 }, speed: 30, group: "expanded", grantSkills: ["Athletics"],
+    traits: ["Natural Athlete (Athletics)", "Stone's Endurance", "Powerful Build", "Mountain Born"] },
+  "Kenku": { bonus: { dex: 2, wis: 1 }, speed: 30, group: "expanded", skills: 2, skillsFrom: ["Acrobatics", "Deception", "Stealth", "Sleight of Hand"],
+    traits: ["Expert Forgery", "Kenku Training (two skills)", "Mimicry"] },
+  "Lizardfolk": { bonus: { con: 2, wis: 1 }, speed: 30, group: "expanded", natArmor: 13, skills: 2, skillsFrom: ["Animal Handling", "Nature", "Perception", "Stealth", "Survival"],
+    traits: ["Swim 30 ft", "Bite (1d6 + Str)", "Cunning Artisan", "Hold Breath (15 min)", "Natural Armor (13 + Dex)", "Hungry Jaws"] },
+  "Tabaxi": { bonus: { dex: 2, cha: 1 }, speed: 30, group: "expanded", grantSkills: ["Perception", "Stealth"],
+    traits: ["Darkvision 60 ft", "Feline Agility", "Cat's Claws (climb 20 ft, 1d4 claws)", "Cat's Talent (Perception & Stealth)"] },
+  "Triton": { bonus: { str: 1, con: 1, cha: 1 }, speed: 30, group: "expanded", grantSpells: { 1: ["Fog Cloud"], 3: ["Gust of Wind"], 5: ["Wall of Water"] },
+    traits: ["Swim 30 ft", "Amphibious", "Control Air and Water", "Emissary of the Sea", "Guardians of the Depths (cold resistance)"] },
+  "Bugbear": { bonus: { str: 2, dex: 1 }, speed: 30, group: "expanded", grantSkills: ["Stealth"],
+    traits: ["Darkvision 60 ft", "Long-Limbed (+5 ft melee reach on your turn)", "Powerful Build", "Sneaky (Stealth)", "Surprise Attack"] },
+  "Goblin": { bonus: { dex: 2, con: 1 }, speed: 30, group: "expanded",
+    traits: ["Darkvision 60 ft", "Fury of the Small", "Nimble Escape", "Small size"] },
+  "Hobgoblin": { bonus: { con: 2, int: 1 }, speed: 30, group: "expanded",
+    traits: ["Darkvision 60 ft", "Martial Training (two martial weapons, light armor)", "Saving Face"] },
+  "Kobold": { bonus: { dex: 2, str: -2 }, speed: 30, group: "expanded",
+    traits: ["Darkvision 60 ft", "Grovel, Cower, and Beg", "Pack Tactics", "Sunlight Sensitivity", "Small size"] },
+  "Orc": { bonus: { str: 2, con: 1, int: -2 }, speed: 30, group: "expanded", grantSkills: ["Intimidation"],
+    traits: ["Darkvision 60 ft", "Aggressive", "Menacing (Intimidation)", "Powerful Build"] },
+  "Yuan-ti Pureblood": { bonus: { cha: 2, int: 1 }, speed: 30, group: "expanded", grantSpells: { 1: ["Poison Spray", "Animal Friendship"], 3: ["Suggestion"] },
+    traits: ["Darkvision 60 ft", "Innate Spellcasting", "Magic Resistance (adv. on saves vs spells)", "Poison Immunity"] },
+  "Air Genasi": { bonus: { con: 2, dex: 1 }, speed: 30, group: "expanded", grantSpells: { 1: ["Levitate"] },
+    traits: ["Unending Breath", "Mingle with the Wind (levitate, 1/long rest)"] },
+  "Earth Genasi": { bonus: { con: 2, str: 1 }, speed: 30, group: "expanded", grantSpells: { 1: ["Pass Without Trace"] },
+    traits: ["Earth Walk", "Merge with Stone (pass without trace, 1/long rest)"] },
+  "Fire Genasi": { bonus: { con: 2, int: 1 }, speed: 30, group: "expanded", grantSpells: { 1: ["Produce Flame"], 3: ["Burning Hands"] },
+    traits: ["Darkvision 60 ft", "Fire Resistance", "Reach to the Blaze"] },
+  "Water Genasi": { bonus: { con: 2, wis: 1 }, speed: 30, group: "expanded", grantSpells: { 1: ["Shape Water"], 3: ["Create or Destroy Water"] },
+    traits: ["Swim 30 ft", "Acid Resistance", "Amphibious", "Call to the Wave"] },
+  "Aarakocra": { bonus: { dex: 2, wis: 1 }, speed: 25, group: "expanded",
+    traits: ["Flight 50 ft (no medium or heavy armor)", "Talons (1d4 + Str)"] },
+  "Tortle": { bonus: { str: 2, wis: 1 }, speed: 30, group: "expanded", natArmorFlat: 17, grantSkills: ["Survival"],
+    traits: ["Claws (1d4 + Str)", "Hold Breath (1 hour)", "Natural Armor (AC 17, Dex ignored; shield allowed)", "Shell Defense", "Survival Instinct (Survival)"] },
+  "Changeling": { bonus: { cha: 2 }, choose: 1, chooseNot: ["cha"], speed: 30, group: "expanded", skills: 2, skillsFrom: ["Deception", "Insight", "Intimidation", "Persuasion"],
+    traits: ["Shapechanger", "Changeling Instincts (two skills)", "+1 to one other ability of your choice"] },
+  "Warforged": { bonus: { con: 2 }, choose: 1, chooseNot: ["con"], speed: 30, group: "expanded", skills: 1, acBonus: 1,
+    traits: ["Constructed Resilience (adv. vs poison; no need to eat, drink, breathe, or sleep)", "Sentry's Rest", "Integrated Protection (+1 AC)", "Specialized Design (one skill)", "+1 to one other ability of your choice"] },
 };
 
-const LANGS = ["Common","Dwarvish","Elvish","Giant","Gnomish","Goblin","Halfling","Orc","Abyssal","Celestial","Deep Speech","Draconic","Infernal","Primordial","Sylvan","Undercommon"];
+const LANGS = ["Common","Dwarvish","Elvish","Giant","Gnomish","Goblin","Halfling","Orc","Abyssal","Aquan","Auran","Celestial","Deep Speech","Draconic","Infernal","Primordial","Sylvan","Undercommon"];
 const RACE_LANGS = {
   "Hill Dwarf": { fixed: ["Common", "Dwarvish"], choose: 0 }, "High Elf": { fixed: ["Common", "Elvish"], choose: 1 },
   "Lightfoot Halfling": { fixed: ["Common", "Halfling"], choose: 0 }, "Human": { fixed: ["Common"], choose: 1 },
@@ -35,6 +88,18 @@ const RACE_LANGS = {
   "Half-Elf": { fixed: ["Common", "Elvish"], choose: 1 }, "Half-Orc": { fixed: ["Common", "Orc"], choose: 0 },
   "Tiefling": { fixed: ["Common", "Infernal"], choose: 0 },
   "Variant Human": { fixed: ["Common"], choose: 1 }, "Custom Lineage": { fixed: ["Common"], choose: 1 },
+  "Aasimar (Protector)": { fixed: ["Common", "Celestial"], choose: 0 }, "Aasimar (Scourge)": { fixed: ["Common", "Celestial"], choose: 0 },
+  "Aasimar (Fallen)": { fixed: ["Common", "Celestial"], choose: 0 },
+  "Firbolg": { fixed: ["Common", "Elvish", "Giant"], choose: 0 }, "Goliath": { fixed: ["Common", "Giant"], choose: 0 },
+  "Kenku": { fixed: ["Common", "Auran"], choose: 0 }, "Lizardfolk": { fixed: ["Common", "Draconic"], choose: 0 },
+  "Tabaxi": { fixed: ["Common"], choose: 1 }, "Triton": { fixed: ["Common", "Primordial"], choose: 0 },
+  "Bugbear": { fixed: ["Common", "Goblin"], choose: 0 }, "Goblin": { fixed: ["Common", "Goblin"], choose: 0 },
+  "Hobgoblin": { fixed: ["Common", "Goblin"], choose: 0 }, "Kobold": { fixed: ["Common", "Draconic"], choose: 0 },
+  "Orc": { fixed: ["Common", "Orc"], choose: 0 }, "Yuan-ti Pureblood": { fixed: ["Common", "Abyssal", "Draconic"], choose: 0 },
+  "Air Genasi": { fixed: ["Common", "Primordial"], choose: 0 }, "Earth Genasi": { fixed: ["Common", "Primordial"], choose: 0 },
+  "Fire Genasi": { fixed: ["Common", "Primordial"], choose: 0 }, "Water Genasi": { fixed: ["Common", "Primordial"], choose: 0 },
+  "Aarakocra": { fixed: ["Common", "Auran"], choose: 0 }, "Tortle": { fixed: ["Common", "Aquan"], choose: 0 },
+  "Changeling": { fixed: ["Common"], choose: 2 }, "Warforged": { fixed: ["Common"], choose: 1 },
 };
 const ANCESTRIES = { Black: "Acid", Blue: "Lightning", Brass: "Fire", Bronze: "Lightning", Copper: "Acid", Gold: "Fire", Green: "Poison", Red: "Fire", Silver: "Cold", White: "Cold" };
 const ALL_SKILLS = ["Acrobatics","Animal Handling","Arcana","Athletics","Deception","History","Insight","Intimidation","Investigation","Medicine","Nature","Perception","Performance","Persuasion","Religion","Sleight of Hand","Stealth","Survival"];
@@ -432,6 +497,69 @@ const FEATURE_TEXT = {
   /* racial traits that would otherwise collide with a feat of the same name */
   "Halfling Luck": "When you roll a 1 on the d20 for an attack roll, ability check, or saving throw, you can reroll the die and must use the new roll. (This is the halfling trait, not the Lucky feat — the sheet applies it to every d20 automatically.)",
   "Darkvision 60 ft": "Within 60 feet you can see in dim light as if it were bright light, and in darkness as if it were dim light — discerning shapes and movement, though only in shades of grey.",
+  /* expanded-race traits (2014 printings) */
+  "Celestial Resistance": "You have resistance to necrotic damage and radiant damage.",
+  "Healing Hands": "As an action, touch a creature to restore hit points equal to your level. Once per long rest.",
+  "Light Bearer": "You know the light cantrip. Charisma is your spellcasting ability for it.",
+  "Radiant Soul": "From 3rd level, as an action you can unleash your celestial nature for 1 minute: luminous wings sprout (flying speed 30 ft), and once on each of your turns one attack or spell deals extra radiant damage equal to your level. Once per long rest.",
+  "Radiant Consumption": "From 3rd level, as an action you sear with holy light for 1 minute: bright light in 10 ft, each creature within 10 ft (you included) takes half-your-level radiant damage at the end of your turns, and once on each of your turns one attack or spell deals extra radiant damage equal to your level. Once per long rest.",
+  "Necrotic Shroud": "From 3rd level, as an action your eyes turn to black pits and skeletal wings sprout for 1 minute: creatures within 10 ft must pass a Charisma save or be frightened until the end of your next turn, and once on each of your turns one attack or spell deals extra necrotic damage equal to your level. Once per long rest.",
+  "Firbolg Magic": "You can cast detect magic and disguise self once each per short or long rest, using Wisdom (your disguise can appear up to 3 feet shorter).",
+  "Hidden Step": "As a bonus action, turn invisible until the start of your next turn or until you attack, deal damage, or force a saving throw. Once per short or long rest.",
+  "Powerful Build": "You count as one size larger when determining your carrying capacity and the weight you can push, drag, or lift.",
+  "Speech of Beast and Leaf": "You can communicate simple ideas to beasts and plants (they can't respond in words), and you have advantage on Charisma checks to influence them.",
+  "Natural Athlete": "You have proficiency in the Athletics skill.",
+  "Stone's Endurance": "When you take damage, use your reaction to roll a d12 + your Constitution modifier and reduce the damage by that total. Once per short or long rest.",
+  "Mountain Born": "You're acclimated to high altitude and cold climates.",
+  "Expert Forgery": "You can duplicate other creatures' handwriting and craftwork, with advantage on checks to make forgeries or duplicates.",
+  "Kenku Training": "You are proficient in two skills chosen from Acrobatics, Deception, Stealth, and Sleight of Hand.",
+  "Mimicry": "You can mimic sounds you have heard, including voices — heard as genuine unless a Wisdom (Insight) check beats your Charisma (Deception).",
+  "Cunning Artisan": "In a short rest, harvest a slain creature into a shield, club, javelin, or 1d4 darts or blowgun needles.",
+  "Hold Breath": "You can hold your breath far longer than most — 15 minutes for a lizardfolk, an hour for a tortle.",
+  "Natural Armor": "Your hide is armor enough: a lizardfolk's unarmored AC is 13 + Dex; a tortle's shell fixes AC at 17 (Dexterity neither helps nor hinders; a shield still stacks).",
+  "Hungry Jaws": "As a bonus action, bite with the fury of the swamp: on a hit, gain temporary hit points equal to your Constitution modifier (min 1). Once per short or long rest.",
+  "Feline Agility": "When you move on your turn in combat, you can double your speed until the end of the turn. You can't use it again until you spend a turn moving 0 feet.",
+  "Cat's Claws": "You have a climbing speed of 20 feet, and your claws are natural weapons dealing 1d4 + Strength slashing damage.",
+  "Cat's Talent": "You have proficiency in the Perception and Stealth skills.",
+  "Amphibious": "You can breathe air and water.",
+  "Control Air and Water": "Innate casting on Charisma: fog cloud at 1st level, gust of wind from 3rd, wall of water from 5th — each once per long rest.",
+  "Emissary of the Sea": "Beasts that breathe water can understand your speech (though you can't understand them).",
+  "Guardians of the Depths": "Adapted to the deep: you have resistance to cold damage.",
+  "Long-Limbed": "On your turn, your reach with melee attacks is 5 feet greater than normal.",
+  "Sneaky": "You have proficiency in the Stealth skill.",
+  "Surprise Attack": "If you hit a surprised creature with an attack on your first turn of combat, it takes an extra 2d6 damage.",
+  "Fury of the Small": "When you damage a creature larger than you, deal extra damage equal to your level. Once per short or long rest.",
+  "Nimble Escape": "You can take the Disengage or Hide action as a bonus action on each of your turns.",
+  "Small size": "You are Small. You can't wield heavy weapons without disadvantage.",
+  "Martial Training": "You are proficient with two martial weapons of your choice and with light armor.",
+  "Saving Face": "If you miss an attack or fail a check or save, add +1 for each ally within 30 ft who can see you (max +5). Once per short or long rest.",
+  "Grovel, Cower, and Beg": "As an action, distract foes with theatrical panic: each ally within 10 ft has advantage on attacks against creatures within 10 ft of you until the end of your next turn. Once per short or long rest.",
+  "Pack Tactics": "You have advantage on attack rolls against a creature if at least one ally is within 5 feet of it and isn't incapacitated.",
+  "Sunlight Sensitivity": "In direct sunlight, you have disadvantage on attack rolls and on Wisdom (Perception) checks that rely on sight.",
+  "Aggressive": "As a bonus action, move up to your speed toward a hostile creature you can see.",
+  "Menacing": "You have proficiency in the Intimidation skill.",
+  "Innate Spellcasting": "Yuan-ti magic on Charisma: poison spray at will, animal friendship at will (snakes only), and suggestion once per long rest from 3rd level.",
+  "Magic Resistance": "You have advantage on saving throws against spells and other magical effects.",
+  "Poison Immunity": "You are immune to poison damage and the poisoned condition.",
+  "Unending Breath": "You can hold your breath indefinitely while not incapacitated.",
+  "Mingle with the Wind": "You can cast levitate once per long rest (Constitution, no material components).",
+  "Earth Walk": "You can move across difficult terrain of earth or stone without extra movement.",
+  "Merge with Stone": "You can cast pass without trace once per long rest (Constitution, no material components).",
+  "Fire Resistance": "You have resistance to fire damage.",
+  "Reach to the Blaze": "You know the produce flame cantrip; from 3rd level you can cast burning hands once per long rest (Constitution).",
+  "Acid Resistance": "You have resistance to acid damage.",
+  "Call to the Wave": "You know the shape water cantrip; from 3rd level you can cast create or destroy water (as a 2nd-level spell) once per long rest (Constitution).",
+  "Flight 50 ft": "You have a flying speed of 50 feet while not wearing medium or heavy armor.",
+  "Talons": "Your talons are natural weapons dealing 1d4 + Strength slashing damage.",
+  "Claws": "Your claws are natural weapons dealing 1d4 + Strength slashing damage.",
+  "Shell Defense": "As an action, withdraw into your shell: +4 AC, advantage on Strength and Constitution saves — but prone, speed 0, disadvantage on Dexterity saves, and no actions but a bonus action to emerge.",
+  "Survival Instinct": "You have proficiency in the Survival skill.",
+  "Shapechanger": "As an action, change your appearance and voice to any humanoid of your size you've seen (clothing and equipment unchanged). You revert if you die.",
+  "Changeling Instincts": "You are proficient in two skills chosen from Deception, Insight, Intimidation, and Persuasion.",
+  "Constructed Resilience": "Advantage on saves against poison and resistance to poison damage; no need to eat, drink, breathe, or sleep, and magic can't put you to sleep.",
+  "Sentry's Rest": "In a long rest you remain conscious, spending six hours motionless instead of sleeping.",
+  "Integrated Protection": "You gain a +1 bonus to AC. Donning or doffing armor takes you an hour, as it integrates into your body — and it can't be removed against your will.",
+  "Specialized Design": "You gain one skill proficiency and one tool proficiency of your choice.",
   /* markers for the subclass choice itself */
   "Primal Path": "Choose the Primal Path that shapes the nature of your rage. It grants features at 3rd, 6th, 10th, and 14th level.",
   "Bard College": "Choose a Bard College reflecting how you honed your craft. It grants features at 3rd, 6th, and 14th level.",
@@ -1001,6 +1129,14 @@ function featGrantedSpells(name, level = 20, def) {
   if (Array.isArray(g)) return g;
   return Object.entries(g).filter(([l]) => level >= +l).flatMap(([, arr]) => arr);
 }
+/* Innate spells the character's race grants at their current level */
+function raceGrantedSpells(ch) {
+  const g = RACES[ch?.race]?.grantSpells;
+  if (!g) return [];
+  const lvl = totalLevel(ch);
+  return Object.entries(g).filter(([l]) => lvl >= +l).flatMap(([, arr]) => arr);
+}
+
 /* Every spell a held feat contributes — fixed grants plus the player's own picks */
 function featSpellsOf(ch) {
   const lvl = totalLevel(ch);
@@ -1474,6 +1610,7 @@ function rollNotes(ch, kind, abil) {
     if (ch.race === "Hill Dwarf" && abil === "con") n.push("Dwarven Resilience: advantage vs. poison");
     if (ch.race === "Lightfoot Halfling" && abil === "wis") n.push("Brave: advantage vs. being frightened");
     if (ch.race === "Rock Gnome" && ["int", "wis", "cha"].includes(abil)) n.push("Gnome Cunning: advantage vs. magic");
+    if (ch.race === "Yuan-ti Pureblood") n.push("Magic Resistance: advantage on saves against spells and magical effects");
     if (f.barbarian >= 1 && abil === "str" && !hasEffect(ch, "rage")) n.push("Rage: advantage on Strength saves while raging");
     if (f.barbarian >= 2 && abil === "dex") n.push("Danger Sense: advantage vs. effects you can see");
   }
@@ -1484,6 +1621,8 @@ function rollNotes(ch, kind, abil) {
     if (f.barbarian >= 2 && abil === "str" && !hasEffect(ch, "reckless-attack")) n.push("Reckless Attack: take advantage now, grant it until your next turn");
     if (f.savageAttacks) n.push("Savage Attacks: one extra damage die on a melee crit");
     if (f.savageAttacker) n.push("Savage Attacker: once per turn, roll the weapon's damage dice twice and keep either");
+    if (ch.race === "Kobold") { n.push("Pack Tactics: advantage if an ally is within 5 ft of the target"); n.push("Sunlight Sensitivity: disadvantage in direct sunlight"); }
+    if (ch.race === "Bugbear") n.push("Surprise Attack: +2d6 damage against a surprised creature on your first turn");
   }
   /* Feats the dice can't spend for you */
   if (hasFeat(ch, "Lucky")) n.push("Lucky: you may spend a Luck Point on this roll — long-press the feat for your table's wording");
@@ -1637,7 +1776,7 @@ function characterChoiceGroups(ch, customs) {
 }
 /* Every cantrip the character knows, from any source: class lists, Pact of the Tome,
    racial pick, and the feats that teach one (picked or granted outright) */
-const GRANT_CANTRIPS = new Set(["Mage Hand", "Druidcraft", "Spare the Dying", "Friends", "Light", "Message", "Blade Ward", "Dancing Lights", "Shocking Grasp", "Resistance", "Mending"]);
+const GRANT_CANTRIPS = new Set(["Mage Hand", "Druidcraft", "Spare the Dying", "Friends", "Light", "Message", "Blade Ward", "Dancing Lights", "Shocking Grasp", "Resistance", "Mending", "Poison Spray", "Produce Flame", "Shape Water"]);
 function allKnownCantrips(ch) {
   return [
     ...Object.values(ch.spells || {}).flatMap((b) => b.cantrips || []),
@@ -1647,6 +1786,7 @@ function allKnownCantrips(ch) {
       ...(featChoiceOf(ch, n).cantrips || []),
       ...featGrantedSpells(n, totalLevel(ch)).filter((sp) => GRANT_CANTRIPS.has(sp)),
     ]),
+    ...raceGrantedSpells(ch).filter((sp) => GRANT_CANTRIPS.has(sp)),
   ];
 }
 
@@ -1752,9 +1892,13 @@ function armorClass(ch, customs, fx = fxMods(ch)) {
     else if (draconic) { ac = 13 + dex; parts.push("Draconic Resilience 13", `Dex ${fmtMod(dex)}`); }
     else { ac = 10 + dex; parts.push("Unarmored 10", `Dex ${fmtMod(dex)}`); }
   }
+  const rn = RACES[ch.race] || {};
+  if (!armor && rn.natArmor && rn.natArmor + dex > ac) { ac = rn.natArmor + dex; parts.splice(0, parts.length, `Natural Armor ${rn.natArmor}`, `Dex ${fmtMod(dex)}`); }
+  if (!armor && rn.natArmorFlat && rn.natArmorFlat > ac) { ac = rn.natArmorFlat; parts.splice(0, parts.length, `Natural Armor ${rn.natArmorFlat} (Dex ignored)`); }
   if (!armor && fx.acBase && fx.acBase.value + dex > ac) { ac = fx.acBase.value + dex; parts.splice(0, parts.length, `${fx.acBase.label} ${fx.acBase.value}`, `Dex ${fmtMod(dex)}`); }
   if (shield) { ac += shield.ac || 2; parts.push(`${shield.name} +${shield.ac || 2}`); }
   if (armor && hasStyle(ch, "Defense")) { ac += 1; parts.push("Defense style +1"); }
+  if (rn.acBonus) { ac += rn.acBonus; parts.push(`Integrated Protection +${rn.acBonus}`); }
   fx.ac.forEach((b) => { ac += b.value; parts.push(`${b.label} ${fmtMod(b.value)}`); });
   if (fx.acFloor && ac < fx.acFloor.value) { ac = fx.acFloor.value; parts.push(`${fx.acFloor.label} (AC can't drop below ${fx.acFloor.value})`); }
   return { ac, parts, armor, shield };
@@ -2022,6 +2166,17 @@ const USE_TRACKERS = [
   { key: "dark-ones-own-luck", name: "Dark One's Own Luck", cls: "Warlock", when: (ch) => hasSub(ch, "The Fiend"), max: () => 1, per: "short" },
   { key: "hurl-through-hell", name: "Hurl Through Hell", cls: "Warlock", when: (ch) => hasSub(ch, "The Fiend") && classLevel(ch, "Warlock") >= 14, max: () => 1, per: "long" },
   { key: "breath-weapon", name: "Breath Weapon", when: (ch) => ch.race === "Dragonborn", max: () => 1, per: "short" },
+  { key: "healing-hands", name: "Healing Hands", when: (ch) => /^Aasimar/.test(ch.race), max: () => 1, per: "long" },
+  { key: "radiant-soul", name: "Radiant Soul", when: (ch) => ch.race === "Aasimar (Protector)" && totalLevel(ch) >= 3, max: () => 1, per: "long" },
+  { key: "radiant-consumption", name: "Radiant Consumption", when: (ch) => ch.race === "Aasimar (Scourge)" && totalLevel(ch) >= 3, max: () => 1, per: "long" },
+  { key: "necrotic-shroud", name: "Necrotic Shroud", when: (ch) => ch.race === "Aasimar (Fallen)" && totalLevel(ch) >= 3, max: () => 1, per: "long" },
+  { key: "firbolg-magic", name: "Firbolg Magic", when: (ch) => ch.race === "Firbolg", max: () => 1, per: "short" },
+  { key: "hidden-step", name: "Hidden Step", when: (ch) => ch.race === "Firbolg", max: () => 1, per: "short" },
+  { key: "stones-endurance", name: "Stone's Endurance", when: (ch) => ch.race === "Goliath", max: () => 1, per: "short" },
+  { key: "fury-of-the-small", name: "Fury of the Small", when: (ch) => ch.race === "Goblin", max: () => 1, per: "short" },
+  { key: "hungry-jaws", name: "Hungry Jaws", when: (ch) => ch.race === "Lizardfolk", max: () => 1, per: "short" },
+  { key: "saving-face", name: "Saving Face", when: (ch) => ch.race === "Hobgoblin", max: () => 1, per: "short" },
+  { key: "grovel-cower-beg", name: "Grovel, Cower, and Beg", when: (ch) => ch.race === "Kobold", max: () => 1, per: "short" },
   { key: "relentless-endurance", name: "Relentless Endurance", when: (ch) => ch.race === "Half-Orc", max: () => 1, per: "long" },
 ];
 /* Beyond the curated list, ANY feature whose rules text names its own recharge earns a
@@ -2939,6 +3094,7 @@ function shareCustomsFor(ch, customs) {
     const c = featChoiceOf(ch, fn);
     [...(c.cantrips || []), ...(c.spells || []), ...featGrantedSpells(fn, totalLevel(ch))].forEach(addSpell);
   });
+  raceGrantedSpells(ch).forEach(addSpell);
   const itemNames = new Set((ch.inventory || []).map((r) => norm(r.name)));
   const subKeep = new Set(ch.classes.flatMap((c) => (c.subclass ? [norm(c.subclass), norm(baseSubName(c.subclass))] : [])));
   const subs = {};
@@ -3410,6 +3566,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const [langPicks, setLangPicks] = useState([]);
   const [ancestry, setAncestry] = useState(null);
   const [raceSkills, setRaceSkills] = useState([]); // extra skills the lineage itself grants
+  const [showExpanded, setShowExpanded] = useState(false);
   const [heCantrip, setHeCantrip] = useState("");
   const [method, setMethod] = useState("Standard Array");
   const [scores, setScores] = useState(Object.fromEntries(ABILITIES.map((a) => [a, 8])));
@@ -3445,7 +3602,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const raceSkillNeed = (raceData.skills || 0) + (race === "Custom Lineage" && lineageTrait === "skill" ? 1 : 0);
   const raceSkillsEff = raceSkills.slice(0, raceSkillNeed);
   const bgGrantSkills = bgData ? bgData.skills : bgSkills;
-  const skillsElsewhere = [...bgGrantSkills, ...raceSkillsEff, ...featSkillsEff];
+  const skillsElsewhere = [...bgGrantSkills, ...raceSkillsEff, ...featSkillsEff, ...(raceData.grantSkills || [])];
   let clsSkillOpts = clsData.skills.filter((s) => !skillsElsewhere.includes(s));
   if (clsSkillOpts.length < clsData.nSkills) // all overlapping — open up the remaining skills (PHB duplicate-proficiency rule)
     clsSkillOpts = [...clsSkillOpts, ...ALL_SKILLS.filter((s) => !skillsElsewhere.includes(s) && !clsData.skills.includes(s))];
@@ -3500,7 +3657,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
       spells: castsAt1 && (spellPicks.cantrips.length || spellPicks.spells.length) ? { [cls]: spellPicks } : {},
       abilities: finalScores, method,
       classes: [{ name: cls, level: 1, subclass: clsData.subLvl === 1 ? subclass : null }],
-      skills: [...skills, ...raceSkillsEff, ...bgGrantSkills, ...featSkillsEff].filter((v, i, a) => a.indexOf(v) === i),
+      skills: [...skills, ...raceSkillsEff, ...bgGrantSkills, ...featSkillsEff, ...(raceData.grantSkills || [])].filter((v, i, a) => a.indexOf(v) === i),
       // Tough and friends are derived from the feat itself, never banked into maxHp
       feats: raceFeat?.name ? [raceFeat.name] : [],
       featChoices: raceFeat?.name ? { [raceFeat.name]: {
@@ -3553,7 +3710,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
 
       {step === 1 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 10 }}>
-          {Object.entries(RACES).map(([r, d]) => (
+          {Object.entries(RACES).filter(([, d]) => !d.group).map(([r, d]) => (
             <div key={r} onClick={() => {
               setRace(r); setRaceAbilPicks([]); setRaceSkills([]); setHeCantrip(""); setAncestry(null);
               setRaceFeat(null); setLineageTrait(null);
@@ -3565,9 +3722,31 @@ function CreateWizard({ onDone, onCancel, customs }) {
               </div>
               <div style={{ color: T.dim, fontSize: 12, marginTop: 4 }}>
                 {[
-                  ABILITIES.filter((a) => d.bonus[a]).map((a) => `${a.toUpperCase()} +${d.bonus[a]}`).join(", "),
+                  ABILITIES.filter((a) => d.bonus[a]).map((a) => `${a.toUpperCase()} ${fmtMod(d.bonus[a])}`).join(", "),
                   d.choose ? `+${d.chooseAmt || 1} to ${d.choose === 1 ? "one ability" : `${d.choose} abilities`} of your choice` : "",
                   d.feat ? "a feat at 1st level" : "",
+                ].filter(Boolean).join(", ")} · {d.speed} ft
+              </div>
+              <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>{d.traits.slice(0, 3).join(" · ")}</div>
+            </div>
+          ))}
+          <div onClick={() => setShowExpanded(!showExpanded)}
+            style={{ gridColumn: "1 / -1", ...card, padding: "12px 14px", cursor: "pointer", borderColor: raceData.group ? T.gold : T.edge }}>
+            <span style={{ fontFamily: "Georgia, serif", fontSize: 16, color: T.gold }}>{showExpanded ? "▾" : "▸"} Expanded Races</span>
+            <span style={{ color: T.dim, fontSize: 12 }}> · Tabaxi, Aasimar, Goliath, Genasi, and the rest of the wider world ({Object.values(RACES).filter((d) => d.group).length})</span>
+          </div>
+          {showExpanded && Object.entries(RACES).filter(([, d]) => d.group).map(([r, d]) => (
+            <div key={r} onClick={() => {
+              setRace(r); setRaceAbilPicks([]); setRaceSkills([]); setHeCantrip(""); setAncestry(null);
+              setRaceFeat(null); setLineageTrait(null);
+              setLangPicks(langPicks.filter((l) => !RACE_LANGS[r].fixed.includes(l)));
+            }}
+              style={{ ...card, padding: 14, cursor: "pointer", borderColor: race === r ? T.gold : T.edge, background: race === r ? T.panel2 : T.panel }}>
+              <div style={{ fontFamily: "Georgia, serif", fontSize: 17, color: race === r ? T.gold : T.ink }}>{r}</div>
+              <div style={{ color: T.dim, fontSize: 12, marginTop: 4 }}>
+                {[
+                  ABILITIES.filter((a) => d.bonus[a]).map((a) => `${a.toUpperCase()} ${fmtMod(d.bonus[a])}`).join(", "),
+                  d.choose ? `+${d.chooseAmt || 1} to ${d.choose === 1 ? "one other ability" : `${d.choose} abilities`} of your choice` : "",
                 ].filter(Boolean).join(", ")} · {d.speed} ft
               </div>
               <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>{d.traits.slice(0, 3).join(" · ")}</div>
@@ -3683,7 +3862,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
                 {race === "Half-Elf" ? "Skill Versatility" : `${race} skill`} — choose {raceSkillNeed === 1 ? "one" : "two"} ({raceSkills.length}/{raceSkillNeed})
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {ALL_SKILLS.filter((sk) => !bgGrantSkills.includes(sk) && !featSkillsEff.includes(sk) && !skills.includes(sk)).map((sk) => (
+                {(raceData.skillsFrom || ALL_SKILLS).filter((sk) => !bgGrantSkills.includes(sk) && !featSkillsEff.includes(sk) && !skills.includes(sk) && !(raceData.grantSkills || []).includes(sk)).map((sk) => (
                   <button key={sk} style={{ ...btn(raceSkills.includes(sk)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
                     onClick={() => setRaceSkills(raceSkills.includes(sk) ? raceSkills.filter((x) => x !== sk) : raceSkills.length < raceSkillNeed ? [...raceSkills, sk] : raceSkills)}>{sk}</button>
                 ))}
@@ -5209,7 +5388,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
   const [adding, setAdding] = useState(null); // { cls, kind: 'cantrips'|'spells'|'arcanum', lvl? }
   const [q, setQ] = useState("");
   const featSp = featSpellsOf(ch);
-  if (!casters.length && !featSp.length && !ch.racialChoices?.cantrip) return null;
+  if (!casters.length && !featSp.length && !ch.racialChoices?.cantrip && !raceGrantedSpells(ch).length) return null;
   const book = ch.spells || {};
   const pool = srcSpells(customs?.spells || []);
 
@@ -5260,7 +5439,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
   const usedSlotsArr = ch.usedSlots || [];
   const pactAll = wl ? PACT(wl.level) : null;
   const pactLeft = pactAll ? pactAll.n - Math.min(ch.usedPact || 0, pactAll.n) : 0;
-  const featSpellNames = new Set(featSp.flatMap((e) => e.names));
+  const featSpellNames = new Set([...featSp.flatMap((e) => e.names), ...raceGrantedSpells(ch)]);
   const canPay = (n) => {
     const lvl = spLvl(n);
     if (lvl === 0) return true;
@@ -5294,6 +5473,11 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
     Object.entries(mine.arcanum || {}).forEach(([l, n]) => addGroup(+l, "Mystic Arcanum", [n], "#b48ead"));
   });
   if (ch.racialChoices?.cantrip) addGroup(0, `${ch.race} · racial`, [ch.racialChoices.cantrip]);
+  {
+    const rs = raceGrantedSpells(ch);
+    addGroup(0, `${ch.race} · racial`, rs.filter((n) => spLvl(n) === 0), "#8fbcbb");
+    byLevel(rs.filter((n) => spLvl(n) > 0)).forEach(([l, arr]) => addGroup(+l, `${ch.race} · racial`, arr, "#8fbcbb"));
+  }
   featSp.forEach(({ feat, names }) => {
     addGroup(0, `${feat} · feat`, names.filter((n) => spLvl(n) === 0), "#8fbcbb");
     byLevel(names.filter((n) => spLvl(n) > 0)).forEach(([l, arr]) => addGroup(+l, `${feat} · feat`, arr, "#8fbcbb"));
