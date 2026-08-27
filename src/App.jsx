@@ -389,7 +389,7 @@ const INVOCATION_DATA = [
 const MC_PREREQ = {
   Barbarian: [{ str: 13 }], Bard: [{ cha: 13 }], Cleric: [{ wis: 13 }], Druid: [{ wis: 13 }],
   Fighter: [{ str: 13 }, { dex: 13 }], Monk: [{ dex: 13, wis: 13 }], Paladin: [{ str: 13, cha: 13 }],
-  Ranger: [{ dex: 13, wis: 13 }], Rogue: [{ dex: 13 }], Sorcerer: [{ cha: 13 }], Warlock: [{ cha: 13 }], Wizard: [{ int: 13 }],
+  Ranger: [{ wis: 13 }], Rogue: [{ dex: 13 }], Sorcerer: [{ cha: 13 }], Warlock: [{ cha: 13 }], Wizard: [{ int: 13 }],
 };
 const meetsPrereq = (cls, ab) => MC_PREREQ[cls].some((req) => Object.entries(req).every(([k, v]) => ab[k] >= v));
 
@@ -433,10 +433,12 @@ const CLASSES = {
     skills: ["Athletics", "Insight", "Intimidation", "Medicine", "Persuasion", "Religion"], nSkills: 2,
     asi: [4, 8, 12, 16, 19],
     feats: { 1: ["Divine Sense", "Lay on Hands"], 2: ["Fighting Style", "Spellcasting", "Divine Smite"], 3: ["Divine Health", "Sacred Oath"], 5: ["Extra Attack"], 6: ["Aura of Protection"], 7: ["Oath feature"], 10: ["Aura of Courage"], 11: ["Improved Divine Smite"], 14: ["Cleansing Touch"], 15: ["Oath feature"], 18: ["Aura improvements"], 20: ["Oath feature"] } },
-  Ranger: { die: 10, saves: ["str", "dex"], caster: "half", subLvl: 3, subName: "Ranger Archetype", subs: ["Hunter"],
+  /* Ranger runs on the 2024 PHB (SRD 5.2): a prepared caster from 1st level whose
+     Favored Enemy is Hunter's Mark. The other classes keep their 2014 tables. */
+  Ranger: { die: 10, saves: ["str", "dex"], caster: "half1", subLvl: 3, subName: "Ranger Archetype", subs: ["Hunter"],
     skills: ["Animal Handling", "Athletics", "Insight", "Investigation", "Nature", "Perception", "Stealth", "Survival"], nSkills: 3,
     asi: [4, 8, 12, 16, 19],
-    feats: { 1: ["Favored Enemy", "Natural Explorer"], 2: ["Fighting Style", "Spellcasting"], 3: ["Ranger Archetype", "Primeval Awareness"], 5: ["Extra Attack"], 6: ["Favored Enemy & Natural Explorer improvements"], 7: ["Archetype feature"], 8: ["Land's Stride"], 10: ["Natural Explorer improvement", "Hide in Plain Sight"], 11: ["Archetype feature"], 14: ["Favored Enemy improvement", "Vanish"], 15: ["Archetype feature"], 18: ["Feral Senses"], 20: ["Foe Slayer"] } },
+    feats: { 1: ["Spellcasting", "Favored Enemy", "Weapon Mastery"], 2: ["Deft Explorer", "Fighting Style"], 3: ["Ranger Archetype"], 5: ["Extra Attack"], 6: ["Roving"], 7: ["Archetype feature"], 9: ["Expertise"], 10: ["Tireless"], 11: ["Archetype feature"], 13: ["Relentless Hunter"], 14: ["Nature's Veil"], 15: ["Archetype feature"], 17: ["Precise Hunter"], 18: ["Feral Senses"], 19: ["Epic Boon"], 20: ["Foe Slayer"] } },
   Rogue: { die: 8, saves: ["dex", "int"], caster: null, subLvl: 3, subName: "Roguish Archetype", subs: ["Thief"],
     skills: ["Acrobatics", "Athletics", "Deception", "Insight", "Intimidation", "Investigation", "Perception", "Performance", "Persuasion", "Sleight of Hand", "Stealth"], nSkills: 4,
     asi: [4, 8, 10, 12, 16, 19],
@@ -642,7 +644,15 @@ const FEATURE_TEXT = {
   "Cleansing Touch": "As an action, end one spell on yourself or on one willing creature you touch. Uses equal to your Charisma modifier (minimum 1) per long rest.",
   "Aura improvements": "Your Aura of Protection and Aura of Courage now extend 30 feet from you.",
   /* Ranger */
-  "Favored Enemy": "Choose a type of favored enemy. You have advantage on Wisdom (Survival) checks to track your favored enemies and on Intelligence checks to recall information about them, and you learn one language spoken by them.",
+  "Favored Enemy": "You always have the Hunter's Mark spell prepared. You can cast it twice without expending a spell slot, regaining all expended uses on a long rest. The free castings rise with ranger level: 3 at 5th, 4 at 9th, 5 at 13th, 6 at 17th. (The sheet tracks the uses and keeps Hunter's Mark in your Grimoire.)",
+  "Weapon Mastery": "Your training lets you use the mastery properties of two kinds of weapons of your choice with which you have proficiency. Whenever you finish a long rest, you can change the kinds of weapons you chose. (Mastery properties are rules text on each weapon — the sheet doesn't automate them.)",
+  "Deft Explorer": "Thanks to your travels, you gain Expertise in one of your skill proficiencies, and you learn two languages of your choice.",
+  "Roving": "Your speed increases by 10 feet while you aren't wearing heavy armor, and you gain a climb speed and a swim speed equal to your speed.",
+  "Tireless": "As a magic action, give yourself temporary hit points equal to 1d8 + your Wisdom modifier (minimum 1), a number of times equal to your Wisdom modifier (minimum once) per long rest. In addition, whenever you finish a short rest, your exhaustion level, if any, decreases by 1.",
+  "Relentless Hunter": "Taking damage can't break your concentration on Hunter's Mark.",
+  "Nature's Veil": "As a bonus action, you invoke spirits of nature to become invisible until the start of your next turn. You can use this a number of times equal to your Wisdom modifier (minimum once), regaining all uses on a long rest.",
+  "Precise Hunter": "You have advantage on attack rolls against the creature currently marked by your Hunter's Mark.",
+  "Epic Boon": "You gain an Epic Boon feat, or another feat of your choice for which you qualify — take it through this level's Ability Score Improvement panel.",
   "Favored Enemy improvement": "Choose an additional favored enemy type (and an associated language).",
   "Natural Explorer": "Choose a favored terrain. There, doubled proficiency on related Intelligence and Wisdom checks, difficult terrain doesn't slow your group, you can't become lost except by magic, you stay alert while doing other activities, you can stealth alone at a normal pace, you find twice as much food foraging, and tracking reveals exact numbers, sizes, and how long ago they passed.",
   "Natural Explorer improvement": "Choose an additional favored terrain.",
@@ -651,8 +661,8 @@ const FEATURE_TEXT = {
   "Land's Stride": "Moving through nonmagical difficult terrain costs you no extra movement, and you can pass through nonmagical plants without being slowed or harmed by them. You also have advantage on saving throws against magically created or manipulated plants that impede movement.",
   "Hide in Plain Sight": "Spend 1 minute creating camouflage and press yourself against a solid surface: while you remain there without moving or acting, you gain +10 to Dexterity (Stealth) checks.",
   "Vanish": "You can use the Hide action as a bonus action, and you can't be tracked by nonmagical means unless you choose to leave a trail.",
-  "Feral Senses": "You can attack creatures you can't see without disadvantage, and you are aware of the location of any invisible creature within 30 feet (if it isn't hidden and you aren't blinded or deafened).",
-  "Foe Slayer": "Once on each of your turns, add your Wisdom modifier to the attack roll or the damage roll of an attack you make against one of your favored enemies.",
+  "Feral Senses": "Your connection to the wilderness grants you blindsight with a range of 30 feet.",
+  "Foe Slayer": "The damage die of your Hunter's Mark is a d10 rather than a d6.",
   /* Rogue */
   "Sneak Attack": "Once per turn, deal extra damage (1d6, +1d6 every two rogue levels) to one creature you hit with a finesse or ranged weapon attack if you have advantage on the roll — or if another enemy of the target is within 5 feet of it and you don't have disadvantage.",
   "Thieves' Cant": "A secret mix of dialect, jargon, and code that hides messages in seemingly normal conversation (conveying one takes four times longer). You also understand secret thieves' signs and symbols.",
@@ -1175,14 +1185,17 @@ const SPELLS_KNOWN = {
   Bard: [4,5,6,7,8,9,10,11,12,14,15,15,16,18,19,19,20,22,22,22],
   Sorcerer: [2,3,4,5,6,7,8,9,10,11,12,12,13,13,14,14,15,15,15,15],
   Warlock: [2,3,4,5,6,7,8,9,10,10,11,11,12,12,13,13,14,14,15,15],
-  Ranger: [0,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11],
 };
+/* 2024 Ranger prepared-spell counts, index = class level - 1 */
+const RANGER_PREPARED = [2,3,4,5,6,6,7,7,9,9,10,10,11,11,12,12,14,14,15,15];
 const SPELL_ABILITY = { Bard: "cha", Cleric: "wis", Druid: "wis", Paladin: "cha", Ranger: "wis", Sorcerer: "cha", Warlock: "cha", Wizard: "int" };
 function spellCapacity(clsName, clsLevel, abilities) {
   const m = mod(abilities[SPELL_ABILITY[clsName]]);
   switch (clsName) {
-    case "Bard": case "Sorcerer": case "Warlock": case "Ranger":
+    case "Bard": case "Sorcerer": case "Warlock":
       return { n: SPELLS_KNOWN[clsName][clsLevel - 1], label: "spells known" };
+    case "Ranger":
+      return { n: RANGER_PREPARED[clsLevel - 1], label: "spells prepared (full ranger list available)" };
     case "Cleric": case "Druid":
       return { n: Math.max(1, m + clsLevel), label: "spells prepared (ability mod + level; full class list available)" };
     case "Paladin":
@@ -1196,6 +1209,7 @@ function maxSpellLevel(clsName, clsLevel) {
   const c = CLASSES[clsName].caster;
   if (c === "full") return clsLevel >= 1 ? Math.min(9, Math.ceil(clsLevel / 2)) : 0;
   if (c === "half") return clsLevel >= 2 ? Math.min(5, Math.ceil(clsLevel / 4)) : 0;
+  if (c === "half1") return Math.min(5, Math.max(1, Math.ceil(clsLevel / 4)));
   if (c === "pact") return PACT(clsLevel).lvl;
   return 0;
 }
@@ -1244,18 +1258,25 @@ const MC_SLOTS = [
   [4,3,3,3,2,1],[4,3,3,3,2,1],[4,3,3,3,2,1,1],[4,3,3,3,2,1,1],[4,3,3,3,2,1,1,1],[4,3,3,3,2,1,1,1],
   [4,3,3,3,2,1,1,1,1],[4,3,3,3,3,1,1,1,1],[4,3,3,3,3,2,1,1,1],[4,3,3,3,3,2,2,1,1],
 ];
-/* Native single-class half-caster table (Paladin/Ranger), index = class level - 1 */
+/* Native single-class half-caster table (Paladin, 2014-style), index = class level - 1 */
 const HALF_SLOTS = [
   [],[2],[3],[3],[4,2],[4,2],[4,3],[4,3],[4,3,2],[4,3,2],
   [4,3,3],[4,3,3],[4,3,3,1],[4,3,3,1],[4,3,3,2],[4,3,3,2],[4,3,3,3],[4,3,3,3],[4,3,3,3,1],[4,3,3,3,2],
 ];
+/* 2024 half-caster (Ranger): slots from 1st level, effectively caster level ⌈L/2⌉ */
+const HALF1_SLOTS = [
+  [2],[2],[3],[3],[4,2],[4,2],[4,3],[4,3],[4,3,2],[4,3,2],
+  [4,3,3],[4,3,3],[4,3,3,1],[4,3,3,1],[4,3,3,2],[4,3,3,2],[4,3,3,3,1],[4,3,3,3,1],[4,3,3,3,2],[4,3,3,3,2],
+];
 const PACT = (l) => (l >= 17 ? { n: 4, lvl: 5 } : l >= 11 ? { n: 3, lvl: 5 } : l >= 9 ? { n: 2, lvl: 5 } : l >= 7 ? { n: 2, lvl: 4 } : l >= 5 ? { n: 2, lvl: 3 } : l >= 3 ? { n: 2, lvl: 2 } : l >= 2 ? { n: 2, lvl: 1 } : { n: 1, lvl: 1 });
 
 function spellSlots(classes) {
-  const casters = classes.filter((c) => CLASSES[c.name].caster === "full" || CLASSES[c.name].caster === "half");
+  const casters = classes.filter((c) => ["full", "half", "half1"].includes(CLASSES[c.name].caster));
   if (!casters.length) return null;
   if (casters.length === 1 && CLASSES[casters[0].name].caster === "half") return HALF_SLOTS[casters[0].level - 1];
-  const cl = casters.reduce((s, c) => s + (CLASSES[c.name].caster === "full" ? c.level : Math.floor(c.level / 2)), 0);
+  if (casters.length === 1 && CLASSES[casters[0].name].caster === "half1") return HALF1_SLOTS[casters[0].level - 1];
+  // a 2024 half-caster rounds its contribution up; the 2014 kind still rounds down
+  const cl = casters.reduce((s, c) => s + (CLASSES[c.name].caster === "full" ? c.level : CLASSES[c.name].caster === "half1" ? Math.ceil(c.level / 2) : Math.floor(c.level / 2)), 0);
   return cl > 0 ? MC_SLOTS[Math.min(cl, 20) - 1] : null;
 }
 
@@ -2166,6 +2187,9 @@ const USE_TRACKERS = [
   { key: "dark-ones-own-luck", name: "Dark One's Own Luck", cls: "Warlock", when: (ch) => hasSub(ch, "The Fiend"), max: () => 1, per: "short" },
   { key: "hurl-through-hell", name: "Hurl Through Hell", cls: "Warlock", when: (ch) => hasSub(ch, "The Fiend") && classLevel(ch, "Warlock") >= 14, max: () => 1, per: "long" },
   { key: "breath-weapon", name: "Breath Weapon", when: (ch) => ch.race === "Dragonborn", max: () => 1, per: "short" },
+  { key: "favored-enemy-24", name: "Favored Enemy (free Hunter's Mark)", cls: "Ranger", when: (ch) => classLevel(ch, "Ranger") >= 1, max: (ch) => { const l = classLevel(ch, "Ranger"); return l >= 17 ? 6 : l >= 13 ? 5 : l >= 9 ? 4 : l >= 5 ? 3 : 2; }, per: "long" },
+  { key: "tireless", name: "Tireless", cls: "Ranger", when: (ch) => classLevel(ch, "Ranger") >= 10, max: (ch) => Math.max(1, mod(ch.abilities.wis)), per: "long" },
+  { key: "natures-veil", name: "Nature's Veil", cls: "Ranger", when: (ch) => classLevel(ch, "Ranger") >= 14, max: (ch) => Math.max(1, mod(ch.abilities.wis)), per: "long" },
   { key: "healing-hands", name: "Healing Hands", when: (ch) => /^Aasimar/.test(ch.race), max: () => 1, per: "long" },
   { key: "radiant-soul", name: "Radiant Soul", when: (ch) => ch.race === "Aasimar (Protector)" && totalLevel(ch) >= 3, max: () => 1, per: "long" },
   { key: "radiant-consumption", name: "Radiant Consumption", when: (ch) => ch.race === "Aasimar (Scourge)" && totalLevel(ch) >= 3, max: () => 1, per: "long" },
@@ -3095,6 +3119,7 @@ function shareCustomsFor(ch, customs) {
     [...(c.cantrips || []), ...(c.spells || []), ...featGrantedSpells(fn, totalLevel(ch))].forEach(addSpell);
   });
   raceGrantedSpells(ch).forEach(addSpell);
+  if (ch.classes.some((c) => c.name === "Ranger")) addSpell("Hunter's Mark");
   const itemNames = new Set((ch.inventory || []).map((r) => norm(r.name)));
   const subKeep = new Set(ch.classes.flatMap((c) => (c.subclass ? [norm(c.subclass), norm(baseSubName(c.subclass))] : [])));
   const subs = {};
@@ -3640,7 +3665,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
     step === 0 ? name.trim().length > 0 :
     step === 1 ? (!raceData.lineageTrait || !!lineageTrait) : // ability picks may wait for the Abilities step
     step === 2 ? langPicks.length === langNeed && (bg !== "Custom" || bgSkills.length === 2) && (race !== "Dragonborn" || ancestry) && raceSkills.length === raceSkillNeed && (race !== "High Elf" || heCantrip.trim()) :
-    step === 3 ? skills.length === clsData.nSkills && (clsData.subLvl > 1 || subclass) && (cls !== "Fighter" || style) && (cls !== "Rogue" || rogueExp.length === 2) && (cls !== "Ranger" || (favEnemy && natTerrain)) :
+    step === 3 ? skills.length === clsData.nSkills && (clsData.subLvl > 1 || subclass) && (cls !== "Fighter" || style) && (cls !== "Rogue" || rogueExp.length === 2) :
     step === 4 ? raceAbilPicks.length === (raceData.choose || 0) && (!raceData.feat || featPickDone(raceFeatDef, raceFeat)) :
     step === 6 ? (gearMode === "standard" ? standardReady : gearMode === "gold" ? gold !== null : false) :
     true;
@@ -3653,7 +3678,8 @@ function CreateWizard({ onDone, onCancel, customs }) {
       inventory,
       styles: style ? [style] : [], notes: "", persona,
       metamagic: [], pactBoon: null, invocations: [],
-      rangerChoices: cls === "Ranger" ? { favEnemy, natTerrain } : null,
+      rangerChoices: null, // the 2024 Ranger has no favored enemy/terrain picks
+
       spells: castsAt1 && (spellPicks.cantrips.length || spellPicks.spells.length) ? { [cls]: spellPicks } : {},
       abilities: finalScores, method,
       classes: [{ name: cls, level: 1, subclass: clsData.subLvl === 1 ? subclass : null }],
@@ -3945,22 +3971,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
                 </div>
               </div>
             )}
-            {cls === "Ranger" && (
-              <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                <div>
-                  <div style={{ color: T.gold, fontSize: 14, marginBottom: 6 }}>Favored Enemy</div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {FAVORED_ENEMIES.map((f) => <button key={f} style={{ ...btn(favEnemy === f), padding: "5px 10px", fontSize: 13, minHeight: 0 }} onClick={() => setFavEnemy(f)}>{f}</button>)}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ color: T.gold, fontSize: 14, marginBottom: 6 }}>Natural Explorer terrain</div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {NE_TERRAINS.map((t) => <button key={t} style={{ ...btn(natTerrain === t), padding: "5px 10px", fontSize: 13, minHeight: 0 }} onClick={() => setNatTerrain(t)}>{t}</button>)}
-                  </div>
-                </div>
-              </div>
-            )}
+
           </div>
         </div>
       )}
@@ -4004,7 +4015,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
           ) : (
             <div style={{ display: "grid", gap: 14 }}>
               <div style={{ color: T.dim, fontSize: 13 }}>
-                {cls === "Cleric" || cls === "Druid"
+                {cls === "Cleric" || cls === "Druid" || cls === "Ranger"
                   ? `${cls}s know their whole list — choose what you'll have prepared on day one.`
                   : cls === "Wizard" ? "Choose your six starting spellbook spells and your cantrips."
                   : "Choose your cantrips and known spells."}
@@ -4483,6 +4494,8 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const [secretsPicks, setSecretsPicks] = useState([]); // Magical Secrets (any class)
   const [favEnemyPick, setFavEnemyPick] = useState(null);
   const [terrainPick2, setTerrainPick2] = useState(null);
+  const [deftExp, setDeftExp] = useState(null); // Deft Explorer: one expertise skill
+  const [deftLangs, setDeftLangs] = useState([]); // Deft Explorer: two languages
   const [masteryPicks, setMasteryPicks] = useState({}); // { 1: spell, 2: spell }
   const [signaturePicks, setSignaturePicks] = useState([]);
   const [groupPicks, setGroupPicks] = useState({});     // maneuvers, disciplines, totems, …
@@ -4577,6 +4590,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
       : ch.rangerChoices;
     if (favEnemyPick) logBits.push(`Favored Enemy: ${favEnemyPick}`);
     if (terrainPick2) logBits.push(`Natural Explorer: ${terrainPick2}`);
+    if (gainsDeft && deftExp) logBits.push(`Deft Explorer: ${deftExp} expertise${deftLangs.length ? `, ${deftLangs.join(", ")}` : ""}`);
     let choices = ch.choices;
     if (gainsMastery && (masteryPicks[1] || masteryPicks[2])) { choices = { ...choices, "Spell Mastery": [masteryPicks[1], masteryPicks[2]].filter(Boolean) }; logBits.push(`Spell Mastery: ${choices["Spell Mastery"].join(", ")}`); }
     if (gainsSignature && signaturePicks.length) { choices = { ...choices, "Signature Spell": signaturePicks }; logBits.push(`Signature Spells: ${signaturePicks.join(", ")}`); }
@@ -4588,8 +4602,8 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     }
     const grantAll = asiMode === "feat" && featPk?.allSkills ? ALL_SKILLS : [];
     const skills = [...ch.skills, ...(mcSkill ? [mcSkill] : []), ...featSkills, ...grantAll].filter((v, i, a) => a.indexOf(v) === i);
-    const languages = [...(ch.languages || []), ...(asiMode === "feat" ? [...(featSel?.langs || []), ...(featPk?.grantLangs || [])] : [])].filter((v, i, a) => a.indexOf(v) === i);
-    const expertise = [...(ch.expertise || []), ...expPicks, ...(asiMode === "feat" ? featSel?.expertise || [] : [])].filter((v, i, a) => a.indexOf(v) === i);
+    const languages = [...(ch.languages || []), ...(asiMode === "feat" ? [...(featSel?.langs || []), ...(featPk?.grantLangs || [])] : []), ...deftLangs].filter((v, i, a) => a.indexOf(v) === i);
+    const expertise = [...(ch.expertise || []), ...expPicks, ...(asiMode === "feat" ? featSel?.expertise || [] : []), ...(deftExp ? [deftExp] : [])].filter((v, i, a) => a.indexOf(v) === i);
     const featChoices = asiMode === "feat" && featPick
       ? { ...(ch.featChoices || {}), [featPick]: {
           bump: featBump || null, skills: featSkills, choice: featSel.choice || null,
@@ -4690,8 +4704,8 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const rc = ch.rangerChoices || {};
   const enemiesTaken = [rc.favEnemy, ...(rc.extraEnemies || [])].filter(Boolean);
   const terrainsTaken = [rc.natTerrain, ...(rc.extraTerrains || [])].filter(Boolean);
-  const gainsFavEnemy = pick === "Ranger" && [6, 14].includes(newClsLevel);
-  const gainsNatTerrain = pick === "Ranger" && [6, 10].includes(newClsLevel);
+  const gainsFavEnemy = false, gainsNatTerrain = false; // 2014 ranger picks, retired by the 2024 class
+  const gainsDeft = pick === "Ranger" && newClsLevel === 2;
 
   // Wizard — Spell Mastery (18: one 1st- and one 2nd-level from the spellbook), Signature Spell (20: two 3rd-level)
   const spLevel = (n) => pool.find((sp) => sp.name === n)?.level;
@@ -4713,11 +4727,11 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     return need > 0 ? { g, avail, need, held } : null;
   }).filter(Boolean);
 
-  const preparedCaster = ["Cleric", "Druid", "Paladin"].includes(pick);
+  const preparedCaster = ["Cleric", "Druid", "Paladin", "Ranger"].includes(pick);
 
   const extrasNeeded = gainsASI || gainsSub || gainsMcSkill || gainsStyle || gainsExpertise || gainsMeta || gainsBoon ||
     invNeed > 0 || canSwapInv || gainsCantrips || gainsSpells || canSwapSpell || gainsArcanum ||
-    gainsBoAS || gainsTome || gainsSecrets || gainsFavEnemy || gainsNatTerrain || gainsMastery || gainsSignature ||
+    gainsBoAS || gainsTome || gainsSecrets || gainsDeft || gainsMastery || gainsSignature ||
     choiceGroupsDue.length > 0;
   const extrasDone =
     (!gainsASI || (asiMode === "feat" && featPickDone(allFeats(customs).find((f) => f.name === featPick), featSel)) || (asiMode === "asi" && asiPicks.length === 2)) &&
@@ -4729,7 +4743,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     (!gainsBoAS || boasPicks.length >= Math.min(2, boasPool.length + boasPicks.length)) &&
     (!gainsTome || tomePicks.length >= Math.min(3, tomePool.length)) &&
     secretsPicks.length >= secretsReq &&
-    (!gainsFavEnemy || favEnemyPick) && (!gainsNatTerrain || terrainPick2) &&
+    (!gainsDeft || (deftExp && deftLangs.length === 2)) &&
     (!gainsMastery || ((masteryPools[1].length === 0 || masteryPicks[1]) && (masteryPools[2].length === 0 || masteryPicks[2]))) &&
     (!gainsSignature || signaturePicks.length >= Math.min(2, signaturePool.length)) &&
     choiceGroupsDue.every((d) => (groupPicks[d.g.key] || []).length >= d.need);
@@ -4991,22 +5005,19 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                 <SpellPickGrid options={secretsPool} picks={secretsPicks} cap={secretsN} onChange={setSecretsPicks} />
               </div>
             )}
-            {gainsFavEnemy && (
+            {gainsDeft && (
               <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
-                <div style={{ color: T.gold, marginBottom: 8 }}>Additional Favored Enemy</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {FAVORED_ENEMIES.filter((e) => !enemiesTaken.includes(e)).map((e) => (
-                    <button key={e} style={{ ...btn(favEnemyPick === e), padding: "5px 10px", fontSize: 13, minHeight: 0 }} onClick={() => setFavEnemyPick(e)}>{e}</button>
+                <div style={{ color: T.gold, marginBottom: 8 }}>Deft Explorer — expertise in one skill, and two languages</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                  {ch.skills.filter((sk) => !(ch.expertise || []).includes(sk)).map((sk) => (
+                    <button key={sk} style={{ ...btn(deftExp === sk), padding: "5px 10px", fontSize: 13, minHeight: 0 }} onClick={() => setDeftExp(sk)}>{sk}</button>
                   ))}
                 </div>
-              </div>
-            )}
-            {gainsNatTerrain && (
-              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
-                <div style={{ color: T.gold, marginBottom: 8 }}>Additional Natural Explorer Terrain</div>
+                <div style={{ color: T.gold, fontSize: 13, marginBottom: 6 }}>Languages ({deftLangs.length}/2)</div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {NE_TERRAINS.filter((t) => !terrainsTaken.includes(t)).map((t) => (
-                    <button key={t} style={{ ...btn(terrainPick2 === t), padding: "5px 10px", fontSize: 13, minHeight: 0 }} onClick={() => setTerrainPick2(t)}>{t}</button>
+                  {LANGS.filter((l) => !(ch.languages || []).includes(l)).map((l) => (
+                    <button key={l} {...lorePress(l)} style={{ ...btn(deftLangs.includes(l)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
+                      onClick={() => setDeftLangs(deftLangs.includes(l) ? deftLangs.filter((x) => x !== l) : deftLangs.length < 2 ? [...deftLangs, l] : deftLangs)}>{l}</button>
                   ))}
                 </div>
               </div>
@@ -5330,7 +5341,7 @@ function InvocationManager({ ch, onInvocations, readOnly }) {
 const ARCANUM_UNLOCK = { 6: 11, 7: 13, 8: 15, 9: 17 }; // arcanum spell level -> warlock level
 
 /* Classes that know their whole list and prepare a subset — preparations change freely after a long rest */
-const PREP_ALL_CLASSES = ["Cleric", "Druid", "Paladin"];
+const PREP_ALL_CLASSES = ["Cleric", "Druid", "Paladin", "Ranger"];
 
 /* Long-rest preparation: swap what's held in mind, from the full class list */
 function PrepareSpells({ ch, customs, onSpells, onClose }) {
@@ -5439,7 +5450,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
   const usedSlotsArr = ch.usedSlots || [];
   const pactAll = wl ? PACT(wl.level) : null;
   const pactLeft = pactAll ? pactAll.n - Math.min(ch.usedPact || 0, pactAll.n) : 0;
-  const featSpellNames = new Set([...featSp.flatMap((e) => e.names), ...raceGrantedSpells(ch)]);
+  const featSpellNames = new Set([...featSp.flatMap((e) => e.names), ...raceGrantedSpells(ch), ...(classLevel(ch, "Ranger") >= 1 ? ["Hunter's Mark"] : [])]);
   const canPay = (n) => {
     const lvl = spLvl(n);
     if (lvl === 0) return true;
@@ -5473,6 +5484,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
     Object.entries(mine.arcanum || {}).forEach(([l, n]) => addGroup(+l, "Mystic Arcanum", [n], "#b48ead"));
   });
   if (ch.racialChoices?.cantrip) addGroup(0, `${ch.race} · racial`, [ch.racialChoices.cantrip]);
+  if (classLevel(ch, "Ranger") >= 1) addGroup(1, "Favored Enemy · always prepared", ["Hunter's Mark"], T.green);
   {
     const rs = raceGrantedSpells(ch);
     addGroup(0, `${ch.race} · racial`, rs.filter((n) => spLvl(n) === 0), "#8fbcbb");
@@ -7467,7 +7479,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
             </div>
           )}
           {slots && ch.classes.filter((c) => ["full", "half"].includes(CLASSES[c.name].caster)).length > 1 && (
-            <div style={{ color: T.dim, fontSize: 12, marginTop: 8 }}>Combined caster level: full casters count fully, Paladin/Ranger at half (rounded down). Spells known/prepared are determined per class as if single-classed.</div>
+            <div style={{ color: T.dim, fontSize: 12, marginTop: 8 }}>Combined caster level: full casters count fully, Paladin at half rounded down, Ranger (2024) at half rounded up. Spells known/prepared are determined per class as if single-classed.</div>
           )}
           {pact && (
             <div style={{ marginTop: slots ? 12 : 0, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
