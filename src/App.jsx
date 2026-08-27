@@ -316,6 +316,8 @@ const LAND_TERRAINS = {
 const SUB_SPELLS = {
   "Life Domain": { type: "granted", label: "Domain spells (always prepared)", spells: { 1: ["Bless", "Cure Wounds"], 3: ["Lesser Restoration", "Spiritual Weapon"], 5: ["Beacon of Hope", "Revivify"], 7: ["Death Ward", "Guardian of Faith"], 9: ["Mass Cure Wounds", "Raise Dead"] } },
   "Oath of Devotion": { type: "granted", label: "Oath spells (always prepared)", spells: { 3: ["Protection from Evil and Good", "Sanctuary"], 5: ["Lesser Restoration", "Zone of Truth"], 9: ["Beacon of Hope", "Dispel Magic"], 13: ["Freedom of Movement", "Guardian of Faith"], 17: ["Commune", "Flame Strike"] } },
+  "Fey Wanderer": { type: "granted", label: "Fey Wanderer spells (always prepared)", spells: { 3: ["Charm Person"], 5: ["Misty Step"], 9: ["Summon Fey"], 13: ["Dimension Door"], 17: ["Mislead"] } },
+  "Gloom Stalker": { type: "granted", label: "Gloom Stalker spells (always prepared)", spells: { 3: ["Disguise Self"], 5: ["Rope Trick"], 9: ["Fear"], 13: ["Greater Invisibility"], 17: ["Seeming"] } },
   "The Fiend": { type: "expanded", label: "Expanded spell list (added to your Warlock options)", spells: { 1: ["Burning Hands", "Command"], 3: ["Blindness/Deafness", "Scorching Ray"], 5: ["Fireball", "Stinking Cloud"], 7: ["Fire Shield", "Wall of Fire"], 9: ["Flame Strike", "Hallow"] } },
 };
 const baseSubName = (sub) => (sub || "").replace(/\s*\([^)]*\)$/, "");
@@ -435,7 +437,7 @@ const CLASSES = {
     feats: { 1: ["Divine Sense", "Lay on Hands"], 2: ["Fighting Style", "Spellcasting", "Divine Smite"], 3: ["Divine Health", "Sacred Oath"], 5: ["Extra Attack"], 6: ["Aura of Protection"], 7: ["Oath feature"], 10: ["Aura of Courage"], 11: ["Improved Divine Smite"], 14: ["Cleansing Touch"], 15: ["Oath feature"], 18: ["Aura improvements"], 20: ["Oath feature"] } },
   /* Ranger runs on the 2024 PHB (SRD 5.2): a prepared caster from 1st level whose
      Favored Enemy is Hunter's Mark. The other classes keep their 2014 tables. */
-  Ranger: { die: 10, saves: ["str", "dex"], caster: "half1", subLvl: 3, subName: "Ranger Archetype", subs: ["Hunter"],
+  Ranger: { die: 10, saves: ["str", "dex"], caster: "half1", subLvl: 3, subName: "Ranger Subclass", subs: ["Hunter", "Beast Master", "Fey Wanderer", "Gloom Stalker"],
     skills: ["Animal Handling", "Athletics", "Insight", "Investigation", "Nature", "Perception", "Stealth", "Survival"], nSkills: 3,
     asi: [4, 8, 12, 16, 19],
     feats: { 1: ["Spellcasting", "Favored Enemy", "Weapon Mastery"], 2: ["Deft Explorer", "Fighting Style"], 3: ["Ranger Archetype"], 5: ["Extra Attack"], 6: ["Roving"], 7: ["Archetype feature"], 9: ["Expertise"], 10: ["Tireless"], 11: ["Archetype feature"], 13: ["Relentless Hunter"], 14: ["Nature's Veil"], 15: ["Archetype feature"], 17: ["Precise Hunter"], 18: ["Feral Senses"], 19: ["Epic Boon"], 20: ["Foe Slayer"] } },
@@ -466,7 +468,10 @@ const SUB_FEATS = {
   "Champion": { 3: ["Improved Critical (19–20)"], 7: ["Remarkable Athlete"], 10: ["Additional Fighting Style"], 15: ["Superior Critical (18–20)"], 18: ["Survivor"] },
   "Way of the Open Hand": { 3: ["Open Hand Technique"], 6: ["Wholeness of Body"], 11: ["Tranquility"], 17: ["Quivering Palm"] },
   "Oath of Devotion": { 3: ["Oath Spells", "Channel Divinity: Sacred Weapon / Turn the Unholy"], 7: ["Aura of Devotion"], 15: ["Purity of Spirit"], 20: ["Holy Nimbus"] },
-  "Hunter": { 3: ["Hunter's Prey"], 7: ["Defensive Tactics"], 11: ["Multiattack"], 15: ["Superior Hunter's Defense"] },
+  "Hunter": { 3: ["Hunter's Lore", "Hunter's Prey"], 7: ["Defensive Tactics"], 11: ["Superior Hunter's Prey"], 15: ["Superior Hunter's Defense"] },
+  "Beast Master": { 3: ["Primal Companion"], 7: ["Exceptional Training"], 11: ["Bestial Fury"], 15: ["Share Spells"] },
+  "Fey Wanderer": { 3: ["Dreadful Strikes", "Otherworldly Glamour"], 7: ["Beguiling Twist"], 11: ["Fey Reinforcements"], 15: ["Misty Wanderer"] },
+  "Gloom Stalker": { 3: ["Dread Ambusher", "Umbral Sight"], 7: ["Iron Mind"], 11: ["Stalker's Flurry"], 15: ["Shadowy Dodge"] },
   "Thief": { 3: ["Fast Hands", "Second-Story Work"], 9: ["Supreme Sneak"], 13: ["Use Magic Device"], 17: ["Thief's Reflexes"] },
   "Draconic Bloodline": { 1: ["Dragon Ancestor", "Draconic Resilience"], 6: ["Elemental Affinity"], 14: ["Dragon Wings"], 18: ["Draconic Presence"] },
   "The Fiend": { 1: ["Dark One's Blessing"], 6: ["Dark One's Own Luck"], 10: ["Fiendish Resilience"], 14: ["Hurl Through Hell"] },
@@ -758,12 +763,45 @@ const SUB_LORE = {
       20: [{ n: "Holy Nimbus", t: "As an action, emanate an aura of sunlight for 1 minute: bright light in a 30-foot radius, enemies that start their turn in it take 10 radiant damage, and you have advantage on saving throws against spells cast by fiends and undead. Once per long rest." }],
     } },
   "Hunter": { cls: "Ranger",
-    flavor: "Emulating the Hunter archetype means accepting your place as a bulwark between civilization and the terrors of the wilderness, honing techniques against threats from rampaging ogres and hordes of orcs to towering giants and terrifying dragons.",
+    flavor: "You stalk prey in the wilds and elsewhere, using your abilities as a Hunter to protect nature and people everywhere from forces that would destroy them. (2024)",
     features: {
-      3: [{ n: "Hunter's Prey", t: "Choose one: Colossus Slayer — once per turn, your weapon attack deals an extra 1d8 to a creature below its hit point maximum. Giant Killer — when a Large or larger creature within 5 feet hits or misses you, use your reaction to attack it. Horde Breaker — once per turn when you attack, make another attack with the same weapon against a different creature within 5 feet of the original target and in range." }],
-      7: [{ n: "Defensive Tactics", t: "Choose one: Escape the Horde — opportunity attacks against you have disadvantage. Multiattack Defense — after a creature hits you, its other attacks this turn take −4 (you gain +4 AC against them). Steel Will — advantage on saving throws against being frightened." }],
-      11: [{ n: "Multiattack", t: "Choose one: Volley — as an action, make a ranged attack against any number of creatures within 10 feet of a point you can see in range (ammunition and a separate roll for each). Whirlwind Attack — as an action, make a melee attack against any number of creatures within 5 feet of you (a separate roll for each)." }],
-      15: [{ n: "Superior Hunter's Defense", t: "Choose one: Evasion — a Dex save for half damage becomes no damage on a success, half on a failure. Stand Against the Tide — when a creature misses you with a melee attack, use your reaction to force it to repeat the attack against another creature of your choice. Uncanny Dodge — use your reaction to halve an attack's damage against you." }],
+      3: [
+        { n: "Hunter's Lore", t: "You can call on the forces of nature to reveal certain strengths and weaknesses of your prey. While a creature is marked by your Hunter's Mark, you know whether that creature has any immunities, resistances, or vulnerabilities — and if it has any, you know what they are." },
+        { n: "Hunter's Prey", t: "Choose one; you can swap it whenever you finish a short or long rest. Colossus Slayer — when you hit a creature with a weapon, it takes an extra 1d8 damage if it's missing any hit points, once per turn. Horde Breaker — once on each of your turns when you attack with a weapon, make another attack with it against a different creature within 5 feet of the original target (in range, not yet attacked by you this turn)." },
+      ],
+      7: [{ n: "Defensive Tactics", t: "Choose one; swap on any short or long rest. Escape the Horde — opportunity attacks against you have disadvantage. Multiattack Defense — when a creature hits you with an attack roll, it has disadvantage on all its other attack rolls against you this turn." }],
+      11: [{ n: "Superior Hunter's Prey", t: "Once per turn when you deal damage to a creature marked by your Hunter's Mark, you can also deal the spell's extra damage to a different creature you can see within 30 feet of the first." }],
+      15: [{ n: "Superior Hunter's Defense", t: "When you take damage, you can use your reaction to give yourself resistance to that damage — and to any other damage of the same type — until the end of the current turn." }],
+    } },
+  "Beast Master": { cls: "Ranger",
+    flavor: "A bond with a primal beast — fang, fin, or wing — fighting as one with you. (2024)",
+    features: {
+      3: [{ n: "Primal Companion", t: "You magically summon a primal beast: choose the Beast of the Land, Beast of the Sea, or Beast of the Sky stat block (muster it from Minions & Summons — its AC, HP, and damage scale with your ranger level and Wisdom). It obeys you, shares your initiative, and acts on your turn; it can move and use its reaction freely, but takes only the Dodge action unless you use a bonus action to command another. If you're incapacitated it acts on its own. If it dies, you can revive it: touch it within the hour and expend a spell slot to restore it after 1 minute, fully healed. On a long rest you may summon a different beast." }],
+      7: [{ n: "Exceptional Training", t: "When you take a bonus action to command your beast, you can also command it to Dash, Disengage, Dodge, or Help with its bonus action. In addition, when the beast hits with an attack, it can deal force damage in place of its normal damage type." }],
+      11: [{ n: "Bestial Fury", t: "When you command your beast to take the Attack action, it can make two attacks. The first time each turn it hits a creature marked by your Hunter's Mark, it also deals the spell's extra damage." }],
+      15: [{ n: "Share Spells", t: "When you cast a spell targeting yourself, you can also affect your beast with the spell if it is within 30 feet of you." }],
+    } },
+  "Fey Wanderer": { cls: "Ranger",
+    flavor: "A fey mystique clings to you — a gift of the Feywild that beguiles courts and scars minds. (2024)",
+    features: {
+      3: [
+        { n: "Dreadful Strikes", t: "When you hit a creature with a weapon, you can deal an extra 1d4 psychic damage to it — once per turn per creature. The extra damage becomes 1d6 at ranger level 11." },
+        { n: "Otherworldly Glamour", t: "Add your Wisdom modifier (minimum +1) to every Charisma check you make — the sheet folds it in. You also gain proficiency in Deception, Performance, or Persuasion (chosen when you take this subclass)." },
+      ],
+      7: [{ n: "Beguiling Twist", t: "You have advantage on saving throws to avoid or end the charmed or frightened condition. And whenever you or a creature you can see within 120 feet succeeds on a save against being charmed or frightened, you can use your reaction to force a different creature you can see within 120 feet to make a Wisdom save against your spell save DC — on a failure it is charmed or frightened (your choice) for 1 minute, repeating the save at the end of each of its turns." }],
+      11: [{ n: "Fey Reinforcements", t: "You always have Summon Fey prepared, and can cast it once per long rest without a spell slot. When you begin casting it, you can cast it without concentration — its duration then becomes 1 minute." }],
+      15: [{ n: "Misty Wanderer", t: "You can cast Misty Step without a spell slot a number of times equal to your Wisdom modifier (minimum once), regaining all uses on a long rest. Whenever you cast Misty Step, you can bring along one willing creature within 5 feet — it teleports to an unoccupied space within 5 feet of your destination." }],
+    } },
+  "Gloom Stalker": { cls: "Ranger",
+    flavor: "At home in the darkest places, you hunt what lurks where others fear to tread. (2024)",
+    features: {
+      3: [
+        { n: "Dread Ambusher", t: "Ambusher's Leap: at the start of your first turn of each combat, your speed increases by 10 feet until the end of that turn. Dreadful Strike: when you hit a creature with a weapon, deal an extra 2d6 psychic damage — usable a number of times equal to your Wisdom modifier (minimum once), regained on a long rest. Initiative Bonus: add your Wisdom modifier to your initiative rolls (the sheet folds it in)." },
+        { n: "Umbral Sight", t: "You gain darkvision to 60 feet — or 60 more, if you already have it. And while entirely in darkness, you are invisible to any creature that relies on darkvision to see you." },
+      ],
+      7: [{ n: "Iron Mind", t: "You gain proficiency in Wisdom saving throws (the sheet applies it). If you already have that proficiency, take Intelligence or Charisma saves instead." }],
+      11: [{ n: "Stalker's Flurry", t: "Once per turn when you miss with an attack roll, you can make another attack roll against the same or a different target." }],
+      15: [{ n: "Shadowy Dodge", t: "Whenever a creature makes an attack roll against you, you can use your reaction to impose disadvantage on that roll. Whether it hits or misses, you can then teleport up to 30 feet to an unoccupied space you can see." }],
     } },
   "Thief": { cls: "Rogue",
     flavor: "Burglars, bandits, cutpurses, and treasure seekers — thieves hone their skills in the larcenous arts, adding unmatched agility and a deep bag of tricks to the rogue's stealth and cunning.",
@@ -815,10 +853,17 @@ Object.values(SUB_LORE).forEach((s) => Object.values(s.features).forEach((fx) =>
 
 /* Best-available rules text for a feature name: imported compendium text wins, then SRD text
    (class-specific first), then the core fallbacks. */
+const TEXT_2024 = new Set([
+  "Favored Enemy", "Feral Senses", "Foe Slayer", "Hunter's Prey", "Defensive Tactics", "Superior Hunter's Defense",
+  "Hunter's Lore", "Superior Hunter's Prey", "Primal Companion", "Exceptional Training", "Bestial Fury", "Share Spells",
+  "Dreadful Strikes", "Otherworldly Glamour", "Beguiling Twist", "Fey Reinforcements", "Misty Wanderer",
+  "Dread Ambusher", "Umbral Sight", "Iron Mind", "Stalker's Flurry", "Shadowy Dodge",
+]);
 function featureBody(rawName, cls, customs) {
   const name = String(rawName || "").trim();
   const strip = baseSubName(name);
   const ft = customs?.featureTexts || {};
+  if (TEXT_2024.has(strip)) return FEATURE_TEXT[strip] || FEATURE_TEXT[name] || ft[name] || ft[strip];
   return ft[name] || ft[strip]
     || (cls && (FEATURE_TEXT[`${cls}:${name}`] || FEATURE_TEXT[`${cls}:${strip}`]))
     || FEATURE_TEXT[name] || FEATURE_TEXT[strip]
@@ -1615,6 +1660,7 @@ function rollFeatures(ch) {
     aura: clsLv("Paladin") >= 6 ? Math.max(1, mod(ch.abilities.cha)) : 0,    // Aura of Protection
     diamondSoul: clsLv("Monk") >= 14,                                        // proficiency in all saves
     slipperyMind: clsLv("Rogue") >= 15,                                      // WIS save proficiency
+    ironMind: clsLv("Ranger") >= 7 && hasSub(ch, "Gloom Stalker"),           // WIS save proficiency (2024)
     critRange: champLvl >= 15 ? 18 : champLvl >= 3 ? 19 : 20,                // Improved/Superior Critical
     archery: hasStyle(ch, "Archery") ? 2 : 0,
     barbarian: clsLv("Barbarian"),
@@ -2187,6 +2233,9 @@ const USE_TRACKERS = [
   { key: "dark-ones-own-luck", name: "Dark One's Own Luck", cls: "Warlock", when: (ch) => hasSub(ch, "The Fiend"), max: () => 1, per: "short" },
   { key: "hurl-through-hell", name: "Hurl Through Hell", cls: "Warlock", when: (ch) => hasSub(ch, "The Fiend") && classLevel(ch, "Warlock") >= 14, max: () => 1, per: "long" },
   { key: "breath-weapon", name: "Breath Weapon", when: (ch) => ch.race === "Dragonborn", max: () => 1, per: "short" },
+  { key: "dreadful-strike", name: "Dreadful Strike (+2d6 psychic)", cls: "Ranger", when: (ch) => hasSub(ch, "Gloom Stalker") && classLevel(ch, "Ranger") >= 3, max: (ch) => Math.max(1, mod(ch.abilities.wis)), per: "long" },
+  { key: "fey-reinforcements", name: "Fey Reinforcements (free Summon Fey)", cls: "Ranger", when: (ch) => hasSub(ch, "Fey Wanderer") && classLevel(ch, "Ranger") >= 11, max: () => 1, per: "long" },
+  { key: "misty-wanderer", name: "Misty Wanderer (free Misty Step)", cls: "Ranger", when: (ch) => hasSub(ch, "Fey Wanderer") && classLevel(ch, "Ranger") >= 15, max: (ch) => Math.max(1, mod(ch.abilities.wis)), per: "long" },
   { key: "favored-enemy-24", name: "Favored Enemy (free Hunter's Mark)", cls: "Ranger", when: (ch) => classLevel(ch, "Ranger") >= 1, max: (ch) => { const l = classLevel(ch, "Ranger"); return l >= 17 ? 6 : l >= 13 ? 5 : l >= 9 ? 4 : l >= 5 ? 3 : 2; }, per: "long" },
   { key: "tireless", name: "Tireless", cls: "Ranger", when: (ch) => classLevel(ch, "Ranger") >= 10, max: (ch) => Math.max(1, mod(ch.abilities.wis)), per: "long" },
   { key: "natures-veil", name: "Nature's Veil", cls: "Ranger", when: (ch) => classLevel(ch, "Ranger") >= 14, max: (ch) => Math.max(1, mod(ch.abilities.wis)), per: "long" },
@@ -2406,8 +2455,8 @@ const SUMMON_LIB = [
   SM("Feature", "Wild Shape", { ends: "manual", role: "Wild Shape", mine: (ch) => classLevel(ch, "Druid") >= 2, pick: { types: ["beast"], maxCr: 6 }, countHint: "CR caps by druid level: ¼ at 2nd (no fly/swim), ½ at 4th (no fly), 1 at 8th — Circle of the Moon goes higher. At 0 HP the form breaks and leftover damage carries to your true body", brief: "Track your beast form's own hit-point pool here while you wear it", forms: [
     ["Wolf", 11, 13], ["Panther", 13, 12], ["Giant Wolf Spider", 11, 13], ["Black Bear", 19, 11], ["Brown Bear", 34, 11], ["Dire Wolf", 37, 14], ["Giant Spider", 26, 14], ["Giant Eagle", 26, 13],
   ] }),
-  SM("Feature", "Ranger's Companion", { ends: "manual", role: "Companion", mine: (ch) => hasSub(ch, "Beast Master"), pick: { types: ["beast"], maxCr: 0.25, maxSize: "Medium" }, countHint: "a beast of CR ¼ or lower, Medium or smaller", brief: "Your bonded beast — it acts on your commands and grows with your ranger level", forms: [
-    ["Wolf", 11, 13], ["Panther", 13, 12], ["Hawk", 1, 13], ["Mastiff", 5, 12], ["Boar", 11, 11], ["Giant Poisonous Snake", 11, 14], ["Giant Wolf Spider", 11, 13],
+  SM("Feature", "Primal Companion", { ends: "manual", role: "Companion", mine: (ch) => hasSub(ch, "Beast Master"), hpOf: (ch) => 5 + 5 * classLevel(ch, "Ranger"), countHint: "AC 13 + your Wis mod · HP 5 + 5 × your ranger level", brief: "The Beast Master's bonded primal beast — land, sea, or sky, scaling with your ranger level", forms: [
+    ["Beast of the Land", 30, 13], ["Beast of the Sea", 30, 13], ["Beast of the Sky", 20, 13],
   ] }),
   SM("Feature", "Pact of the Chain", { ends: "manual", role: "Scout", mine: (ch) => ch.pactBoon === "Pact of the Chain", pickNames: ["Imp", "Quasit", "Pseudodragon", "Sprite"], brief: "Your special familiar — imp, quasit, pseudodragon, or sprite — and it can attack in your stead", forms: [
     ["Imp", 10, 13], ["Quasit", 7, 13], ["Pseudodragon", 7, 13], ["Sprite", 2, 15],
@@ -3053,7 +3102,7 @@ function mergeLedger(payload, chars, customs) {
   return { chars: [...chars, ...incoming], customs: mergedCustoms, added: incoming.length };
 }
 
-const allSubs = (cls, customs) => CLASSES[cls].subs.concat((customs?.subs?.[cls] || []).map((s) => s.name));
+const allSubs = (cls, customs) => CLASSES[cls].subs.concat((customs?.subs?.[cls] || []).map((s) => s.name).filter((n) => !CLASSES[cls].subs.includes(n)));
 const customSubFeats = (subclass, level, customs) => {
   for (const arr of Object.values(customs?.subs || {})) {
     const hit = arr.find((s) => s.name === subclass || s.name === baseSubName(subclass));
@@ -3061,7 +3110,12 @@ const customSubFeats = (subclass, level, customs) => {
   }
   return [];
 };
-const allSubFeats = (subclass, level, customs) => subFeatsFor(subclass, level).concat(customSubFeats(subclass, level, customs));
+/* Where a built-in table exists for a subclass, it is the current printing — the imported
+   2014 copy of the same name stays out of the feature list entirely */
+const allSubFeats = (subclass, level, customs) =>
+  SUB_FEATS[baseSubName(subclass || "")]
+    ? subFeatsFor(subclass, level)
+    : subFeatsFor(subclass, level).concat(customSubFeats(subclass, level, customs));
 const allFeats = (customs) => {
   const map = new Map(FEATS.map((f) => [f.name, f]));
   /* An imported compendium is the table's own rulebook: where it names a feat the built-in
@@ -4496,6 +4550,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const [terrainPick2, setTerrainPick2] = useState(null);
   const [deftExp, setDeftExp] = useState(null); // Deft Explorer: one expertise skill
   const [deftLangs, setDeftLangs] = useState([]); // Deft Explorer: two languages
+  const [glamourPick, setGlamourPick] = useState(null); // Fey Wanderer: Otherworldly Glamour skill
   const [masteryPicks, setMasteryPicks] = useState({}); // { 1: spell, 2: spell }
   const [signaturePicks, setSignaturePicks] = useState([]);
   const [groupPicks, setGroupPicks] = useState({});     // maneuvers, disciplines, totems, …
@@ -4591,6 +4646,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     if (favEnemyPick) logBits.push(`Favored Enemy: ${favEnemyPick}`);
     if (terrainPick2) logBits.push(`Natural Explorer: ${terrainPick2}`);
     if (gainsDeft && deftExp) logBits.push(`Deft Explorer: ${deftExp} expertise${deftLangs.length ? `, ${deftLangs.join(", ")}` : ""}`);
+    if (gainsGlamour && glamourPick) logBits.push(`Otherworldly Glamour: ${glamourPick}`);
     let choices = ch.choices;
     if (gainsMastery && (masteryPicks[1] || masteryPicks[2])) { choices = { ...choices, "Spell Mastery": [masteryPicks[1], masteryPicks[2]].filter(Boolean) }; logBits.push(`Spell Mastery: ${choices["Spell Mastery"].join(", ")}`); }
     if (gainsSignature && signaturePicks.length) { choices = { ...choices, "Signature Spell": signaturePicks }; logBits.push(`Signature Spells: ${signaturePicks.join(", ")}`); }
@@ -4601,7 +4657,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
       if (picksArr.length) logBits.push(`${d.g.key}: ${picksArr.join(", ")}`);
     }
     const grantAll = asiMode === "feat" && featPk?.allSkills ? ALL_SKILLS : [];
-    const skills = [...ch.skills, ...(mcSkill ? [mcSkill] : []), ...featSkills, ...grantAll].filter((v, i, a) => a.indexOf(v) === i);
+    const skills = [...ch.skills, ...(mcSkill ? [mcSkill] : []), ...featSkills, ...grantAll, ...(glamourPick ? [glamourPick] : [])].filter((v, i, a) => a.indexOf(v) === i);
     const languages = [...(ch.languages || []), ...(asiMode === "feat" ? [...(featSel?.langs || []), ...(featPk?.grantLangs || [])] : []), ...deftLangs].filter((v, i, a) => a.indexOf(v) === i);
     const expertise = [...(ch.expertise || []), ...expPicks, ...(asiMode === "feat" ? featSel?.expertise || [] : []), ...(deftExp ? [deftExp] : [])].filter((v, i, a) => a.indexOf(v) === i);
     const featChoices = asiMode === "feat" && featPick
@@ -4706,6 +4762,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const terrainsTaken = [rc.natTerrain, ...(rc.extraTerrains || [])].filter(Boolean);
   const gainsFavEnemy = false, gainsNatTerrain = false; // 2014 ranger picks, retired by the 2024 class
   const gainsDeft = pick === "Ranger" && newClsLevel === 2;
+  const gainsGlamour = pick === "Ranger" && newClsLevel === 3 && baseSubName(newSub || entry?.subclass || "") === "Fey Wanderer";
 
   // Wizard — Spell Mastery (18: one 1st- and one 2nd-level from the spellbook), Signature Spell (20: two 3rd-level)
   const spLevel = (n) => pool.find((sp) => sp.name === n)?.level;
@@ -4731,7 +4788,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
 
   const extrasNeeded = gainsASI || gainsSub || gainsMcSkill || gainsStyle || gainsExpertise || gainsMeta || gainsBoon ||
     invNeed > 0 || canSwapInv || gainsCantrips || gainsSpells || canSwapSpell || gainsArcanum ||
-    gainsBoAS || gainsTome || gainsSecrets || gainsDeft || gainsMastery || gainsSignature ||
+    gainsBoAS || gainsTome || gainsSecrets || gainsDeft || gainsGlamour || gainsMastery || gainsSignature ||
     choiceGroupsDue.length > 0;
   const extrasDone =
     (!gainsASI || (asiMode === "feat" && featPickDone(allFeats(customs).find((f) => f.name === featPick), featSel)) || (asiMode === "asi" && asiPicks.length === 2)) &&
@@ -4743,7 +4800,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     (!gainsBoAS || boasPicks.length >= Math.min(2, boasPool.length + boasPicks.length)) &&
     (!gainsTome || tomePicks.length >= Math.min(3, tomePool.length)) &&
     secretsPicks.length >= secretsReq &&
-    (!gainsDeft || (deftExp && deftLangs.length === 2)) &&
+    (!gainsDeft || (deftExp && deftLangs.length === 2)) && (!gainsGlamour || glamourPick) &&
     (!gainsMastery || ((masteryPools[1].length === 0 || masteryPicks[1]) && (masteryPools[2].length === 0 || masteryPicks[2]))) &&
     (!gainsSignature || signaturePicks.length >= Math.min(2, signaturePool.length)) &&
     choiceGroupsDue.every((d) => (groupPicks[d.g.key] || []).length >= d.need);
@@ -5003,6 +5060,16 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                 <div style={{ color: T.gold, marginBottom: 4 }}>Magical Secrets — choose {secretsN} from ANY class ({secretsPicks.length}/{secretsN})</div>
                 <div style={{ color: T.dim, fontSize: 12, marginBottom: 8 }}>Any spell of a level you can cast, from any class's list.</div>
                 <SpellPickGrid options={secretsPool} picks={secretsPicks} cap={secretsN} onChange={setSecretsPicks} />
+              </div>
+            )}
+            {gainsGlamour && (
+              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
+                <div style={{ color: T.gold, marginBottom: 8 }}>Otherworldly Glamour — one skill proficiency</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {["Deception", "Performance", "Persuasion"].filter((sk) => !ch.skills.includes(sk)).map((sk) => (
+                    <button key={sk} style={{ ...btn(glamourPick === sk), padding: "5px 10px", fontSize: 13, minHeight: 0 }} onClick={() => setGlamourPick(sk)}>{sk}</button>
+                  ))}
+                </div>
               </div>
             )}
             {gainsDeft && (
@@ -7049,8 +7116,8 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   const feats = rollFeatures(ch);
   const fEff = featEffects(ch, customs);
   const featSave = (a) => fEff.saves.find((s) => s.abil === a);
-  const saveProfFor = (a) => CLASSES[ch.classes[0].name].saves.includes(a) || feats.diamondSoul || (feats.slipperyMind && a === "wis") || !!featSave(a);
-  const saveProfLabel = (a) => (CLASSES[ch.classes[0].name].saves.includes(a) ? "proficiency" : featSave(a) ? featSave(a).from : feats.diamondSoul ? "Diamond Soul" : "Slippery Mind");
+  const saveProfFor = (a) => CLASSES[ch.classes[0].name].saves.includes(a) || feats.diamondSoul || ((feats.slipperyMind || feats.ironMind) && a === "wis") || !!featSave(a);
+  const saveProfLabel = (a) => (CLASSES[ch.classes[0].name].saves.includes(a) ? "proficiency" : featSave(a) ? featSave(a).from : feats.diamondSoul ? "Diamond Soul" : feats.ironMind && a === "wis" ? "Iron Mind" : "Slippery Mind");
   const halfProf = (a) => {
     const athlete = ["str", "dex", "con"].includes(a) ? feats.athlete : 0;
     if (!athlete && !feats.jack) return null;
@@ -7063,12 +7130,17 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     ...fx.save,
   ];
   const saveMod = (a) => savePartsFor(a).reduce((s, p) => s + p.value, 0);
+  const glamour = (a) => (a === "cha" && hasSub(ch, "Fey Wanderer") ? [{ label: "Otherworldly Glamour", value: Math.max(1, mod(ch.abilities.wis)) }] : []);
   const checkPartsFor = (a) => {
     const hp2 = halfProf(a);
-    return [{ label: ABIL_NAMES[a], value: mod(ch.abilities[a]) }, ...(hp2 ? [hp2] : [])];
+    return [{ label: ABIL_NAMES[a], value: mod(ch.abilities[a]) }, ...(hp2 ? [hp2] : []), ...glamour(a)];
   };
   /* Initiative is a Dexterity check that the Alert feat alone adds proficiency to */
-  const initPartsFor = () => [...checkPartsFor("dex"), ...(fEff.init ? [{ label: fEff.init.label, value: fEff.init.value }] : [])];
+  const initPartsFor = () => [
+    ...checkPartsFor("dex"),
+    ...(fEff.init ? [{ label: fEff.init.label, value: fEff.init.value }] : []),
+    ...(hasSub(ch, "Gloom Stalker") && mod(ch.abilities.wis) !== 0 ? [{ label: "Dread Ambusher", value: mod(ch.abilities.wis) }] : []),
+  ];
   const skillPartsFor = (sk) => {
     const a = SKILL_ABIL[sk];
     const prof = ch.skills.includes(sk);
@@ -7078,6 +7150,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
       { label: ABIL_NAMES[a], value: mod(ch.abilities[a]) },
       ...(prof ? [{ label: exp ? "expertise" : "proficiency", value: pb * (exp ? 2 : 1) }] : []),
       ...(hp2 ? [hp2] : []),
+      ...glamour(a),
     ];
   };
   const rollIt = (title, parts, kind, abil, proficient, extra) => setRollSpec({ title, parts, kind, abil, proficient, extra });
