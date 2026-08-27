@@ -914,9 +914,117 @@ function featBlockedBy(def, { abilities, level, caster }) {
   }
   return null;
 }
+/* ---- Battle Master maneuvers, for Martial Adept (and anyone reading the archetype) ---- */
+const MANEUVERS = {
+  "Commander's Strike": "Forgo one of your attacks and use a bonus action to direct an ally: they use their reaction to make one weapon attack, adding your superiority die to the damage roll.",
+  "Disarming Attack": "On a weapon hit, add the superiority die to damage; the target must pass a Strength save or drop one held item of your choice at its feet.",
+  "Distracting Strike": "On a weapon hit, add the superiority die to damage; the next attack roll against the target by anyone but you has advantage until the start of your next turn.",
+  "Evasive Footwork": "While moving, add the superiority die to your AC until you stop moving.",
+  "Feinting Attack": "Bonus action: feint against one creature within 5 feet. You have advantage on your next attack against it this turn, adding the superiority die to the damage on a hit.",
+  "Goading Attack": "On a weapon hit, add the superiority die to damage; the target must pass a Wisdom save or have disadvantage on attacks against anyone but you until the end of your next turn.",
+  "Lunging Attack": "Increase your reach by 5 feet for one melee attack; on a hit, add the superiority die to the damage.",
+  "Maneuvering Attack": "On a weapon hit, add the superiority die to damage; an ally can use their reaction to move half their speed without provoking opportunity attacks from the target.",
+  "Menacing Attack": "On a weapon hit, add the superiority die to damage; the target must pass a Wisdom save or be frightened of you until the end of your next turn.",
+  "Parry": "Reaction when hit by a melee attack: reduce the damage by the superiority die + your Dexterity modifier.",
+  "Precision Attack": "Add the superiority die to a weapon attack roll, before or after rolling — but before effects apply.",
+  "Pushing Attack": "On a weapon hit, add the superiority die to damage; a Large-or-smaller target must pass a Strength save or be pushed up to 15 feet away.",
+  "Rally": "Bonus action: bolster one ally who can see or hear you — they gain temporary hit points equal to the superiority die + your Charisma modifier.",
+  "Riposte": "Reaction when a creature misses you with a melee attack: make one melee weapon attack against it, adding the superiority die to the damage on a hit.",
+  "Sweeping Attack": "On a melee hit, deal damage equal to the superiority die roll to a second creature within 5 feet of the first that you could also hit.",
+  "Trip Attack": "On a weapon hit, add the superiority die to damage; a Large-or-smaller target must pass a Strength save or be knocked prone.",
+};
+
+/* ============ FEAT SELECTIONS ============
+   Structured sub-choices and fixed grants, keyed by the feat's exact name so both the
+   built-in catalogue and the bundled compendium's 2014 names resolve. Shapes:
+     skills    { n, from? }         — proficiencies to pick (marked on the sheet)
+     expertise { n }                — skills to double (from those you're proficient in)
+     langs     { n }                — languages to pick (added to the sheet)
+     choice    { label, options }   — one named choice (a class list, a damage type)
+     spells    { cantrips?, level1?, class? ("$choice" reads the choice above),
+                 schools?, ritual?, grant? }  — spell picks and fixed grants; grant is
+                 a flat list, or { level: [names] } for marks that grow with character level
+     maneuvers { n }                — Battle Master maneuvers
+     allSkills true                 — proficiency in every skill (Boon of Skill)
+     note      "…"                  — grants the sheet can't track (tools, instruments) */
+const CASTER_LISTS = ["Bard", "Cleric", "Druid", "Sorcerer", "Warlock", "Wizard"];
+const FEAT_PICKS = {
+  /* SRD 5.2 built-ins */
+  "Magic Initiate": { choice: { label: "Spell list", options: ["Cleric", "Druid", "Wizard"] }, spells: { cantrips: 2, level1: 1, class: "$choice" } },
+  "Ritual Caster": { choice: { label: "Ritual book's list", options: ["Cleric", "Druid", "Wizard"] }, spells: { level1: 2, ritual: true, class: "$choice" } },
+  "Elemental Adept": { choice: { label: "Damage type", options: ["Acid", "Cold", "Fire", "Lightning", "Thunder"] } },
+  "Fey-Touched": { spells: { level1: 1, schools: ["D", "EN"], grant: ["Misty Step"] } },
+  "Shadow-Touched": { spells: { level1: 1, schools: ["I", "N"], grant: ["Invisibility"] } },
+  "Telekinetic": { spells: { grant: ["Mage Hand"] } },
+  "Telepathic": { spells: { grant: ["Detect Thoughts"] } },
+  "Skilled": { skills: { n: 3 } },
+  "Observant": { skills: { n: 1, from: ["Insight", "Investigation", "Perception"] } },
+  "Boon of Skill": { allSkills: true, expertise: { n: 3 } },
+  "Crafter": { note: "Pick your three artisan's tools at the table — the sheet doesn't track tool proficiencies." },
+  "Musician": { note: "Pick your three instruments at the table — the sheet doesn't track instrument proficiencies." },
+  /* 2014 compendium names */
+  ...Object.fromEntries(CASTER_LISTS.map((c) => [`Magic Initiate (${c})`, { spells: { cantrips: 2, level1: 1, class: c } }])),
+  ...Object.fromEntries(CASTER_LISTS.map((c) => [`Ritual Caster (${c})`, { spells: { level1: 2, ritual: true, class: c } }])),
+  "Martial Adept": { maneuvers: { n: 2 } },
+  "Linguist": { langs: { n: 3 } },
+  "Prodigy": { skills: { n: 1 }, langs: { n: 1 }, expertise: { n: 1 }, note: "Also grants one tool proficiency — note it at the table." },
+  "Weapon Master (Strength)": { note: "Pick your four weapon proficiencies at the table — the sheet doesn't track them." },
+  "Weapon Master (Dexterity)": { note: "Pick your four weapon proficiencies at the table — the sheet doesn't track them." },
+  /* racial spell-granting feats (2014) */
+  "Wood Elf Magic": { spells: { cantrips: 1, class: "Druid", grant: ["Longstrider", "Pass without Trace"] } },
+  "Drow High Magic": { spells: { grant: ["Detect Magic", "Levitate", "Dispel Magic"] } },
+  "Fey Teleportation (Charisma)": { spells: { grant: ["Misty Step"] }, grantLangs: ["Sylvan"] },
+  "Fey Teleportation (Intelligence)": { spells: { grant: ["Misty Step"] }, grantLangs: ["Sylvan"] },
+  "Svirfneblin Magic": { spells: { grant: ["Nondetection", "Blindness/Deafness", "Blur", "Disguise Self"] } },
+  "Aberrant Dragonmark": { spells: { cantrips: 1, level1: 1, class: "Sorcerer" } },
+  "Dragon Wings": {}, // flight is rules text; nothing to pick
+  /* Eberron dragonmarks: fixed spells that grow at character levels 5 and 9 */
+  "Dragonmark of Detection": { spells: { grant: { 1: ["Detect Magic", "Mage Hand"], 5: ["Detect Thoughts"], 9: ["Clairvoyance"] } } },
+  "Dragonmark of Finding": { spells: { grant: { 1: ["Identify", "Mage Hand"], 5: ["Locate Object"], 9: ["Clairvoyance"] } } },
+  "Dragonmark of Handling": { spells: { grant: { 1: ["Druidcraft", "Speak with Animals"], 5: ["Beast Sense"], 9: ["Conjure Animals"] } } },
+  "Dragonmark of Healing": { spells: { grant: { 1: ["Cure Wounds", "Spare the Dying"], 5: ["Lesser Restoration"], 9: ["Revivify"] } } },
+  "Dragonmark of Hospitality": { spells: { grant: { 1: ["Friends", "Unseen Servant"], 5: ["Rope Trick"], 9: ["Leomund's Tiny Hut"] } } },
+  "Dragonmark of Making": { spells: { grant: { 1: ["Identify", "Mending"], 5: ["Magic Weapon"], 9: ["Fabricate"] } } },
+  "Dragonmark of Passage": { spells: { grant: { 1: ["Expeditious Retreat", "Light"], 5: ["Misty Step"], 9: ["Teleportation Circle"] } } },
+  "Dragonmark of Scribing": { spells: { grant: { 1: ["Comprehend Languages", "Message"], 5: ["Sending"], 9: ["Tongues"] } } },
+  "Dragonmark of Sentinel": { spells: { grant: { 1: ["Blade Ward", "Compelled Duel"], 5: ["Blur"], 9: ["Protection from Energy"] } } },
+  "Dragonmark of Shadow": { spells: { grant: { 1: ["Dancing Lights", "Disguise Self"], 5: ["Darkness"], 9: ["Nondetection"] } } },
+  "Dragonmark of Storm": { spells: { grant: { 1: ["Fog Cloud", "Shocking Grasp"], 5: ["Gust of Wind"], 9: ["Sleet Storm"] } } },
+  "Dragonmark of Warding": { spells: { grant: { 1: ["Alarm", "Resistance"], 5: ["Arcane Lock"], 9: ["Magic Circle"] } } },
+};
+const featPickOf = (name, def) => FEAT_PICKS[name] || def?.pick || null;
+
+/* Fixed spells a feat hands the character at a given character level */
+function featGrantedSpells(name, level = 20, def) {
+  const g = featPickOf(name, def)?.spells?.grant;
+  if (!g) return [];
+  if (Array.isArray(g)) return g;
+  return Object.entries(g).filter(([l]) => level >= +l).flatMap(([, arr]) => arr);
+}
+/* Every spell a held feat contributes — fixed grants plus the player's own picks */
+function featSpellsOf(ch) {
+  const lvl = totalLevel(ch);
+  return (ch?.feats || []).map((n) => {
+    const c = featChoiceOf(ch, n);
+    return { feat: n, names: [...featGrantedSpells(n, lvl), ...(c.cantrips || []), ...(c.spells || [])] };
+  }).filter((e) => e.names.length);
+}
+
 /* A feat is only fully chosen once its own sub-choices are made */
-const featPickDone = (def, v) =>
-  !!v?.name && (!def?.bump?.length || !!v.bump) && (!def?.pick?.skills || (v.skills || []).length === def.pick.skills.n);
+function featPickDone(def, v) {
+  if (!v?.name) return false;
+  if (def?.bump?.length && !v.bump) return false;
+  const pk = featPickOf(v.name, def);
+  if (!pk) return true;
+  if (pk.skills?.n && (v.skills || []).length !== pk.skills.n) return false;
+  if (pk.expertise?.n && (v.expertise || []).length !== pk.expertise.n) return false;
+  if (pk.langs?.n && (v.langs || []).length !== pk.langs.n) return false;
+  if (pk.choice && !v.choice) return false;
+  if (pk.spells?.cantrips && (v.cantrips || []).length !== pk.spells.cantrips) return false;
+  if (pk.spells?.level1 && (v.spells || []).length !== pk.spells.level1) return false;
+  if (pk.maneuvers?.n && (v.maneuvers || []).length !== pk.maneuvers.n) return false;
+  return true;
+}
 
 /* Warlock invocations known by class level */
 const INVOCATIONS = (l) => (l >= 18 ? 8 : l >= 15 ? 7 : l >= 12 ? 6 : l >= 9 ? 5 : l >= 7 ? 4 : l >= 5 ? 3 : l >= 2 ? 2 : 0);
@@ -1527,12 +1635,18 @@ function characterChoiceGroups(ch, customs) {
   }
   return out;
 }
-/* Every cantrip the character knows, from any source: class lists, Pact of the Tome, racial pick */
+/* Every cantrip the character knows, from any source: class lists, Pact of the Tome,
+   racial pick, and the feats that teach one (picked or granted outright) */
+const GRANT_CANTRIPS = new Set(["Mage Hand", "Druidcraft", "Spare the Dying", "Friends", "Light", "Message", "Blade Ward", "Dancing Lights", "Shocking Grasp", "Resistance", "Mending"]);
 function allKnownCantrips(ch) {
   return [
     ...Object.values(ch.spells || {}).flatMap((b) => b.cantrips || []),
     ...(ch.tomeCantrips || []),
     ...(ch.racialChoices?.cantrip ? [ch.racialChoices.cantrip] : []),
+    ...(ch.feats || []).flatMap((n) => [
+      ...(featChoiceOf(ch, n).cantrips || []),
+      ...featGrantedSpells(n, totalLevel(ch)).filter((sp) => GRANT_CANTRIPS.has(sp)),
+    ]),
   ];
 }
 
@@ -2539,6 +2653,7 @@ function infoFor(rawName, customs) {
   const inv = INVOCATION_DATA.find(([n]) => n === name || n === strip);
   if (inv) return { title: inv[0], meta: ["Eldritch Invocation", inv[1] > 0 ? `requires warlock ${inv[1]}` : "", inv[2] ? `requires ${inv[2]}` : ""].filter(Boolean).join(" · "), body: INVOCATION_INFO[inv[0]] || null };
   if (METAMAGIC_INFO[name]) return { title: name, meta: "Metamagic", body: METAMAGIC_INFO[name] };
+  if (MANEUVERS[strip]) return { title: strip, meta: "Battle Master maneuver", body: MANEUVERS[strip] + "\n\nManeuvers ride on superiority dice — a Battle Master's own, or the single d6 the Martial Adept feat grants (regained on a short or long rest)." };
   if (BOON_INFO[name]) return { title: name, meta: "Pact Boon", body: BOON_INFO[name] };
   const fs = strip.replace(/^Fighting Style:\s*/, "");
   // a "Fighting Style: X" name is the feat — let its fuller entry answer before the one-liner
@@ -2780,11 +2895,11 @@ const allFeats = (customs) => {
     const fx = FEAT_MECHANICS[f.name];
     map.set(f.name, {
       cat: base?.cat || "Imported", ...f,
-      ...(base?.pick ? { pick: base.pick } : {}),
       ...(!f.bump?.length && fx?.bump ? { bump: fx.bump } : {}),
     });
   });
-  return [...map.values()];
+  // every entry resolves its structured sub-choices through the selections table
+  return [...map.values()].map((f) => ({ ...f, pick: featPickOf(f.name, f) }));
 };
 
 /* ============ SHARE — one soul, sealed inside a link ============ */
@@ -2819,7 +2934,11 @@ function shareCustomsFor(ch, customs) {
   (ch.tomeCantrips || []).forEach(addSpell);
   (ch.boasRituals || []).forEach(addSpell);
   addSpell(ch.racialChoices?.cantrip);
-  Object.values(ch.choices || {}).forEach((v) => (Array.isArray(v) ? v : [v]).forEach(addSpell)); // Magic Initiate and kin
+  Object.values(ch.choices || {}).forEach((v) => (Array.isArray(v) ? v : [v]).forEach(addSpell));
+  (ch.feats || []).forEach((fn) => {
+    const c = featChoiceOf(ch, fn);
+    [...(c.cantrips || []), ...(c.spells || []), ...featGrantedSpells(fn, totalLevel(ch))].forEach(addSpell);
+  });
   const itemNames = new Set((ch.inventory || []).map((r) => norm(r.name)));
   const subKeep = new Set(ch.classes.flatMap((c) => (c.subclass ? [norm(c.subclass), norm(baseSubName(c.subclass))] : [])));
   const subs = {};
@@ -3376,7 +3495,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
       gold: gearMode === "standard" ? (bgData ? bgData.gold : 10) : Math.max(0, goldLeft),
       inventory,
       styles: style ? [style] : [], notes: "", persona,
-      expertise: rogueExp, metamagic: [], pactBoon: null, invocations: [],
+      metamagic: [], pactBoon: null, invocations: [],
       rangerChoices: cls === "Ranger" ? { favEnemy, natTerrain } : null,
       spells: castsAt1 && (spellPicks.cantrips.length || spellPicks.spells.length) ? { [cls]: spellPicks } : {},
       abilities: finalScores, method,
@@ -3384,8 +3503,13 @@ function CreateWizard({ onDone, onCancel, customs }) {
       skills: [...skills, ...raceSkillsEff, ...bgGrantSkills, ...featSkillsEff].filter((v, i, a) => a.indexOf(v) === i),
       // Tough and friends are derived from the feat itself, never banked into maxHp
       feats: raceFeat?.name ? [raceFeat.name] : [],
-      featChoices: raceFeat?.name ? { [raceFeat.name]: { bump: raceFeat.bump || null, skills: raceFeat.skills || [] } } : {},
-      languages: [...RACE_LANGS[race].fixed, ...langPicks],
+      featChoices: raceFeat?.name ? { [raceFeat.name]: {
+        bump: raceFeat.bump || null, skills: raceFeat.skills || [], choice: raceFeat.choice || null,
+        expertise: raceFeat.expertise || [], langs: raceFeat.langs || [],
+        cantrips: raceFeat.cantrips || [], spells: raceFeat.spells || [], maneuvers: raceFeat.maneuvers || [],
+      } } : {},
+      expertise: [...rogueExp, ...(raceFeat?.expertise || [])].filter((v, i, a) => a.indexOf(v) === i),
+      languages: [...RACE_LANGS[race].fixed, ...langPicks, ...(raceFeat?.langs || []), ...(raceFeat?.name ? featPickOf(raceFeat.name)?.grantLangs || [] : [])].filter((v, i, a) => a.indexOf(v) === i),
       racialChoices: {
         ancestry: race === "Dragonborn" ? ancestry : null,
         cantrip: race === "High Elf" ? heCantrip.trim() : null,
@@ -3682,6 +3806,9 @@ function CreateWizard({ onDone, onCancel, customs }) {
               </div>
               <FeatChooser customs={customs} abilities={preFeatScores} level={1} caster={castsAt1 || CLASSES[cls].caster === "half"}
                 skillsTaken={[...bgGrantSkills, ...raceSkillsEff, ...skills]} styles={style ? [style] : []}
+                knownCantrips={[...(racialCantrip ? [racialCantrip] : []), ...spellPicks.cantrips]}
+                knownLangs={[...RACE_LANGS[race].fixed, ...langPicks]}
+                profSkills={[...skills, ...bgGrantSkills, ...raceSkillsEff]}
                 value={raceFeat} onChange={setRaceFeat} allowEpic={false} waiveLevel
                 note="Long-press a feat to read it in full. A lineage feat waives the usual level-4 gate on general feats, so anything but an Epic Boon is open — ability prerequisites still bind. Feats that hand out spells add them from the Grimoire; the +1, proficiencies, HP, and speed the sheet applies for you." />
               {raceFeat?.name && !featPickDone(raceFeatDef, raceFeat) && (
@@ -3713,7 +3840,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
                 <div>
                   <div style={{ color: T.gold, fontSize: 14, marginBottom: 6 }}>Cantrips ({spellPicks.cantrips.length}/{canCap1})</div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxHeight: 180, overflowY: "auto" }}>
-                    {pool1.filter((x) => x.level === 0 && x.name !== racialCantrip).sort((a, b) => a.name.localeCompare(b.name)).map((x) => (
+                    {pool1.filter((x) => x.level === 0 && x.name !== racialCantrip && !(raceFeat?.cantrips || []).includes(x.name) && !(raceFeat?.name ? featGrantedSpells(raceFeat.name, 1) : []).includes(x.name)).sort((a, b) => a.name.localeCompare(b.name)).map((x) => (
                       <button key={x.name} {...lorePress(x.name)} style={{ ...btn(spellPicks.cantrips.includes(x.name)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
                         onClick={() => setSpellPicks(spellPicks.cantrips.includes(x.name)
                           ? { ...spellPicks, cantrips: spellPicks.cantrips.filter((n) => n !== x.name) }
@@ -4001,7 +4128,7 @@ function SpellPickGrid({ options, picks, cap, onChange, placeholder = "Search sp
    one at 1st level) and the ASI at level-up. It carries the feat's own choices with it —
    the +1 it hands out, and any proficiencies it forces — so nothing is silently dropped.
    value: { name, bump, skills: [] } | null */
-function FeatChooser({ customs, abilities, level, caster, held = [], styles = [], skillsTaken = [], value, onChange, allowEpic = true, waiveLevel = false, note }) {
+function FeatChooser({ customs, abilities, level, caster, held = [], styles = [], skillsTaken = [], knownCantrips = [], knownLangs = [], profSkills = [], value, onChange, allowEpic = true, waiveLevel = false, note }) {
   const [cat, setCat] = useState("All");
   const [q, setQ] = useState("");
   const pool = allFeats(customs)
@@ -4036,7 +4163,7 @@ function FeatChooser({ customs, abilities, level, caster, held = [], styles = []
           const skillPool = (f.pick?.skills?.from || ALL_SKILLS).filter((s) => !skillsTaken.includes(s));
           return (
             <div key={f.name} {...lorePress(f.name)}
-              onClick={() => !blocked && onChange(on ? null : { name: f.name, bump: null, skills: [] })}
+              onClick={() => !blocked && onChange(on ? null : { name: f.name, bump: null, skills: [], expertise: [], langs: [], choice: null, cantrips: [], spells: [], maneuvers: [] })}
               style={{ ...card, background: on ? T.panel : T.panel2, borderColor: on ? T.gold : T.edge, padding: "8px 12px", cursor: blocked ? "default" : "pointer", opacity: blocked ? 0.45 : 1 }}>
               <span style={{ color: on ? T.gold : T.ink, fontWeight: 700 }}>{f.name}</span>
               {f.cat && <span style={{ color: T.dim, fontSize: 10.5, letterSpacing: 0.6, textTransform: "uppercase" }}> · {f.cat}</span>}
@@ -4058,28 +4185,89 @@ function FeatChooser({ customs, abilities, level, caster, held = [], styles = []
                   ))}
                 </div>
               )}
-              {on && f.pick?.skills && (
-                <div style={{ marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
-                  <div style={{ color: T.gold, fontSize: 12, marginBottom: 4 }}>
-                    Skill proficiencies ({(value.skills || []).length}/{f.pick.skills.n})
-                  </div>
-                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                    {skillPool.map((s) => {
-                      const picked = (value.skills || []).includes(s);
-                      return (
-                        <button key={s} style={{ ...btn(picked), padding: "4px 9px", fontSize: 12, minHeight: 0 }}
-                          onClick={() => set({ skills: picked ? value.skills.filter((x) => x !== s) : (value.skills || []).length < f.pick.skills.n ? [...(value.skills || []), s] : value.skills })}>
-                          {s}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+              {on && f.pick && <FeatPickPanel pick={f.pick} value={value} set={set} customs={customs} level={level}
+                skillsTaken={skillsTaken} knownCantrips={knownCantrips} knownLangs={knownLangs} profSkills={profSkills} skillPool={skillPool} />}
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/* The sub-choices a selected feat forces, rendered inside its card. Chip rows for the
+   small pools (skills, languages, maneuvers, the one named choice), searchable spell
+   grids for the big ones, and a read-only line for fixed spell grants. */
+function FeatPickPanel({ pick: pk, value, set, customs, level = 20, skillsTaken, knownCantrips, knownLangs, profSkills, skillPool }) {
+  const chipRow = (label, opts, key, cap, renderName = (x) => x, pressable = false) => (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ color: T.gold, fontSize: 12, marginBottom: 4 }}>{label} ({(value[key] || []).length}/{cap})</div>
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+        {opts.map((s) => {
+          const picked = (value[key] || []).includes(s);
+          return (
+            <button key={s} {...(pressable ? lorePress(s) : {})} style={{ ...btn(picked), padding: "4px 9px", fontSize: 12, minHeight: 0 }}
+              onClick={() => set({ [key]: picked ? value[key].filter((x) => x !== s) : (value[key] || []).length < cap ? [...(value[key] || []), s] : value[key] })}>
+              {renderName(s)}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+  const spellPool = srcSpells(customs?.spells || []);
+  const spCls = pk.spells?.class === "$choice" ? value.choice : pk.spells?.class;
+  const spellsReady = !pk.spells || pk.spells.class !== "$choice" || !!value.choice;
+  const fitsFeat = (sp) =>
+    (!spCls || spellFitsClass(sp, spCls)) &&
+    (!pk.spells?.schools || pk.spells.schools.includes((sp.school || "").toUpperCase())) &&
+    (!pk.spells?.ritual || (sp.ritual && !/\(Ritual Only\)$/i.test(sp.name)));
+  const grants = featGrantedSpells(value.name, level, null);
+  const laterGrants = featGrantedSpells(value.name, 20, null).filter((n) => !grants.includes(n));
+  const expPool = pk.allSkills ? ALL_SKILLS : [...new Set([...profSkills, ...(value.skills || [])])];
+  return (
+    <div onClick={(e) => e.stopPropagation()}>
+      {pk.choice && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ color: T.gold, fontSize: 12, marginBottom: 4 }}>{pk.choice.label}</div>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+            {pk.choice.options.map((o) => (
+              <button key={o} style={{ ...btn(value.choice === o), padding: "4px 9px", fontSize: 12, minHeight: 0 }}
+                onClick={() => set({ choice: o, cantrips: [], spells: [] })}>{o}</button>
+            ))}
+          </div>
+        </div>
+      )}
+      {pk.skills?.n > 0 && chipRow("Skill proficiencies", skillPool, "skills", pk.skills.n)}
+      {pk.allSkills && <div style={{ color: T.green, fontSize: 12, marginTop: 8 }}>Grants proficiency in every skill — the sheet marks them all.</div>}
+      {pk.expertise?.n > 0 && chipRow("Expertise (double proficiency)", expPool, "expertise", pk.expertise.n)}
+      {pk.langs?.n > 0 && chipRow("Languages", LANGS.filter((l) => !knownLangs.includes(l) && !(value.langs || []).includes(l)).concat(value.langs || []).sort(), "langs", pk.langs.n, undefined, true)}
+      {pk.maneuvers?.n > 0 && chipRow("Battle Master maneuvers · long-press to read", Object.keys(MANEUVERS), "maneuvers", pk.maneuvers.n, undefined, true)}
+      {grants.length > 0 && (
+        <div style={{ color: T.green, fontSize: 12, marginTop: 8 }}>
+          Grants: {grants.map((n, i) => <span key={n} {...lorePress(n)}>{i > 0 ? ", " : ""}{n}</span>)} — they appear in your Grimoire.
+          {laterGrants.length > 0 && <span style={{ color: T.dim }}> At higher levels: {laterGrants.join(", ")}.</span>}
+        </div>
+      )}
+      {pk.spells?.cantrips > 0 && spellsReady && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ color: T.gold, fontSize: 12, marginBottom: 4 }}>{spCls} cantrips ({(value.cantrips || []).length}/{pk.spells.cantrips})</div>
+          <SpellPickGrid cap={pk.spells.cantrips} picks={value.cantrips || []} onChange={(arr) => set({ cantrips: arr })}
+            options={spellPool.filter((sp) => sp.level === 0 && fitsFeat(sp) && !knownCantrips.includes(sp.name))} />
+        </div>
+      )}
+      {pk.spells?.level1 > 0 && spellsReady && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ color: T.gold, fontSize: 12, marginBottom: 4 }}>
+            {pk.spells.ritual ? `1st-level rituals${spCls ? ` (${spCls} list)` : ""}` : `1st-level spell${pk.spells.level1 > 1 ? "s" : ""}${spCls ? ` (${spCls} list)` : pk.spells.schools ? ` (${pk.spells.schools.map(schoolName).join(" or ")})` : ""}`}
+            {" "}({(value.spells || []).length}/{pk.spells.level1})
+          </div>
+          <SpellPickGrid cap={pk.spells.level1} picks={value.spells || []} onChange={(arr) => set({ spells: arr })}
+            options={spellPool.filter((sp) => sp.level === 1 && fitsFeat(sp))} />
+        </div>
+      )}
+      {pk.spells && !spellsReady && <div style={{ color: T.dim, fontSize: 12, marginTop: 8 }}>Choose the spell list above to open the spell pickers.</div>}
+      {pk.note && <div style={{ color: T.dim, fontSize: 11.5, marginTop: 8 }}>{pk.note}</div>}
     </div>
   );
 }
@@ -4096,10 +4284,11 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const [hpGain, setHpGain] = useState(null);
   const [asiMode, setAsiMode] = useState(null); // 'asi' | 'feat'
   const [asiPicks, setAsiPicks] = useState([]);
-  const [featSel, setFeatSel] = useState(null); // { name, bump, skills }
+  const [featSel, setFeatSel] = useState(null); // { name, bump, skills, expertise, langs, choice, cantrips, spells, maneuvers }
   const featPick = featSel?.name || null;
   const featBump = featSel?.bump || null;
   const featSkills = featSel?.skills || [];
+  const featPk = featPick ? featPickOf(featPick) : null;
   const [stylePick, setStylePick] = useState(null);
   const [terrPick, setTerrPick] = useState(null);
   const [expPicks, setExpPicks] = useState([]);
@@ -4177,7 +4366,13 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     if (asiMode === "asi") { asiPicks.forEach((a) => { abilities[a] = Math.min(20, abilities[a] + 1); }); logBits.push(`ASI: ${asiPicks.map((a) => "+" + 1 + " " + a.toUpperCase()).join(", ")}`); }
     const featDef = asiMode === "feat" ? allFeats(customs).find((f) => f.name === featPick) : null;
     if (asiMode === "feat") {
-      logBits.push(`Feat: ${featPick}${featBump ? ` (+1 ${featBump.toUpperCase()})` : ""}${featSkills.length ? ` (${featSkills.join(", ")})` : ""}`);
+      const detail = [
+        featBump ? `+1 ${featBump.toUpperCase()}` : null,
+        featSel.choice,
+        ...featSkills, ...(featSel.expertise || []).map((x) => `${x} expertise`), ...(featSel.langs || []),
+        ...(featSel.cantrips || []), ...(featSel.spells || []), ...(featSel.maneuvers || []),
+      ].filter(Boolean);
+      logBits.push(`Feat: ${featPick}${detail.length ? ` (${detail.join(", ")})` : ""}`);
       if (featBump) abilities[featBump] = Math.min(featDef?.cat === "Epic Boon" ? 30 : 20, abilities[featBump] + 1);
     }
     if (gainsSub && newSub) logBits.push(gainsTerrain ? `${newSub} (${terrPick})` : newSub);
@@ -4217,19 +4412,25 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
       choices = { ...choices, [d.g.key]: [...d.held, ...grants, ...picksArr] };
       if (picksArr.length) logBits.push(`${d.g.key}: ${picksArr.join(", ")}`);
     }
-    const skills = [...ch.skills, ...(mcSkill ? [mcSkill] : []), ...featSkills].filter((v, i, a) => a.indexOf(v) === i);
+    const grantAll = asiMode === "feat" && featPk?.allSkills ? ALL_SKILLS : [];
+    const skills = [...ch.skills, ...(mcSkill ? [mcSkill] : []), ...featSkills, ...grantAll].filter((v, i, a) => a.indexOf(v) === i);
+    const languages = [...(ch.languages || []), ...(asiMode === "feat" ? [...(featSel?.langs || []), ...(featPk?.grantLangs || [])] : [])].filter((v, i, a) => a.indexOf(v) === i);
+    const expertise = [...(ch.expertise || []), ...expPicks, ...(asiMode === "feat" ? featSel?.expertise || [] : [])].filter((v, i, a) => a.indexOf(v) === i);
     const featChoices = asiMode === "feat" && featPick
-      ? { ...(ch.featChoices || {}), [featPick]: { bump: featBump || null, skills: featSkills } }
+      ? { ...(ch.featChoices || {}), [featPick]: {
+          bump: featBump || null, skills: featSkills, choice: featSel.choice || null,
+          expertise: featSel.expertise || [], langs: featSel.langs || [],
+          cantrips: featSel.cantrips || [], spells: featSel.spells || [], maneuvers: featSel.maneuvers || [],
+        } }
       : ch.featChoices;
     onDone({
-      ...ch, classes, abilities, skills, invocations, spells: spellsBook, featChoices,
+      ...ch, classes, abilities, skills, languages, expertise, invocations, spells: spellsBook, featChoices,
       boasRituals, tomeCantrips, rangerChoices, choices,
       maxHp: ch.maxHp + hpGain + conM + dwarfBonus,
       hpLog: [...ch.hpLog, { cls: pick, gained: hpGain + conM + dwarfBonus, how: hpGain === avg ? "average" : `rolled ${hpGain}` }],
       log: [...ch.log, `Level ${lvl + 1}: ${logBits.join(" · ")}`],
       feats: asiMode === "feat" ? [...(ch.feats || []), featPick] : ch.feats,
       styles: stylePick ? [...(ch.styles || []), stylePick] : ch.styles,
-      expertise: expPicks.length ? [...(ch.expertise || []), ...expPicks] : ch.expertise,
       metamagic: metaPicks.length ? [...(ch.metamagic || []), ...metaPicks] : ch.metamagic,
       pactBoon: boonPick || ch.pactBoon,
     });
@@ -4453,6 +4654,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                 {asiMode === "feat" && (
                   <FeatChooser customs={customs} abilities={ch.abilities} level={lvl + 1} caster={isCaster}
                     held={ch.feats || []} styles={ch.styles || []} skillsTaken={[...ch.skills, ...(mcSkill ? [mcSkill] : [])]}
+                    knownCantrips={allKnownCantrips(ch)} knownLangs={ch.languages || []} profSkills={ch.skills}
                     value={featSel} onChange={setFeatSel}
                     note="Long-press any feat to read it in full. Feats that hand out spells add them from the Grimoire; the rest of what they grant — the +1, proficiencies, HP, speed — the sheet applies for you." />
                 )}
@@ -5012,7 +5214,8 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
   const hasTome = ch.pactBoon === "Pact of the Tome";
   const [adding, setAdding] = useState(null); // { cls, kind: 'cantrips'|'spells'|'arcanum', lvl? }
   const [q, setQ] = useState("");
-  if (!casters.length) return null;
+  const featSp = featSpellsOf(ch);
+  if (!casters.length && !featSp.length && !ch.racialChoices?.cantrip) return null;
   const book = ch.spells || {};
   const pool = srcSpells(customs?.spells || []);
 
@@ -5063,9 +5266,11 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
   const usedSlotsArr = ch.usedSlots || [];
   const pactAll = wl ? PACT(wl.level) : null;
   const pactLeft = pactAll ? pactAll.n - Math.min(ch.usedPact || 0, pactAll.n) : 0;
+  const featSpellNames = new Set(featSp.flatMap((e) => e.names));
   const canPay = (n) => {
     const lvl = spLvl(n);
     if (lvl === 0) return true;
+    if (featSpellNames.has(n)) return true; // a feat spell carries its own once-per-rest use
     if (pool.find((s) => s.name === n)?.ritual) return true;
     if (Object.entries(book.Warlock?.arcanum || {}).some(([l, an]) => an === n && !(ch.usedArcanum || []).includes(+l))) return true;
     for (let L = lvl; L <= slotsAll.length; L++) if ((slotsAll[L - 1] || 0) - Math.min(usedSlotsArr[L - 1] || 0, slotsAll[L - 1] || 0) > 0) return true;
@@ -5095,6 +5300,10 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
     Object.entries(mine.arcanum || {}).forEach(([l, n]) => addGroup(+l, "Mystic Arcanum", [n], "#b48ead"));
   });
   if (ch.racialChoices?.cantrip) addGroup(0, `${ch.race} · racial`, [ch.racialChoices.cantrip]);
+  featSp.forEach(({ feat, names }) => {
+    addGroup(0, `${feat} · feat`, names.filter((n) => spLvl(n) === 0), "#8fbcbb");
+    byLevel(names.filter((n) => spLvl(n) > 0)).forEach(([l, arr]) => addGroup(+l, `${feat} · feat`, arr, "#8fbcbb"));
+  });
   if (hasTome) addGroup(0, "Book of Shadows · Tome · cast at will", ch.tomeCantrips || []);
   if (hasBoAS) byLevel(ch.boasRituals || []).forEach(([l, arr]) => addGroup(+l, "Book of Shadows · ritual only", arr));
   const lvlsHeld = [...groups.keys()].sort((a, b) => a - b);
@@ -7174,7 +7383,11 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           {ch.feats?.length > 0 && (
             <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Feats: {ch.feats.map((f, i) => {
               const c = featChoiceOf(ch, f);
-              const detail = [c.bump ? `+1 ${c.bump.toUpperCase()}` : null, ...(c.skills || [])].filter(Boolean).join(", ");
+              const detail = [
+                c.bump ? `+1 ${c.bump.toUpperCase()}` : null, c.choice,
+                ...(c.skills || []), ...(c.expertise || []).map((x) => `★ ${x}`), ...(c.langs || []),
+                ...(c.cantrips || []), ...(c.spells || []), ...(c.maneuvers || []),
+              ].filter(Boolean).join(", ");
               return (
                 <span key={f}>{i > 0 ? ", " : ""}
                   <span {...lorePress(f)} onClick={() => openUse(f)} style={{ cursor: "pointer" }}>{f}</span>
