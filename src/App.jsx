@@ -3085,7 +3085,7 @@ const ABIL_MIN = 1, ABIL_MAX = 30; // Direct Entry trusts the table: anything a 
 /* The +N-to-abilities-of-your-choice picker some lineages carry (Half-Elf, Variant Human,
    Custom Lineage). It appears twice on purpose: on the Race step, and again beside the
    Abilities grid — where `scores` previews what each button does to the real number. */
-function LineageBonusPicker({ raceData, picks, setPicks, scores }) {
+function LineageBonusPicker({ raceData, picks, setPicks, scores, extra = {} }) {
   const amt = raceData.chooseAmt || 1;
   const opts = ABILITIES.filter((a) => !(raceData.chooseNot || []).includes(a));
   return (
@@ -3097,7 +3097,7 @@ function LineageBonusPicker({ raceData, picks, setPicks, scores }) {
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {opts.map((a) => {
           const on = picks.includes(a);
-          const base = scores ? scores[a] + (raceData.bonus[a] || 0) : null;
+          const base = scores ? scores[a] + (raceData.bonus[a] || 0) + (extra[a] || 0) : null;
           return (
             <button key={a} style={{ ...btn(on), padding: "6px 12px" }}
               onClick={() => setPicks(on ? picks.filter((x) => x !== a) : picks.length < raceData.choose ? [...picks, a] : picks)}>
@@ -3110,7 +3110,9 @@ function LineageBonusPicker({ raceData, picks, setPicks, scores }) {
   );
 }
 
-function AbilityStep({ scores, setScores, method, setMethod, bonuses = {}, children }) {
+function AbilityStep({ scores, setScores, method, setMethod, bonuses = {}, featBonus = {}, featLabel = "feat", children }) {
+  // everything that lands on top of the raw score, for the live per-card preview
+  const lift = (a) => (bonuses[a] || 0) + (featBonus[a] || 0);
   const [rolling, setRolling] = useState(null); // {dice, targetIdx}
   const [rolled, setRolled] = useState([]); // pool of rolled totals
   const [assignIdx, setAssignIdx] = useState({}); // ability -> pool index
@@ -3208,9 +3210,10 @@ function AbilityStep({ scores, setScores, method, setMethod, bonuses = {}, child
               </select>
             )}
             <div style={{ color: T.gold, marginTop: 6, fontSize: 13 }}>{fmtMod(mod(scores[a]))}</div>
-            {(bonuses[a] || 0) > 0 && (
+            {lift(a) > 0 && (
               <div style={{ color: T.dim, fontSize: 11.5, marginTop: 4 }}>
-                race +{bonuses[a]} → <b style={{ color: T.ink }}>{scores[a] + bonuses[a]}</b> <span style={{ color: T.gold }}>{fmtMod(mod(scores[a] + bonuses[a]))}</span>
+                {[bonuses[a] ? `race +${bonuses[a]}` : null, featBonus[a] ? `${featLabel} +${featBonus[a]}` : null].filter(Boolean).join(" · ")}
+                {" → "}<b style={{ color: T.ink }}>{scores[a] + lift(a)}</b> <span style={{ color: T.gold }}>{fmtMod(mod(scores[a] + lift(a)))}</span>
               </div>
             )}
           </div>
@@ -3223,8 +3226,8 @@ function AbilityStep({ scores, setScores, method, setMethod, bonuses = {}, child
       {method === "Direct Entry" && (
         <div style={{ color: T.dim, fontSize: 12, marginTop: 8 }}>
           Total {ABILITIES.reduce((s, a) => s + scores[a], 0)}
-          {ABILITIES.some((a) => bonuses[a]) ? ` (with race: ${ABILITIES.reduce((s, a) => s + scores[a] + (bonuses[a] || 0), 0)})` : ""}
-          {" · modifiers "}{ABILITIES.map((a) => `${a.toUpperCase()} ${fmtMod(mod(scores[a] + (bonuses[a] || 0)))}`).join(" · ")}
+          {ABILITIES.some((a) => lift(a)) ? ` (with bonuses: ${ABILITIES.reduce((s, a) => s + scores[a] + lift(a), 0)})` : ""}
+          {" · modifiers "}{ABILITIES.map((a) => `${a.toUpperCase()} ${fmtMod(mod(scores[a] + lift(a)))}`).join(" · ")}
         </div>
       )}
 
@@ -3659,10 +3662,13 @@ function CreateWizard({ onDone, onCancel, customs }) {
 
       {step === 4 && (
         <AbilityStep scores={scores} setScores={setScores} method={method} setMethod={setMethod}
-          bonuses={Object.fromEntries(ABILITIES.map((a) => [a, (raceData.bonus[a] || 0) + (raceAbilPicks.includes(a) ? raceChooseAmt : 0)]))}>
+          bonuses={Object.fromEntries(ABILITIES.map((a) => [a, (raceData.bonus[a] || 0) + (raceAbilPicks.includes(a) ? raceChooseAmt : 0)]))}
+          featBonus={raceFeat?.bump ? { [raceFeat.bump]: finalScores[raceFeat.bump] - preFeatScores[raceFeat.bump] } : {}}
+          featLabel={raceFeat?.name || "feat"}>
           {raceData.choose > 0 && (
             <div style={{ ...card, padding: 14, marginTop: 14 }}>
-              <LineageBonusPicker raceData={raceData} picks={raceAbilPicks} setPicks={setRaceAbilPicks} scores={scores} />
+              <LineageBonusPicker raceData={raceData} picks={raceAbilPicks} setPicks={setRaceAbilPicks} scores={scores}
+                extra={raceFeat?.bump ? { [raceFeat.bump]: finalScores[raceFeat.bump] - preFeatScores[raceFeat.bump] } : {}} />
             </div>
           )}
           {raceData.feat && (
