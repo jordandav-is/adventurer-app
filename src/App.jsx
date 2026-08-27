@@ -649,7 +649,7 @@ const FEATURE_TEXT = {
   "Cleansing Touch": "As an action, end one spell on yourself or on one willing creature you touch. Uses equal to your Charisma modifier (minimum 1) per long rest.",
   "Aura improvements": "Your Aura of Protection and Aura of Courage now extend 30 feet from you.",
   /* Ranger */
-  "Favored Enemy": "You always have the Hunter's Mark spell prepared. You can cast it twice without expending a spell slot, regaining all expended uses on a long rest. The free castings rise with ranger level: 3 at 5th, 4 at 9th, 5 at 13th, 6 at 17th. (The sheet tracks the uses and keeps Hunter's Mark in your Grimoire.)",
+  "Favored Enemy": "You have significant experience studying, tracking, hunting, and even talking to a certain type of enemy.\nChoose a type of favored enemy: aberrations, beasts, celestials, constructs, dragons, elementals, fey, fiends, giants, monstrosities, oozes, plants, or undead. Alternatively, you can select two races of humanoid (such as gnolls and orcs) as favored enemies.\nYou have advantage on Wisdom (Survival) checks to track your favored enemies, as well as on Intelligence checks to recall information about them. When you gain this feature, you also learn one language of your choice that is spoken by your favored enemies, if they speak one at all.\nYou choose one additional favored enemy, as well as an associated language, at 6th and 14th level.\nYou also always have the Hunter's Mark spell prepared, castable for free a number of times tracked under Feature Uses (2, rising to 3/4/5/6 at ranger levels 5/9/13/17).",
   "Weapon Mastery": "Your training lets you use the mastery properties of two kinds of weapons of your choice with which you have proficiency. Whenever you finish a long rest, you can change the kinds of weapons you chose. (Mastery properties are rules text on each weapon — the sheet doesn't automate them.)",
   "Deft Explorer": "Thanks to your travels, you gain Expertise in one of your skill proficiencies, and you learn two languages of your choice.",
   "Roving": "Your speed increases by 10 feet while you aren't wearing heavy armor, and you gain a climb speed and a swim speed equal to your speed.",
@@ -857,6 +857,7 @@ const TEXT_2024 = new Set([
   "Favored Enemy", "Feral Senses", "Foe Slayer", "Hunter's Prey", "Defensive Tactics", "Superior Hunter's Defense",
   "Hunter's Lore", "Superior Hunter's Prey", "Primal Companion", "Exceptional Training", "Bestial Fury", "Share Spells",
   "Dreadful Strikes", "Otherworldly Glamour", "Beguiling Twist", "Fey Reinforcements", "Misty Wanderer",
+  "Roving", "Tireless", "Deft Explorer", "Nature's Veil", "Relentless Hunter", "Precise Hunter", "Weapon Mastery",
   "Dread Ambusher", "Umbral Sight", "Iron Mind", "Stalker's Flurry", "Shadowy Dodge",
 ]);
 function featureBody(rawName, cls, customs) {
@@ -1683,6 +1684,10 @@ function rollNotes(ch, kind, abil) {
   }
   if (kind === "check" || kind === "skill") {
     if (f.barbarian >= 1 && abil === "str" && !hasEffect(ch, "rage")) n.push("Rage: advantage on Strength checks while raging");
+    if ((abil === "wis" || abil === "int") && classLevel(ch, "Ranger") >= 1) {
+      const foes = [ch.rangerChoices?.favEnemy, ...(ch.rangerChoices?.extraEnemies || [])].filter(Boolean);
+      if (foes.length) n.push(`Favored Enemy: advantage on Survival checks to track and Intelligence checks to recall — ${foes.join(", ")}`);
+    }
   }
   if (kind === "attack") {
     if (f.barbarian >= 2 && abil === "str" && !hasEffect(ch, "reckless-attack")) n.push("Reckless Attack: take advantage now, grant it until your next turn");
@@ -1799,10 +1804,9 @@ const CHOICE_GROUPS = [
   { key: "Aspect of the Beast", cls: "Barbarian", sub: "Path of the Totem Warrior", source: { featurePrefix: "Aspect of the Beast" }, counts: { 6: 1 } },
   { key: "Totemic Attunement", cls: "Barbarian", sub: "Path of the Totem Warrior", source: { featurePrefix: "Totemic Attunement" }, counts: { 14: 1 } },
   { key: "Storm Aura", cls: "Barbarian", sub: "Path of the Storm Herald", source: { list: ["Storm Aura: Desert", "Storm Aura: Sea", "Storm Aura: Tundra"] }, counts: { 3: 1 } },
-  { key: "Hunter's Prey", cls: "Ranger", sub: "Hunter", source: { featurePrefix: "Hunter's Prey" }, counts: { 3: 1 } },
-  { key: "Defensive Tactics", cls: "Ranger", sub: "Hunter", source: { featurePrefix: "Defensive Tactics" }, counts: { 7: 1 } },
-  { key: "Multiattack Option", cls: "Ranger", sub: "Hunter", source: { featurePrefix: "Multiattack" }, counts: { 11: 1 } },
-  { key: "Superior Hunter's Defense", cls: "Ranger", sub: "Hunter", source: { featurePrefix: "Superior Hunter's Defense" }, counts: { 15: 1 } },
+  /* 2024 Hunter: two swappable options apiece, and no 11th/15th-level choices */
+  { key: "Hunter's Prey", cls: "Ranger", sub: "Hunter", source: { list: ["Colossus Slayer", "Horde Breaker"] }, counts: { 3: 1 } },
+  { key: "Defensive Tactics", cls: "Ranger", sub: "Hunter", source: { list: ["Escape the Horde", "Multiattack Defense"] }, counts: { 7: 1 } },
   { key: "Dragon Ancestor", cls: "Sorcerer", sub: "Draconic Bloodline", source: { featureSuffix: "Dragon Ancestor" }, counts: { 1: 1 } },
 ];
 const CHOICE_KEYS = new Set(CHOICE_GROUPS.map((g) => g.key));
@@ -2199,6 +2203,7 @@ function speedOf(ch, customs, fx = fxMods(ch)) {
   const monk = classLevel(ch, "Monk"), barb = classLevel(ch, "Barbarian");
   if (monk >= 2 && !armor && !shield) { const b = monk >= 18 ? 30 : monk >= 14 ? 25 : monk >= 10 ? 20 : monk >= 6 ? 15 : 10; v += b; parts.push(`Unarmored Movement +${b}`); }
   if (barb >= 5 && (!armor || armor.type !== "HA")) { v += 10; parts.push("Fast Movement +10"); }
+  if (classLevel(ch, "Ranger") >= 6 && (!armor || armor.type !== "HA")) { v += 10; parts.push("Roving +10"); }
   const fe = featEffects(ch, customs);
   if (fe.speed) { v += fe.speed; parts.push(`feats +${fe.speed}`); }
   fx.speedAdd.forEach((s) => { v += s.value; parts.push(`${s.label} ${fmtMod(s.value)}`); });
@@ -3635,6 +3640,8 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const [spellPicks, setSpellPicks] = useState({ cantrips: [], spells: [] });
   const [rogueExp, setRogueExp] = useState([]);
   const [favEnemy, setFavEnemy] = useState(null);
+  const [favHumanoids, setFavHumanoids] = useState(""); // the two named races, when that mode is chosen
+  const [favLang, setFavLang] = useState(null); // the associated language
   const [natTerrain, setNatTerrain] = useState(null);
   const [persona, setPersona] = useState({ traits: "", ideals: "", bonds: "", flaws: "" });
   const [goldRoll, setGoldRoll] = useState(null);
@@ -3719,7 +3726,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
     step === 0 ? name.trim().length > 0 :
     step === 1 ? (!raceData.lineageTrait || !!lineageTrait) : // ability picks may wait for the Abilities step
     step === 2 ? langPicks.length === langNeed && (bg !== "Custom" || bgSkills.length === 2) && (race !== "Dragonborn" || ancestry) && raceSkills.length === raceSkillNeed && (race !== "High Elf" || heCantrip.trim()) :
-    step === 3 ? skills.length === clsData.nSkills && (clsData.subLvl > 1 || subclass) && (cls !== "Fighter" || style) && (cls !== "Rogue" || rogueExp.length === 2) :
+    step === 3 ? skills.length === clsData.nSkills && (clsData.subLvl > 1 || subclass) && (cls !== "Fighter" || style) && (cls !== "Rogue" || rogueExp.length === 2) && (cls !== "Ranger" || (favEnemy && (favEnemy !== "Two humanoid races" || favHumanoids.trim()) && favLang)) :
     step === 4 ? raceAbilPicks.length === (raceData.choose || 0) && (!raceData.feat || featPickDone(raceFeatDef, raceFeat)) :
     step === 6 ? (gearMode === "standard" ? standardReady : gearMode === "gold" ? gold !== null : false) :
     true;
@@ -3732,7 +3739,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
       inventory,
       styles: style ? [style] : [], notes: "", persona,
       metamagic: [], pactBoon: null, invocations: [],
-      rangerChoices: null, // the 2024 Ranger has no favored enemy/terrain picks
+      rangerChoices: cls === "Ranger" ? { favEnemy: favEnemy === "Two humanoid races" ? `Humanoids (${favHumanoids.trim()})` : favEnemy } : null,
 
       spells: castsAt1 && (spellPicks.cantrips.length || spellPicks.spells.length) ? { [cls]: spellPicks } : {},
       abilities: finalScores, method,
@@ -3746,7 +3753,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
         cantrips: raceFeat.cantrips || [], spells: raceFeat.spells || [], maneuvers: raceFeat.maneuvers || [],
       } } : {},
       expertise: [...rogueExp, ...(raceFeat?.expertise || [])].filter((v, i, a) => a.indexOf(v) === i),
-      languages: [...RACE_LANGS[race].fixed, ...langPicks, ...(raceFeat?.langs || []), ...(raceFeat?.name ? featPickOf(raceFeat.name)?.grantLangs || [] : [])].filter((v, i, a) => a.indexOf(v) === i),
+      languages: [...RACE_LANGS[race].fixed, ...langPicks, ...(cls === "Ranger" && favLang ? [favLang] : []), ...(raceFeat?.langs || []), ...(raceFeat?.name ? featPickOf(raceFeat.name)?.grantLangs || [] : [])].filter((v, i, a) => a.indexOf(v) === i),
       racialChoices: {
         ancestry: race === "Dragonborn" ? ancestry : null,
         cantrip: race === "High Elf" ? heCantrip.trim() : null,
@@ -4021,6 +4028,26 @@ function CreateWizard({ onDone, onCancel, customs }) {
                   {skills.map((sk) => (
                     <button key={sk} style={{ ...btn(rogueExp.includes(sk)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
                       onClick={() => setRogueExp(rogueExp.includes(sk) ? rogueExp.filter((x) => x !== sk) : rogueExp.length < 2 ? [...rogueExp, sk] : rogueExp)}>{sk}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {cls === "Ranger" && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ color: T.gold, fontSize: 14, marginBottom: 6 }}>Favored Enemy — one type, or two humanoid races</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {FAVORED_ENEMIES.map((f) => (
+                    <button key={f} style={{ ...btn(favEnemy === f), padding: "5px 10px", fontSize: 13, minHeight: 0 }} onClick={() => setFavEnemy(f)}>{f}</button>
+                  ))}
+                </div>
+                {favEnemy === "Two humanoid races" && (
+                  <input value={favHumanoids} onChange={(e) => setFavHumanoids(e.target.value)} placeholder="Which two? e.g. gnolls and orcs"
+                    style={{ width: "100%", boxSizing: "border-box", marginTop: 8, background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 10px", fontSize: 14 }} />
+                )}
+                <div style={{ color: T.gold, fontSize: 13, margin: "10px 0 6px" }}>Associated language — one your favored enemies speak</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {LANGS.filter((l) => !RACE_LANGS[race].fixed.includes(l) && !langPicks.includes(l)).map((l) => (
+                    <button key={l} {...lorePress(l)} style={{ ...btn(favLang === l), padding: "5px 10px", fontSize: 13, minHeight: 0 }} onClick={() => setFavLang(l)}>{l}</button>
                   ))}
                 </div>
               </div>
@@ -4547,6 +4574,8 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const [tomePicks, setTomePicks] = useState([]);       // Pact of the Tome cantrips
   const [secretsPicks, setSecretsPicks] = useState([]); // Magical Secrets (any class)
   const [favEnemyPick, setFavEnemyPick] = useState(null);
+  const [feHumanoids, setFeHumanoids] = useState(""); // the two named races, when that mode is chosen
+  const [favLang2, setFavLang2] = useState(null); // the associated language
   const [terrainPick2, setTerrainPick2] = useState(null);
   const [deftExp, setDeftExp] = useState(null); // Deft Explorer: one expertise skill
   const [deftLangs, setDeftLangs] = useState([]); // Deft Explorer: two languages
@@ -4640,10 +4669,11 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     if (takingBoAS && boasPicks.length) logBits.push(`Book of Shadows rituals: ${boasPicks.join(", ")}`);
     const tomeCantrips = boonPick === "Pact of the Tome" && tomePicks.length ? tomePicks : ch.tomeCantrips;
     if (boonPick === "Pact of the Tome" && tomePicks.length) logBits.push(`Tome cantrips: ${tomePicks.join(", ")}`);
+    const feLabel = favEnemyPick === "Two humanoid races" ? `Humanoids (${feHumanoids.trim()})` : favEnemyPick;
     const rangerChoices = pick === "Ranger" && (favEnemyPick || terrainPick2)
-      ? { ...rc, extraEnemies: [...(rc.extraEnemies || []), ...(favEnemyPick ? [favEnemyPick] : [])], extraTerrains: [...(rc.extraTerrains || []), ...(terrainPick2 ? [terrainPick2] : [])] }
+      ? { ...rc, extraEnemies: [...(rc.extraEnemies || []), ...(feLabel ? [feLabel] : [])], extraTerrains: [...(rc.extraTerrains || []), ...(terrainPick2 ? [terrainPick2] : [])] }
       : ch.rangerChoices;
-    if (favEnemyPick) logBits.push(`Favored Enemy: ${favEnemyPick}`);
+    if (favEnemyPick) logBits.push(`Favored Enemy: ${feLabel}${favLang2 ? ` (${favLang2})` : ""}`);
     if (terrainPick2) logBits.push(`Natural Explorer: ${terrainPick2}`);
     if (gainsDeft && deftExp) logBits.push(`Deft Explorer: ${deftExp} expertise${deftLangs.length ? `, ${deftLangs.join(", ")}` : ""}`);
     if (gainsGlamour && glamourPick) logBits.push(`Otherworldly Glamour: ${glamourPick}`);
@@ -4658,7 +4688,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     }
     const grantAll = asiMode === "feat" && featPk?.allSkills ? ALL_SKILLS : [];
     const skills = [...ch.skills, ...(mcSkill ? [mcSkill] : []), ...featSkills, ...grantAll, ...(glamourPick ? [glamourPick] : [])].filter((v, i, a) => a.indexOf(v) === i);
-    const languages = [...(ch.languages || []), ...(asiMode === "feat" ? [...(featSel?.langs || []), ...(featPk?.grantLangs || [])] : []), ...deftLangs].filter((v, i, a) => a.indexOf(v) === i);
+    const languages = [...(ch.languages || []), ...(asiMode === "feat" ? [...(featSel?.langs || []), ...(featPk?.grantLangs || [])] : []), ...deftLangs, ...(favLang2 ? [favLang2] : [])].filter((v, i, a) => a.indexOf(v) === i);
     const expertise = [...(ch.expertise || []), ...expPicks, ...(asiMode === "feat" ? featSel?.expertise || [] : []), ...(deftExp ? [deftExp] : [])].filter((v, i, a) => a.indexOf(v) === i);
     const featChoices = asiMode === "feat" && featPick
       ? { ...(ch.featChoices || {}), [featPick]: {
@@ -4760,7 +4790,8 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const rc = ch.rangerChoices || {};
   const enemiesTaken = [rc.favEnemy, ...(rc.extraEnemies || [])].filter(Boolean);
   const terrainsTaken = [rc.natTerrain, ...(rc.extraTerrains || [])].filter(Boolean);
-  const gainsFavEnemy = false, gainsNatTerrain = false; // 2014 ranger picks, retired by the 2024 class
+  const gainsFavEnemy = pick === "Ranger" && [6, 14].includes(newClsLevel);
+  const gainsNatTerrain = false; // Natural Explorer stays retired
   const gainsDeft = pick === "Ranger" && newClsLevel === 2;
   const gainsGlamour = pick === "Ranger" && newClsLevel === 3 && baseSubName(newSub || entry?.subclass || "") === "Fey Wanderer";
 
@@ -4788,7 +4819,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
 
   const extrasNeeded = gainsASI || gainsSub || gainsMcSkill || gainsStyle || gainsExpertise || gainsMeta || gainsBoon ||
     invNeed > 0 || canSwapInv || gainsCantrips || gainsSpells || canSwapSpell || gainsArcanum ||
-    gainsBoAS || gainsTome || gainsSecrets || gainsDeft || gainsGlamour || gainsMastery || gainsSignature ||
+    gainsBoAS || gainsTome || gainsSecrets || gainsDeft || gainsGlamour || gainsFavEnemy || gainsMastery || gainsSignature ||
     choiceGroupsDue.length > 0;
   const extrasDone =
     (!gainsASI || (asiMode === "feat" && featPickDone(allFeats(customs).find((f) => f.name === featPick), featSel)) || (asiMode === "asi" && asiPicks.length === 2)) &&
@@ -4801,6 +4832,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     (!gainsTome || tomePicks.length >= Math.min(3, tomePool.length)) &&
     secretsPicks.length >= secretsReq &&
     (!gainsDeft || (deftExp && deftLangs.length === 2)) && (!gainsGlamour || glamourPick) &&
+    (!gainsFavEnemy || (favEnemyPick && (favEnemyPick !== "Two humanoid races" || feHumanoids.trim()) && favLang2)) &&
     (!gainsMastery || ((masteryPools[1].length === 0 || masteryPicks[1]) && (masteryPools[2].length === 0 || masteryPicks[2]))) &&
     (!gainsSignature || signaturePicks.length >= Math.min(2, signaturePool.length)) &&
     choiceGroupsDue.every((d) => (groupPicks[d.g.key] || []).length >= d.need);
@@ -5060,6 +5092,26 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                 <div style={{ color: T.gold, marginBottom: 4 }}>Magical Secrets — choose {secretsN} from ANY class ({secretsPicks.length}/{secretsN})</div>
                 <div style={{ color: T.dim, fontSize: 12, marginBottom: 8 }}>Any spell of a level you can cast, from any class's list.</div>
                 <SpellPickGrid options={secretsPool} picks={secretsPicks} cap={secretsN} onChange={setSecretsPicks} />
+              </div>
+            )}
+            {gainsFavEnemy && (
+              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
+                <div style={{ color: T.gold, marginBottom: 8 }}>Additional Favored Enemy — one type, or two humanoid races</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {FAVORED_ENEMIES.filter((e) => !enemiesTaken.includes(e)).map((e) => (
+                    <button key={e} style={{ ...btn(favEnemyPick === e), padding: "5px 10px", fontSize: 13, minHeight: 0 }} onClick={() => setFavEnemyPick(e)}>{e}</button>
+                  ))}
+                </div>
+                {favEnemyPick === "Two humanoid races" && (
+                  <input value={feHumanoids} onChange={(e) => setFeHumanoids(e.target.value)} placeholder="Which two? e.g. gnolls and orcs"
+                    style={{ width: "100%", boxSizing: "border-box", marginTop: 8, background: T.panel, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 10px", fontSize: 14 }} />
+                )}
+                <div style={{ color: T.gold, fontSize: 13, margin: "10px 0 6px" }}>Associated language</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {LANGS.filter((l) => !(ch.languages || []).includes(l)).map((l) => (
+                    <button key={l} {...lorePress(l)} style={{ ...btn(favLang2 === l), padding: "5px 10px", fontSize: 13, minHeight: 0 }} onClick={() => setFavLang2(l)}>{l}</button>
+                  ))}
+                </div>
               </div>
             )}
             {gainsGlamour && (
@@ -7660,7 +7712,17 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
             })}</div>
           )}
           {ch.metamagic?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Metamagic: {ch.metamagic.map((m, i) => <span key={m} {...lorePress(m)} onClick={() => openUse(m)} style={{ cursor: "pointer" }}>{i > 0 ? ", " : ""}{m}</span>)}</div>}
-          {ch.rangerChoices && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Favored Enemy: {[ch.rangerChoices.favEnemy, ...(ch.rangerChoices.extraEnemies || [])].filter(Boolean).join(", ")} · Natural Explorer: {[ch.rangerChoices.natTerrain, ...(ch.rangerChoices.extraTerrains || [])].filter(Boolean).join(", ")}</div>}
+          {ch.rangerChoices && (() => {
+            const foes = [ch.rangerChoices.favEnemy, ...(ch.rangerChoices.extraEnemies || [])].filter(Boolean);
+            const lands = [ch.rangerChoices.natTerrain, ...(ch.rangerChoices.extraTerrains || [])].filter(Boolean);
+            return (foes.length || lands.length) ? (
+              <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>
+                {foes.length > 0 && <>Favored {foes.length > 1 ? "Enemies" : "Enemy"}: <span {...lorePress("Favored Enemy")} style={{ color: T.ink }}>{foes.join(", ")}</span></>}
+                {foes.length > 0 && lands.length > 0 && " · "}
+                {lands.length > 0 && <>Natural Explorer: {lands.join(", ")}</>}
+              </div>
+            ) : null;
+          })()}
           {ch.choices && Object.entries(ch.choices).filter(([k]) => !CHOICE_KEYS.has(k)).map(([k, v]) => (
             <div key={k} style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>{k}: {v.map((n, i) => <span key={n} {...lorePress(n)}>{i > 0 ? ", " : ""}{n}</span>)}</div>
           ))}
