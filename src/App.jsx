@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { registerR20Source, r20DragProps } from "./roll20-drag";
 
 /* ============ SRD 5.1 DATA (CC-BY-4.0) ============ */
 
@@ -2949,7 +2948,6 @@ function loreLock(on) {
 function lorePress(name) {
   return {
     "data-lore": "",
-    ...r20DragProps(name),
     onContextMenu: (e) => { e.preventDefault(); e.stopPropagation(); __showLore && __showLore(name); },
     onPointerDown: (e) => {
       const el = e.currentTarget;
@@ -8222,7 +8220,6 @@ export default function App() {
       setChars(starFixes ? migrated : cs);
     })();
   }, []);
-  useEffect(() => { registerR20Source(customs); }, [customs]);
   const persistCustom = (next) => { setCustoms(next); saveCustom(stripBase(next, __BASE)); };
   const persist = (next) => { setChars(next); saveChars(next); };
 
