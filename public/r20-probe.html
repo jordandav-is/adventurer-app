@@ -22,6 +22,10 @@
   ol { color: #b5ab99; font-size: 13.5px; }
   li { margin-bottom: 6px; }
   #live { color: #8a8172; font-size: 12px; font-family: monospace; min-height: 18px; margin-top: 8px; }
+  #manual { display: none; }
+  #manual textarea { width: 100%; box-sizing: border-box; height: 140px; background: #0f0d09; color: #d8cfc0;
+                     border: 1px solid #5a4f3a; border-radius: 8px; padding: 8px; font: 12px monospace; }
+  #manual .note { color: #d76a76; font-size: 12.5px; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -31,21 +35,24 @@
 <div id="zone">Drop a dragged compendium entry here</div>
 <div id="live"></div>
 <button id="copy" style="display:none">Copy all captures as JSON</button>
+<div id="manual"><textarea readonly></textarea>
+  <div class="note">Clipboard access is blocked here — the JSON is selected above; press Ctrl/Cmd-C.</div></div>
 <div id="out"></div>
 
 <div class="cap">
   <h3>What to capture</h3>
   <ol>
     <li><b>This page:</b> open the Roll20 compendium — both the in-VTT sidebar tab (pop it out if you can) and the standalone site <span class="type">roll20.net/compendium/dnd5e</span> — and drag one <b>spell</b>, one <b>item</b>, and one <b>monster</b> onto the zone above. Try from both sources; they may carry different data.</li>
-    <li><b>Network:</b> in the VTT with DevTools → Network open (filter <span class="type">getPages</span>), drag a spell from the compendium tab onto an open character sheet. Copy the full request URL and the full JSON response. Repeat for an item.</li>
-    <li><b>Element:</b> right-click a compendium entry in the VTT sidebar → Inspect → copy the element's outerHTML.</li>
+    <li><b>In the VTT (easy way):</b> install <span class="type">r20-capture.user.js</span> (Tampermonkey), open your game, drag a spell / item / monster from the compendium sidebar onto a sheet and onto the map, then click the gold "Ledger capture" button to download the JSON. It records the getPages traffic, drop payloads, and cross-frame messages automatically.</li>
+    <li><b>In the VTT (manual way):</b> DevTools → Network open (filter <span class="type">getPages</span>), drag a spell from the compendium tab onto an open character sheet. Copy the full request URL and the full JSON response. Repeat for an item. Also: right-click a compendium entry in the sidebar → Inspect → copy the element's outerHTML.</li>
     <li><b>Sheet:</b> note which character sheet the campaign uses (Settings → Game Settings), e.g. "D&D 5e by Roll20" vs the 2014/OGL sheet.</li>
   </ol>
 </div>
 
 <script>
   const zone = document.getElementById('zone'), out = document.getElementById('out'),
-        live = document.getElementById('live'), copyBtn = document.getElementById('copy');
+        live = document.getElementById('live'), copyBtn = document.getElementById('copy'),
+        manual = document.getElementById('manual'), manualTa = manual.querySelector('textarea');
   const captures = [];
   // during dragover values are protected — only the type list is visible
   zone.addEventListener('dragover', (e) => {
@@ -65,19 +72,27 @@
     captures.push(cap);
     const div = document.createElement('div');
     div.className = 'cap';
+    const keys = Object.entries(cap.types);
     div.innerHTML = '<h3>Capture ' + captures.length + '</h3>' +
-      Object.entries(cap.types).map(([t, v]) =>
-        '<div class="type">' + t + '</div><pre></pre>').join('') || '<div class="type">(no data types)</div>';
+      (keys.map(([t]) => '<div class="type">' + t.replace(/</g, '&lt;') + '</div><pre></pre>').join('') || '<div class="type">(no data types)</div>');
     const pres = div.querySelectorAll('pre');
-    Object.values(cap.types).forEach((v, i) => { pres[i].textContent = v || '(empty)'; });
+    keys.forEach(([, v], i) => { pres[i].textContent = v || '(empty)'; });
     out.prepend(div);
     copyBtn.style.display = 'inline-block';
     live.textContent = '';
   });
   copyBtn.addEventListener('click', async () => {
-    await navigator.clipboard.writeText(JSON.stringify(captures, null, 2));
-    copyBtn.textContent = 'Copied ' + captures.length + ' capture(s) ✓';
-    setTimeout(() => copyBtn.textContent = 'Copy all captures as JSON', 1500);
+    const json = JSON.stringify(captures, null, 2);
+    try {
+      await navigator.clipboard.writeText(json);
+      copyBtn.textContent = 'Copied ' + captures.length + ' capture(s) ✓';
+      setTimeout(() => copyBtn.textContent = 'Copy all captures as JSON', 1500);
+    } catch {
+      manual.style.display = 'block';
+      manualTa.value = json;
+      manualTa.focus();
+      manualTa.select();
+    }
   });
 </script>
 </body>
