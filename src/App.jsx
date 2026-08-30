@@ -8194,15 +8194,12 @@ function CloudAccount({ cloud, account, syncState, onAccount, toolRow, hint }) {
   return (
     <form onSubmit={go(cloud.signIn)} style={{ display: "grid", gap: 8, padding: "9px 12px" }}>
       <input type="email" required autoFocus placeholder="email" value={email} onChange={(e) => setEmail(e.target.value)} style={field} />
-      <input type="password" required minLength={8} placeholder="password (8+ characters)" value={pw} onChange={(e) => setPw(e.target.value)} style={field} />
+      <input type="password" required minLength={8} placeholder="password" value={pw} onChange={(e) => setPw(e.target.value)} style={field} />
       <div style={{ display: "flex", gap: 8 }}>
         <button type="submit" disabled={busy} style={actBtn(true)}>Sign in</button>
         <button type="button" disabled={busy} onClick={go(cloud.register)} style={actBtn(false)}>Create account</button>
       </div>
       {msg && <div style={{ color: "#d76a76", fontSize: 12.5 }}>{msg}</div>}
-      <div style={{ color: T.dim, fontSize: 11.5, lineHeight: 1.5 }}>
-        One account, every device: sign in elsewhere and this ledger's characters appear there, kept in step as you play.
-      </div>
     </form>
   );
 }
