@@ -4,5 +4,7 @@
 
    One-time setup (free plan, ~5 minutes):
      cd worker && npx wrangler deploy
-   then paste the printed URL below (no trailing slash) and push. */
-export const SYNC_URL = "";
+   then paste the printed URL below (no trailing slash) and push. The CSP
+   in index.html already admits *.workers.dev (and localhost for dev);
+   a custom domain would need adding to connect-src there too. */
+export const SYNC_URL = "http://localhost:8787";
