@@ -29,8 +29,8 @@ async function deriveKey(email, password) {
 }
 
 export const getAccount = () => { try { return JSON.parse(localStorage.getItem(ACCT_KEY)); } catch { return null; } };
+const setAccount = (a) => { a ? localStorage.setItem(ACCT_KEY, JSON.stringify(a)) : localStorage.removeItem(ACCT_KEY); };
 
-let fresh = false; // a just-completed sign-in: the first dump merges instead of adopting
 async function authPost(path, body) {
   let res;
   try {
@@ -40,17 +40,17 @@ async function authPost(path, body) {
   if (!res.ok) throw new Error(data.error || "The aether did not answer. Try again.");
   return data;
 }
+/* merged:false until the first dump after this sign-in has union-merged —
+   persisted, so a reload in between still merges instead of adopting. */
 export async function register(email, password) {
   email = email.trim().toLowerCase();
   const { token } = await authPost("/register", { email, key: await deriveKey(email, password), gate: GATE_HASH });
-  localStorage.setItem(ACCT_KEY, JSON.stringify({ email, token }));
-  fresh = true;
+  setAccount({ email, token, merged: false });
 }
 export async function signIn(email, password) {
   email = email.trim().toLowerCase();
   const { token } = await authPost("/login", { email, key: await deriveKey(email, password) });
-  localStorage.setItem(ACCT_KEY, JSON.stringify({ email, token }));
-  fresh = true;
+  setAccount({ email, token, merged: false });
 }
 export function signOut() {
   const a = getAccount();
@@ -76,9 +76,9 @@ const loadOutbox = () => {
 };
 const saveOutbox = () => { try { localStorage.setItem(OUTBOX_KEY, JSON.stringify([...outbox])); } catch { /* quota — sync limps, play continues */ } };
 
-const wire = (k, e) => JSON.stringify(e.v === null ? { t: "del", k, n: e.n } : { t: "put", k, v: e.v, n: e.n });
+const wire = (k, e) => JSON.stringify(e.v === null ? { t: "del", k, n: e.n, ts: e.ts } : { t: "put", k, v: e.v, n: e.n, ts: e.ts });
 function queue(k, v) {
-  outbox.set(k, { v, n: ++seq });
+  outbox.set(k, { v, n: ++seq, ts: Date.now() }); // ts = when the hand moved, for staleness contests later
   saveOutbox();
   if (alive) try { ws.send(wire(k, outbox.get(k))); } catch { /* mid-close — the outbox holds it */ }
 }
@@ -111,7 +111,7 @@ function connect() {
     if (ev.data === "pong") return;
     let m; try { m = JSON.parse(ev.data); } catch { return; }
     if (m.t === "ch") {
-      if (dump) { dump.set(m.k, m.v); return; }
+      if (dump) { dump.set(m.k, { v: m.v, ts: m.ts || 0 }); return; }
       if (outbox.has(m.k)) return; // our newer change is already in flight for this key
       if (m.v === null) known.delete(m.k); else known.set(m.k, m.v);
       applyKey(m.k, m.v);
@@ -121,42 +121,64 @@ function connect() {
         outbox.delete(k);
       }
       saveOutbox();
+    } else if (m.t === "err") { // the server declined a change: quarantine it or it re-sends forever
+      for (const [k, e] of outbox) if (e.n === m.n) { outbox.delete(k); H.error(`Sync declined a change: ${m.m}.`); }
+      saveOutbox();
     } else if (m.t === "synced") {
-      known = new Map([...dump].filter(([, v]) => v !== null));
+      // an offline queue can be older than what other hands wrote meanwhile — newer dump wins
+      for (const [k, e] of outbox) { const row = dump.get(k); if (row && row.ts > e.ts) outbox.delete(k); }
+      saveOutbox();
+      known = new Map([...dump].filter(([, r]) => r.v !== null).map(([k, r]) => [k, r.v]));
       const d = dump; dump = null;
       alive = true; tries = 0;
       H.status("live");
       adopt(d);
-      for (const [k, e] of outbox) ws.send(wire(k, e)); // queued changes ride up after the dump
+      for (const [k, e] of outbox) ws.send(wire(k, e)); // surviving queued changes ride up after the dump
     }
   };
   ws.onclose = (ev) => {
     ws = null; alive = false;
     H.status("offline");
-    if (ev.code === 4001) { localStorage.removeItem(ACCT_KEY); H.signedOut(); return; } // token revoked
+    if (ev.code === 4001) { // token revoked — and the outbox must not leak into the next account
+      setAccount(null); outbox = new Map(); localStorage.removeItem(OUTBOX_KEY);
+      H.signedOut(); return;
+    }
     timer = setTimeout(connect, Math.min(60000, 1000 * 2 ** tries++));
   };
   ws.onerror = () => { try { ws?.close(); } catch { /* noop */ } };
 }
 
+/* Fields the wire may omit (a trimmed chronicle, an unreadable portrait)
+   survive locally: an absent key keeps the local copy; an explicit null is
+   a real removal and is adopted. */
+const graft = (inc, local) => {
+  if (!local) return inc;
+  const out = { ...inc };
+  for (const f of ["log", "hpLog", "photo"]) if (!(f in inc) && f in local) out[f] = local[f];
+  return out;
+};
+
 /* The connect dump becomes app state. Cloud versions win their ids — except
-   keys with an outbox entry, where the local change is newer. A fresh
-   sign-in (or an empty vault upstairs) merges instead of adopting: local
-   souls the account lacks ride up, so signing in never erases a device. */
+   keys with a surviving outbox entry, where the local change is newer. The
+   first dump after a sign-in merges instead of adopting: local souls the
+   account lacks ride up, so signing in never erases a device. */
 function adopt(d) {
-  const isFresh = fresh; fresh = false;
+  const acct = getAccount();
+  const first = !!acct && !acct.merged;
   const rows = [];
-  for (const [k, v] of d) if (v !== null && k.startsWith("c/")) { try { rows.push(JSON.parse(v)); } catch { /* skip corrupt */ } }
+  for (const [k, r] of d) if (r.v !== null && k.startsWith("c/")) { try { rows.push(JSON.parse(r.v)); } catch { /* skip corrupt */ } }
   rows.sort((a, b) => (a.i - b.i) || (a.c.id < b.c.id ? -1 : 1));
-  let arr = rows.map((r) => r.c);
   const local = H.getLocal();
-  if (isFresh || arr.length === 0) {
+  const byId = new Map((local.chars || []).map((c) => [c.id, c]));
+  let arr = rows.map((r) => graft(r.c, byId.get(r.c.id)));
+  if (first) {
     const have = new Set(arr.map((c) => c.id));
     const extras = (local.chars || []).filter((c) => c && !have.has(c.id) && !outbox.has("c/" + c.id));
     arr = [...arr, ...extras];
     extras.forEach((c) => prep(c, arr.indexOf(c)));
-    if (isFresh && !d.has("m/custom") && !outbox.has("m/custom")) queue("m/custom", JSON.stringify(local.custom));
-    if (isFresh && !d.has("m/prefs") && !outbox.has("m/prefs") && local.prefs.length) queue("m/prefs", JSON.stringify({ off: local.prefs }));
+    if (!d.has("m/custom") && !outbox.has("m/custom")) queue("m/custom", JSON.stringify(local.custom));
+    if (!d.has("m/prefs") && !outbox.has("m/prefs") && local.prefs.length) queue("m/prefs", JSON.stringify({ off: local.prefs }));
+    setAccount({ ...acct, merged: true });
   }
   arr = arr.filter((c) => outbox.get("c/" + c.id)?.v !== null); // deleted here while offline
   for (const [k, e] of outbox) {
@@ -164,12 +186,12 @@ function adopt(d) {
     try {
       const { c } = JSON.parse(e.v);
       const at = arr.findIndex((x) => x.id === c.id);
-      at >= 0 ? (arr[at] = c) : arr.push(c);
+      at >= 0 ? (arr[at] = graft(c, arr[at])) : arr.push(c);
     } catch { /* skip corrupt */ }
   }
   if (JSON.stringify(arr) !== JSON.stringify(local.chars)) H.chars(arr);
-  if (!outbox.has("m/custom") && d.get("m/custom")) { try { H.custom(JSON.parse(d.get("m/custom"))); } catch { /* noop */ } }
-  if (!outbox.has("m/prefs") && d.get("m/prefs")) { try { H.prefs(JSON.parse(d.get("m/prefs")).off || []); } catch { /* noop */ } }
+  if (!outbox.has("m/custom") && d.get("m/custom")?.v) { try { H.custom(JSON.parse(d.get("m/custom").v)); } catch { /* noop */ } }
+  if (!outbox.has("m/prefs") && d.get("m/prefs")?.v) { try { H.prefs(JSON.parse(d.get("m/prefs").v).off || []); } catch { /* noop */ } }
 }
 
 function applyKey(k, v) {
@@ -177,11 +199,12 @@ function applyKey(k, v) {
   if (k === "m/prefs") { if (v) try { H.prefs(JSON.parse(v).off || []); } catch { /* noop */ } return; }
   if (!k.startsWith("c/")) return;
   const id = k.slice(2);
-  let arr = (H.getLocal().chars || []).filter((c) => c.id !== id);
+  const chars = H.getLocal().chars || [];
+  const arr = chars.filter((c) => c.id !== id);
   if (v !== null) {
     try {
       const { i, c } = JSON.parse(v);
-      arr.splice(Math.min(i ?? arr.length, arr.length), 0, c);
+      arr.splice(Math.min(i ?? arr.length, arr.length), 0, graft(c, chars.find((x) => x.id === id)));
     } catch { return; }
   }
   H.chars(arr);
@@ -190,25 +213,27 @@ function applyKey(k, v) {
 /* ---- push: what changed locally rides up ---- */
 export function pushChars(next) {
   if (!getAccount()) return;
-  const seen = new Set();
-  next.forEach((ch, i) => { seen.add("c/" + ch.id); prep(ch, i); });
-  for (const k of new Set([...(known?.keys() || []), ...outbox.keys()])) {
-    if (k.startsWith("c/") && !seen.has(k) && outbox.get(k)?.v !== null) queue(k, null);
-  }
+  next.forEach((ch, i) => prep(ch, i));
+}
+/* Deletion is deliberate, never inferred: only the sheet's own delete
+   button removes a soul from the account, so a half-settled roster
+   snapshot can never mass-delete what another device holds. */
+export function deleteChar(id) {
+  if (getAccount()) queue("c/" + id, null);
 }
 /* Legacy portraits predate the 220px shrink and can be megabytes — far past
    the wire budget. Re-encode through the same canvas as the upload path;
-   the smaller portrait re-enters through App and syncs on the next pass. */
+   the smaller portrait syncs now and is handed back for the local copy. */
 async function prep(ch, i) {
   const k = "c/" + ch.id;
   let body = ch;
   if (body.photo && body.photo.length > 90000) {
     const p = await shrinkPhoto(body.photo);
-    if (p) { H.photo(ch.id, p); return; }
-    body = { ...body, photo: null }; // unreadable portrait stays local-only
+    if (p) { H.photo(ch.id, p); body = { ...body, photo: p }; }
+    else { const { photo, ...rest } = body; body = rest; } // unreadable portrait stays local-only
   }
   let v = JSON.stringify({ i, c: body });
-  if (v.length > CAP) { const { log, hpLog, ...rest } = body; v = JSON.stringify({ i, c: { ...rest, log: [], hpLog: [] } }); } // the chronicle stays home
+  if (v.length > CAP) { const { log, hpLog, ...rest } = body; v = JSON.stringify({ i, c: rest }); } // the chronicle stays home
   if (v.length > CAP) { H.error(`${ch.name} is too large to sync.`); return; }
   if (known?.get(k) !== v && outbox.get(k)?.v !== v) queue(k, v);
 }

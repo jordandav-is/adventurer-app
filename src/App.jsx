@@ -8294,9 +8294,9 @@ export default function App() {
         setCustoms(folded); saveCustom(stripBase(folded, __BASE));
       },
       prefs: (off) => { const s = new Set(off); __SRC_OFF = s; setSrcOff(s); saveSrcPrefs(s); },
-      photo: (id, p) => { // an oversized portrait came back re-shrunk; adopt and re-push
+      photo: (id, p) => { // an oversized portrait was re-shrunk for the wire; the local copy follows
         const next = (stateRef.current.chars || []).map((c) => (c.id === id ? { ...c, photo: p } : c));
-        setChars(next); saveChars(next); cloud.pushChars(next);
+        setChars(next); saveChars(next);
       },
       status: setSyncState,
       error: setIoMsg,
@@ -8423,7 +8423,7 @@ export default function App() {
           onSpells={(sp) => persist(chars.map((c) => (c.id === active.id ? { ...c, spells: sp } : c)))}
           onNotes={(n) => persist(chars.map((c) => (c.id === active.id ? { ...c, notes: n } : c)))}
           onInvocations={(inv) => persist(chars.map((c) => (c.id === active.id ? { ...c, invocations: inv } : c)))} onLevelUp={() => setLeveling(true)}
-          onDelete={() => { persist(chars.filter((c) => c.id !== active.id)); setView("roster"); }}
+          onDelete={() => { cloud?.deleteChar(active.id); persist(chars.filter((c) => c.id !== active.id)); setView("roster"); }}
           onPhoto={(p) => persist(chars.map((c) => (c.id === active.id ? { ...c, photo: p } : c)))}
           onSources={() => setSourcesOpen(true)} />
       )}

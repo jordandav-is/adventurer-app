@@ -40,12 +40,15 @@ const sha = async (s) =>
 export class Account extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
-    ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT)");
+    // ts is the writing device's clock, stored and relayed untouched — clients
+    // use it to settle staleness contests; the server never parses a value
+    ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT, ts INTEGER DEFAULT 0)");
+    try { ctx.storage.sql.exec("ALTER TABLE kv ADD COLUMN ts INTEGER DEFAULT 0"); } catch { /* born with it */ }
     // the edge answers keepalives itself; the account never wakes for them
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
   }
   get(k) { return [...this.ctx.storage.sql.exec("SELECT v FROM kv WHERE k = ?", k)][0]?.v ?? null; }
-  put(k, v) { this.ctx.storage.sql.exec("INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v", k, v); }
+  put(k, v, ts = 0) { this.ctx.storage.sql.exec("INSERT INTO kv (k, v, ts) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, ts = excluded.ts", k, v, ts); }
   del(k) { this.ctx.storage.sql.exec("DELETE FROM kv WHERE k = ?", k); }
 
   async fetch(req) {
@@ -64,8 +67,16 @@ export class Account extends DurableObject {
       return this.session();
     }
     if (url.pathname === "/login") {
+      // eight wrong guesses close the gate for a quarter hour
+      const f = JSON.parse(this.get("fails") || '{"n":0,"t":0}');
+      const recent = Date.now() - f.t < 900000;
+      if (f.n >= 8 && recent) return err(429, "Too many tries — the gate rests. Return in a quarter hour.");
       const a = JSON.parse(this.get("auth") || "null");
-      if (!a || (await sha(String(b.key) + a.salt)) !== a.hash) return err(401, "Email and password don't match.");
+      if (!a || (await sha(String(b.key) + a.salt)) !== a.hash) {
+        this.put("fails", JSON.stringify({ n: (recent ? f.n : 0) + 1, t: Date.now() }));
+        return err(401, "Email and password don't match.");
+      }
+      this.del("fails");
       return this.session();
     }
     if (url.pathname === "/logout") {
@@ -103,8 +114,8 @@ export class Account extends DurableObject {
     } else {
       this.ctx.acceptWebSocket(pair[1]);
       // the connect dump: everything the account holds, then the sentinel
-      for (const row of this.ctx.storage.sql.exec("SELECT k, v FROM kv WHERE k LIKE 'c/%' OR k LIKE 'm/%'")) {
-        pair[1].send(JSON.stringify({ t: "ch", k: row.k, v: row.v }));
+      for (const row of this.ctx.storage.sql.exec("SELECT k, v, ts FROM kv WHERE k LIKE 'c/%' OR k LIKE 'm/%'")) {
+        pair[1].send(JSON.stringify({ t: "ch", k: row.k, v: row.v, ts: row.ts }));
       }
       pair[1].send('{"t":"synced"}');
     }
@@ -115,14 +126,14 @@ export class Account extends DurableObject {
     if (typeof msg !== "string" || msg.length > 2000000) return;
     let m; try { m = JSON.parse(msg); } catch { return; }
     if ((m.t !== "put" && m.t !== "del") || !DATA_KEY.test(m.k || "")) return;
-    if (m.t === "put" && (typeof m.v !== "string" || m.v.length > 1500000)) return void ws.send(JSON.stringify({ t: "err", m: "too large" }));
+    if (m.t === "put" && (typeof m.v !== "string" || m.v.length > 1500000)) return void ws.send(JSON.stringify({ t: "err", n: m.n, m: "too large" }));
     try {
-      m.t === "put" ? this.put(m.k, m.v) : this.del(m.k);
+      m.t === "put" ? this.put(m.k, m.v, Number(m.ts) || 0) : this.del(m.k);
     } catch { // SQLITE_FULL — the free plan's 1GB per account, a distant shore
-      return void ws.send(JSON.stringify({ t: "err", m: "storage full" }));
+      return void ws.send(JSON.stringify({ t: "err", n: m.n, m: "storage full" }));
     }
     ws.send(JSON.stringify({ t: "ack", n: m.n }));
-    const out = JSON.stringify({ t: "ch", k: m.k, v: m.t === "put" ? m.v : null });
+    const out = JSON.stringify({ t: "ch", k: m.k, v: m.t === "put" ? m.v : null, ts: Number(m.ts) || 0 });
     for (const sock of this.ctx.getWebSockets()) {
       if (sock !== ws && sock.readyState === WebSocket.OPEN) try { sock.send(out); } catch { /* mid-close */ }
     }
