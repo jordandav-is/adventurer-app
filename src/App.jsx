@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { SYNC_URL } from "./sync-config.js";
 
 /* ============ SRD 5.1 DATA (CC-BY-4.0) ============ */
 
@@ -8155,6 +8156,57 @@ function HomebrewForge({ customs, onSave, onBack }) {
 }
 
 /* ============ APP ============ */
+/* ============ ACCOUNT — one ledger, every device ============ */
+/* Lives in the tools drawer. The sync module (src/sync.js) arrives lazily
+   and only when sync-config.js names a server, so this renders nothing on
+   a purely local build. */
+function CloudAccount({ cloud, account, syncState, onAccount, toolRow, hint }) {
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (!cloud) return null;
+  const go = (fn) => async (e) => {
+    e.preventDefault();
+    setBusy(true); setMsg("");
+    try { await fn(email, pw); onAccount(cloud.getAccount()?.email || null); setOpen(false); }
+    catch (err) { setMsg(err.message); }
+    finally { setBusy(false); }
+  };
+  if (account) return (
+    <div style={{ ...toolRow, cursor: "default" }}>
+      <span title={syncState === "live" ? "Synced live" : "Waiting for signal"}
+        style={{ width: 9, height: 9, borderRadius: "50%", flex: "0 0 auto", background: syncState === "live" ? "#7fb069" : T.dim, boxShadow: syncState === "live" ? "0 0 6px #7fb06988" : "none" }} />
+      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{account}</span>
+      <span style={{ ...hint, cursor: "pointer", textDecoration: "underline dotted" }}
+        onClick={() => { cloud.signOut(); onAccount(null); }}>sign out</span>
+    </div>
+  );
+  if (!open) return (
+    <button style={toolRow} onClick={() => setOpen(true)}>
+      <Icon name="share" size={15} /> Account sync <span style={hint}>live across devices</span>
+    </button>
+  );
+  const field = { width: "100%", boxSizing: "border-box", padding: "9px 12px", fontSize: 15, background: "#241a10", color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 6, outline: "none" };
+  const actBtn = (solid) => ({ flex: 1, padding: "9px 0", fontSize: 14, fontFamily: "inherit", borderRadius: 6, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1,
+    background: solid ? T.gold : "transparent", color: solid ? "#141210" : T.gold, border: `1px solid ${T.gold}` });
+  return (
+    <form onSubmit={go(cloud.signIn)} style={{ display: "grid", gap: 8, padding: "9px 12px" }}>
+      <input type="email" required autoFocus placeholder="email" value={email} onChange={(e) => setEmail(e.target.value)} style={field} />
+      <input type="password" required minLength={8} placeholder="password (8+ characters)" value={pw} onChange={(e) => setPw(e.target.value)} style={field} />
+      <div style={{ display: "flex", gap: 8 }}>
+        <button type="submit" disabled={busy} style={actBtn(true)}>Sign in</button>
+        <button type="button" disabled={busy} onClick={go(cloud.register)} style={actBtn(false)}>Create account</button>
+      </div>
+      {msg && <div style={{ color: "#d76a76", fontSize: 12.5 }}>{msg}</div>}
+      <div style={{ color: T.dim, fontSize: 11.5, lineHeight: 1.5 }}>
+        One account, every device: sign in elsewhere and this ledger's characters appear there, kept in step as you play.
+      </div>
+    </form>
+  );
+}
+
 export default function App() {
   const [chars, setChars] = useState(null);
   const [view, setView] = useState("roster");
@@ -8165,7 +8217,12 @@ export default function App() {
   const [toolsOpen, setToolsOpen] = useState(false); // the quiet drawer: homebrew, export, import
   const [srcOff, setSrcOff] = useState(() => new Set()); // sourcebooks turned off
   const [sourcesOpen, setSourcesOpen] = useState(false);
-  const applySrcOff = (next) => { __SRC_OFF = next; setSrcOff(next); saveSrcPrefs(next); };
+  const [cloud, setCloud] = useState(null);     // the lazily-loaded sync module
+  const [account, setAccount] = useState(null); // signed-in email
+  const [syncState, setSyncState] = useState("offline");
+  const stateRef = useRef({});                  // live state for the sync handlers
+  stateRef.current = { chars, customs, srcOff };
+  const applySrcOff = (next) => { __SRC_OFF = next; setSrcOff(next); saveSrcPrefs(next); cloud?.pushPrefs([...next]); };
   const toggleSource = (name) => {
     const next = new Set(srcOff);
     next.has(name) ? next.delete(name) : next.add(name);
@@ -8220,8 +8277,35 @@ export default function App() {
       setChars(starFixes ? migrated : cs);
     })();
   }, []);
-  const persistCustom = (next) => { setCustoms(next); saveCustom(stripBase(next, __BASE)); };
-  const persist = (next) => { setChars(next); saveChars(next); };
+  /* ---- account sync: module boots lazily once the vault is open ---- */
+  const booted = chars !== null;
+  useEffect(() => {
+    if (!booted || !SYNC_URL) return;
+    import("./sync.js").then((m) => { setCloud(m); setAccount(m.getAccount()?.email || null); });
+  }, [booted]);
+  useEffect(() => {
+    if (!cloud || !account) return;
+    return cloud.start({
+      getLocal: () => ({ chars: stateRef.current.chars || [], custom: stripBase(stateRef.current.customs, __BASE), prefs: [...stateRef.current.srcOff] }),
+      chars: (arr) => { setChars(arr); saveChars(arr); },
+      custom: (stored) => {
+        const eff = __BASE ? mergeCompendium(stored, __BASE).customs : stored;
+        const folded = { ...eff, spells: foldStarredSpells(eff.spells || []) };
+        setCustoms(folded); saveCustom(stripBase(folded, __BASE));
+      },
+      prefs: (off) => { const s = new Set(off); __SRC_OFF = s; setSrcOff(s); saveSrcPrefs(s); },
+      photo: (id, p) => { // an oversized portrait came back re-shrunk; adopt and re-push
+        const next = (stateRef.current.chars || []).map((c) => (c.id === id ? { ...c, photo: p } : c));
+        setChars(next); saveChars(next); cloud.pushChars(next);
+      },
+      status: setSyncState,
+      error: setIoMsg,
+      signedOut: () => setAccount(null),
+    });
+  }, [cloud, account]);
+
+  const persistCustom = (next) => { setCustoms(next); const s = stripBase(next, __BASE); saveCustom(s); cloud?.pushCustom(s); };
+  const persist = (next) => { setChars(next); saveChars(next); cloud?.pushChars(next); };
 
   if (chars === null) return (
     <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", color: T.dim, fontFamily: "Georgia, serif" }}>
@@ -8299,6 +8383,7 @@ export default function App() {
                       r.readAsText(f);
                     }} />
                 </label>
+                <CloudAccount cloud={cloud} account={account} syncState={syncState} onAccount={setAccount} toolRow={toolRow} hint={hint} />
                 {ioMsg && <div style={{ color: T.dim, fontSize: 13, padding: "4px 12px 8px" }}>{ioMsg}</div>}
               </div>
             );
