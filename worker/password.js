@@ -4,6 +4,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 const DUMMY_SALT = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
 const HEX_32_RE = /^[0-9a-f]{32}$/i;
 const HEX_64_RE = /^[0-9a-f]{64}$/i;
+const RECOVERY_KEY_RE = /^ledger-recovery-[0-9a-f]{64}$/;
 
 export function bytesToHex(bytes) {
   return Array.from(bytes)
@@ -103,4 +104,32 @@ export async function dummyPasswordWork(password = "dummy-password") {
 export async function hashGatePassphrase(passphrase, saltStr, iterations = 600000) {
   const enc = new TextEncoder();
   return derivePbkdf2Sha256Hex(passphrase.trim(), enc.encode(saltStr), iterations);
+}
+
+export function generateRecoveryKey() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return `ledger-recovery-${bytesToHex(bytes)}`;
+}
+
+export function normalizeRecoveryKey(key) {
+  if (typeof key !== "string") return null;
+  const trimmed = key.trim().toLowerCase();
+  if (!RECOVERY_KEY_RE.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
+export function isValidRecoveryKey(key) {
+  return normalizeRecoveryKey(key) !== null;
+}
+
+export function hashRecoveryKey(key) {
+  const norm = normalizeRecoveryKey(key);
+  if (!norm) {
+    throw new TypeError("Invalid recovery key");
+  }
+  const enc = new TextEncoder();
+  return bytesToHex(sha256(enc.encode(norm)));
 }

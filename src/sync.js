@@ -100,6 +100,20 @@ export async function signInPassword(email, password) {
   return data;
 }
 
+export async function recoverPassword(email, recoveryKey, newPassword) {
+  email = (email || "").trim().toLowerCase();
+  recoveryKey = (recoveryKey || "").trim();
+  const data = await authPost("/recover", { email, recoveryKey, newPassword });
+  setAccount({
+    id: data.account.id,
+    email: data.account.email,
+    hasPassword: data.account.hasPassword,
+    token: data.token,
+    merged: false,
+  });
+  return data;
+}
+
 export async function changePassword(currentPassword, newPassword) {
   const a = getAccount();
   if (!a) throw new Error("No active session.");
@@ -135,6 +149,17 @@ export async function changePassword(currentPassword, newPassword) {
   });
 
   if (H) connect();
+  return data;
+}
+
+export async function rotateRecoveryKey(currentPassword) {
+  const a = getAccount();
+  if (!a) throw new Error("No active session.");
+  const data = await authPost("/recovery-key", {
+    accountId: a.id,
+    token: a.token,
+    currentPassword,
+  });
   return data;
 }
 export function signOut() {

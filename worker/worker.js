@@ -6,6 +6,10 @@ import {
   dummyPasswordWork,
   hashGatePassphrase,
   timingSafeEqualStr,
+  generateRecoveryKey,
+  normalizeRecoveryKey,
+  isValidRecoveryKey,
+  hashRecoveryKey,
 } from "./password.js";
 
 const ALLOWED_ORIGINS = new Set([
@@ -200,6 +204,7 @@ export default {
           hasPassword: true,
         },
         token: initRes.token,
+        recoveryKey: initRes.recoveryKey,
       }, origin);
     }
 
@@ -284,6 +289,86 @@ export default {
           hasPassword: true,
         },
         token: setRes.token,
+        recoveryKey: setRes.recoveryKey,
+      }, origin);
+    }
+
+    if (path === "/recover") {
+      const { email, recoveryKey, newPassword } = body;
+      if (
+        typeof email !== "string" ||
+        typeof recoveryKey !== "string" ||
+        typeof newPassword !== "string" ||
+        email.length > 254 ||
+        newPassword.length < 8 ||
+        newPassword.length > 256 ||
+        !isValidRecoveryKey(recoveryKey)
+      ) {
+        return err(400, "Bad request", origin);
+      }
+
+      const normEmail = email.trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normEmail)) {
+        return err(401, "Invalid recovery key or email.", origin);
+      }
+
+      const account = await identityStub.getAccountByEmail(normEmail);
+      if (!account) {
+        const authWorkStub = await getAuthWorkStub(env, normEmail);
+        await authWorkStub.runDummyPassword(newPassword);
+        await new Promise((r) => setTimeout(r, 200));
+        return err(401, "Invalid recovery key or email.", origin);
+      }
+
+      const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromName(account.id));
+      const res = await accountStub.recoverPassword({ recoveryKey, newPassword });
+      if (!res.ok) {
+        await new Promise((r) => setTimeout(r, 200));
+        return err(401, "Invalid recovery key or email.", origin);
+      }
+
+      return json(200, {
+        account: {
+          id: account.id,
+          email: account.email,
+          hasPassword: true,
+        },
+        token: res.token,
+        recoveryKey: res.recoveryKey,
+      }, origin);
+    }
+
+    if (path === "/recovery-key") {
+      const { accountId, token, currentPassword } = body;
+      if (
+        typeof accountId !== "string" ||
+        typeof token !== "string" ||
+        typeof currentPassword !== "string" ||
+        !UUID_RE.test(accountId) ||
+        !HEX_64_RE.test(token) ||
+        currentPassword.length < 8 ||
+        currentPassword.length > 256
+      ) {
+        return err(400, "Bad request", origin);
+      }
+
+      const account = await identityStub.getAccountById(accountId);
+      if (!account) {
+        const authWorkStub = await getAuthWorkStub(env, accountId);
+        await authWorkStub.runDummyPassword(currentPassword);
+        await new Promise((r) => setTimeout(r, 200));
+        return err(401, "Unauthorized", origin);
+      }
+
+      const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromName(accountId));
+      const res = await accountStub.rotateRecoveryKey({ token, currentPassword });
+      if (!res.ok) {
+        await new Promise((r) => setTimeout(r, 200));
+        return err(401, "Unauthorized", origin);
+      }
+
+      return json(200, {
+        recoveryKey: res.recoveryKey,
       }, origin);
     }
 
@@ -623,14 +708,21 @@ export class Account extends DurableObject {
       if (!isMatch) {
         return { ok: false, status: 409 };
       }
+      const newRecoveryKey = generateRecoveryKey();
+      const newRecoveryDigest = hashRecoveryKey(newRecoveryKey);
+
       return this.ctx.storage.transactionSync(() => {
         const curReg = [...this.ctx.storage.sql.exec("SELECT v FROM auth_state WHERE k = 'registration_digest'")][0]?.v || null;
         const curAuth = [...this.ctx.storage.sql.exec("SELECT v FROM auth_state WHERE k = 'password'")][0]?.v || null;
         if (curReg !== regDigestRow || curAuth !== rawAuth) {
           return { ok: false, status: 409 };
         }
+        this.ctx.storage.sql.exec(
+          "INSERT INTO auth_state (k, v) VALUES ('recovery_digest', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
+          newRecoveryDigest
+        );
         this.insertSessionSync(sessionDigest);
-        return { ok: true, token: sessionToken };
+        return { ok: true, token: sessionToken, recoveryKey: newRecoveryKey };
       });
     }
 
@@ -640,6 +732,8 @@ export class Account extends DurableObject {
 
     const record = await createPasswordRecord(password);
     const authPayload = JSON.stringify(record);
+    const recoveryKey = generateRecoveryKey();
+    const recoveryDigest = hashRecoveryKey(recoveryKey);
 
     return this.ctx.storage.transactionSync(() => {
       const curReg = [...this.ctx.storage.sql.exec("SELECT v FROM auth_state WHERE k = 'registration_digest'")][0]?.v || null;
@@ -655,8 +749,12 @@ export class Account extends DurableObject {
         "INSERT INTO auth_state (k, v) VALUES ('password', ?)",
         authPayload
       );
+      this.ctx.storage.sql.exec(
+        "INSERT INTO auth_state (k, v) VALUES ('recovery_digest', ?)",
+        recoveryDigest
+      );
       this.insertSessionSync(sessionDigest);
-      return { ok: true, token: sessionToken };
+      return { ok: true, token: sessionToken, recoveryKey };
     });
   }
 
@@ -734,6 +832,8 @@ export class Account extends DurableObject {
 
     const newRecord = await createPasswordRecord(newPassword);
     const newAuthPayload = JSON.stringify(newRecord);
+    const newRecoveryKey = generateRecoveryKey();
+    const newRecoveryDigest = hashRecoveryKey(newRecoveryKey);
     const replacementToken = randomHex(32);
     const replacementDigest = await sha256Hex(replacementToken);
 
@@ -760,6 +860,10 @@ export class Account extends DurableObject {
         "INSERT INTO auth_state (k, v) VALUES ('password', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
         newAuthPayload
       );
+      this.ctx.storage.sql.exec(
+        "INSERT INTO auth_state (k, v) VALUES ('recovery_digest', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
+        newRecoveryDigest
+      );
 
       this.ctx.storage.sql.exec("DELETE FROM sessions");
       this.ctx.storage.sql.exec("DELETE FROM ws_tickets");
@@ -774,7 +878,123 @@ export class Account extends DurableObject {
         commitNow
       );
 
-      return { ok: true, token: replacementToken };
+      return { ok: true, token: replacementToken, recoveryKey: newRecoveryKey };
+    });
+  }
+
+  async recoverPassword({ recoveryKey, newPassword }) {
+    const rawDigest = [...this.ctx.storage.sql.exec("SELECT v FROM auth_state WHERE k = 'recovery_digest'")][0]?.v || null;
+    const normKey = normalizeRecoveryKey(recoveryKey);
+
+    if (!rawDigest || !normKey) {
+      await dummyPasswordWork(newPassword);
+      return { ok: false };
+    }
+
+    const computedDigest = hashRecoveryKey(normKey);
+    if (!timingSafeEqualStr(computedDigest, rawDigest)) {
+      await dummyPasswordWork(newPassword);
+      return { ok: false };
+    }
+
+    const newRecord = await createPasswordRecord(newPassword);
+    const newAuthPayload = JSON.stringify(newRecord);
+    const newRecoveryKey = generateRecoveryKey();
+    const newRecoveryDigest = hashRecoveryKey(newRecoveryKey);
+    const sessionToken = randomHex(32);
+    const sessionDigest = await sha256Hex(sessionToken);
+
+    return this.ctx.storage.transactionSync(() => {
+      const curDigest = [...this.ctx.storage.sql.exec("SELECT v FROM auth_state WHERE k = 'recovery_digest'")][0]?.v || null;
+      if (curDigest !== rawDigest) {
+        return { ok: false };
+      }
+
+      this.ctx.storage.sql.exec(
+        "INSERT INTO auth_state (k, v) VALUES ('password', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
+        newAuthPayload
+      );
+      this.ctx.storage.sql.exec(
+        "INSERT INTO auth_state (k, v) VALUES ('recovery_digest', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
+        newRecoveryDigest
+      );
+
+      this.ctx.storage.sql.exec("DELETE FROM sessions");
+      this.ctx.storage.sql.exec("DELETE FROM ws_tickets");
+      for (const ws of this.ctx.getWebSockets()) {
+        try { ws.close(4001, "revoked"); } catch {}
+      }
+
+      this.insertSessionSync(sessionDigest);
+      return { ok: true, token: sessionToken, recoveryKey: newRecoveryKey };
+    });
+  }
+
+  async rotateRecoveryKey({ token, currentPassword }) {
+    const tokenDigest = await sha256Hex(token);
+    this.purgeSessions();
+    const now = Date.now();
+    const session = [...this.ctx.storage.sql.exec(
+      "SELECT digest FROM sessions WHERE digest = ? AND created_at >= ? AND last_active >= ?",
+      tokenDigest,
+      now - SEVEN_DAYS_MS,
+      now - TWENTY_FOUR_HOURS_MS
+    )][0];
+
+    if (!session) {
+      await dummyPasswordWork(currentPassword);
+      return { ok: false };
+    }
+
+    const rawAuth = [...this.ctx.storage.sql.exec("SELECT v FROM auth_state WHERE k = 'password'")][0]?.v || null;
+    if (!rawAuth) {
+      await dummyPasswordWork(currentPassword);
+      return { ok: false };
+    }
+
+    let parsedAuth;
+    try {
+      parsedAuth = JSON.parse(rawAuth);
+    } catch {}
+
+    if (!isValidPasswordRecord(parsedAuth)) {
+      await dummyPasswordWork(currentPassword);
+      return { ok: false };
+    }
+
+    const isCurrentValid = await verifyPasswordRecord(currentPassword, parsedAuth);
+    if (!isCurrentValid) {
+      return { ok: false };
+    }
+
+    const newRecoveryKey = generateRecoveryKey();
+    const newRecoveryDigest = hashRecoveryKey(newRecoveryKey);
+
+    return this.ctx.storage.transactionSync(() => {
+      this.purgeSessions();
+      const commitNow = Date.now();
+      const currentSession = [...this.ctx.storage.sql.exec(
+        "SELECT digest FROM sessions WHERE digest = ? AND created_at >= ? AND last_active >= ?",
+        tokenDigest,
+        commitNow - SEVEN_DAYS_MS,
+        commitNow - TWENTY_FOUR_HOURS_MS
+      )][0];
+
+      if (!currentSession) {
+        return { ok: false };
+      }
+
+      const currentRawAuth = [...this.ctx.storage.sql.exec("SELECT v FROM auth_state WHERE k = 'password'")][0]?.v || null;
+      if (currentRawAuth !== rawAuth) {
+        return { ok: false };
+      }
+
+      this.ctx.storage.sql.exec(
+        "INSERT INTO auth_state (k, v) VALUES ('recovery_digest', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
+        newRecoveryDigest
+      );
+
+      return { ok: true, recoveryKey: newRecoveryKey };
     });
   }
 

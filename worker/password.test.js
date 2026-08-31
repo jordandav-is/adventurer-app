@@ -11,6 +11,10 @@ import {
   derivePbkdf2Sha256Hex,
   bytesToHex,
   hexToBytes,
+  generateRecoveryKey,
+  normalizeRecoveryKey,
+  isValidRecoveryKey,
+  hashRecoveryKey,
 } from "./password.js";
 
 describe("password module", () => {
@@ -117,5 +121,26 @@ describe("password module", () => {
     assert.deepEqual(hexToBytes("deadbeef"), bytes);
     assert.throws(() => hexToBytes("deadbee"), TypeError);
     assert.throws(() => hexToBytes("invalid!"), TypeError);
+  });
+
+  it("generates, normalizes, validates, and hashes recovery keys", () => {
+    const key = generateRecoveryKey();
+    assert.match(key, /^ledger-recovery-[0-9a-f]{64}$/);
+    assert.equal(isValidRecoveryKey(key), true);
+    assert.equal(normalizeRecoveryKey(`  ${key.toUpperCase()}  `), key);
+
+    assert.equal(isValidRecoveryKey("invalid-recovery-key"), false);
+    assert.equal(isValidRecoveryKey("ledger-recovery-1234"), false);
+    assert.equal(isValidRecoveryKey(null), false);
+    assert.equal(normalizeRecoveryKey("not-a-key"), null);
+
+    const hash = hashRecoveryKey(key);
+    assert.match(hash, /^[0-9a-f]{64}$/);
+    const expectedHash = crypto.createHash("sha256").update(key).digest("hex");
+    assert.equal(hash, expectedHash);
+
+    const key2 = generateRecoveryKey();
+    assert.notEqual(key, key2);
+    assert.notEqual(hashRecoveryKey(key), hashRecoveryKey(key2));
   });
 });

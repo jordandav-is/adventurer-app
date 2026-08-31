@@ -7289,7 +7289,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
       {useTarget && (
         <UsePrompt key={useTarget} name={useTarget} ch={ch} customs={customs} onUpdate={onUpdate} onDice={setDmgRoll} onBlade={castBlade} onStrike={castSpellStrike} onSummon={(def, slotLvl) => setSummoning({ def, slotLvl })} onClose={() => setUseTarget(null)} />
       )}
-        {!shared && (
+      {!shared && drinkRoll && (
         <DiceTray title={drinkRoll.title} dice={drinkRoll.dice} bonus={drinkRoll.bonus} bonusLabel="healing"
           note="Drink to apply the healing and spend the potion" acceptLabel="Drink"
           onAccept={(total) => {
