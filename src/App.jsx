@@ -3109,6 +3109,52 @@ const PB_COST = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
 
 const ABIL_MIN = 1, ABIL_MAX = 30;
 
+function getRacialBonusPool(raceData, race) {
+  if (!raceData) return [2, 1];
+  if (race === "Human") return [2, 1];
+  const pool = [];
+  Object.values(raceData.bonus || {}).forEach((v) => {
+    if (typeof v === "number" && v > 0) pool.push(v);
+  });
+  const chooseCount = raceData.choose || 0;
+  const chooseAmt = raceData.chooseAmt || 1;
+  for (let i = 0; i < chooseCount; i++) {
+    pool.push(chooseAmt);
+  }
+  pool.sort((a, b) => b - a);
+  return pool.length > 0 ? pool : [2, 1];
+}
+
+function getDefaultRacialSlots(raceData, race) {
+  if (!raceData) return ["str", "dex"];
+  if (race === "Human") return ["str", "dex"];
+  const fixed = Object.entries(raceData.bonus || {})
+    .filter(([, v]) => typeof v === "number" && v > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k]) => k);
+  const remaining = ABILITIES.filter((a) => !fixed.includes(a));
+  const chooseCount = raceData.choose || 0;
+  const slots = [...fixed];
+  for (let i = 0; i < chooseCount; i++) {
+    const candidate = remaining.find((a) => !(raceData.chooseNot || []).includes(a) && !slots.includes(a));
+    if (candidate) slots.push(candidate);
+  }
+  return slots;
+}
+
+function formatStandardRaceBonus(raceData, race) {
+  if (race === "Human") return "+1 to all";
+  if (!raceData) return "+2 / +1";
+  const parts = [];
+  Object.entries(raceData.bonus || {}).forEach(([a, v]) => {
+    if (v > 0) parts.push(`${a.toUpperCase()} +${v}`);
+  });
+  if (raceData.choose) {
+    parts.push(`+${raceData.chooseAmt || 1} to ${raceData.choose === 1 ? "one choice" : `${raceData.choose} choices`}`);
+  }
+  return parts.join(", ") || "+2 / +1";
+}
+
 function LineageBonusPicker({ raceData, picks, setPicks, scores, extra = {} }) {
   const amt = raceData.chooseAmt || 1;
   const opts = ABILITIES.filter((a) => !(raceData.chooseNot || []).includes(a));
@@ -3131,6 +3177,133 @@ function LineageBonusPicker({ raceData, picks, setPicks, scores, extra = {} }) {
         })}
       </div>
     </>
+  );
+}
+
+function OriginAsiPicker({
+  race,
+  raceData,
+  customOrigin,
+  setCustomOrigin,
+  slots,
+  setSlots,
+  raceAbilPicks,
+  setRaceAbilPicks,
+  scores,
+  extra = {},
+}) {
+  const pool = getRacialBonusPool(raceData, race);
+  const defaultSlots = getDefaultRacialSlots(raceData, race);
+  const activeSlots = slots && slots.length === pool.length ? slots : defaultSlots;
+
+  const handleSelect = (slotIdx, abil) => {
+    const current = [...activeSlots];
+    const existingIdx = current.indexOf(abil);
+    if (existingIdx === slotIdx) return;
+    if (existingIdx !== -1) {
+      current[existingIdx] = current[slotIdx];
+      current[slotIdx] = abil;
+    } else {
+      current[slotIdx] = abil;
+    }
+    setSlots(current);
+  };
+
+  return (
+    <div style={{ ...card, padding: 14, marginTop: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+        <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 16 }}>
+          Racial Ability Bonuses · {race}
+        </div>
+        <div role="group" aria-label="Racial ability bonus method" style={{ display: "inline-flex", gap: 4, background: T.panel, padding: 3, borderRadius: 8, border: `1px solid ${T.edge}` }}>
+          <button
+            type="button"
+            className="account-control"
+            aria-pressed={!customOrigin}
+            style={{ ...btn(!customOrigin), padding: "5px 10px", fontSize: 12, minHeight: 0 }}
+            onClick={() => setCustomOrigin(false)}
+          >
+            Standard ({formatStandardRaceBonus(raceData, race)})
+          </button>
+          <button
+            type="button"
+            className="account-control"
+            aria-pressed={customOrigin}
+            style={{ ...btn(customOrigin), padding: "5px 10px", fontSize: 12, minHeight: 0 }}
+            onClick={() => {
+              if (!customOrigin && (!slots || slots.length !== pool.length)) {
+                setSlots(defaultSlots);
+              }
+              setCustomOrigin(true);
+            }}
+          >
+            Custom Origin (Tasha's)
+          </button>
+        </div>
+      </div>
+
+      {!customOrigin ? (
+        <div>
+          <div style={{ color: T.dim, fontSize: 12.5, lineHeight: 1.5 }}>
+            {race === "Human"
+              ? "Human traits grant +1 to all six ability scores."
+              : `Standard ${race} racial bonuses: ${Object.entries(raceData.bonus || {}).filter(([, v]) => v > 0).map(([a, v]) => `+${v} ${ABIL_NAMES[a]}`).join(", ") || "chosen bonuses below"}.`}
+          </div>
+          {raceData.choose > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <LineageBonusPicker raceData={raceData} picks={raceAbilPicks} setPicks={setRaceAbilPicks} scores={scores} extra={extra} />
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ color: T.dim, fontSize: 12, lineHeight: 1.5 }}>
+            <b style={{ color: T.gold }}>Tasha's Origin Customization:</b> Reallocate your race's {pool.map((v) => `+${v}`).join(", ")} bonuses to any ability scores. Each bonus must apply to a different score.
+          </div>
+          {pool.map((bonusVal, slotIdx) => {
+            const currentAbil = activeSlots[slotIdx];
+            return (
+              <div key={slotIdx} style={{ display: "grid", gap: 6 }}>
+                <div style={{ color: T.gold, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ padding: "2px 7px", background: T.blood, color: T.ink, borderRadius: 6, fontSize: 11, fontWeight: 700 }}>+{bonusVal}</span>
+                  <span>Assign to {slotIdx === 0 && pool.length > 1 ? "primary" : "secondary"} ability</span>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {ABILITIES.map((a) => {
+                    const isSelected = currentAbil === a;
+                    const otherSlotIdx = activeSlots.findIndex((x, idx) => idx !== slotIdx && x === a);
+                    const isUsedElsewhere = otherSlotIdx !== -1;
+                    const baseScore = scores ? scores[a] + (extra[a] || 0) : null;
+                    return (
+                      <button
+                        key={a}
+                        type="button"
+                        className="account-control"
+                        aria-pressed={isSelected}
+                        style={{
+                          ...btn(isSelected),
+                          padding: "6px 12px",
+                          fontSize: 13,
+                          borderColor: isSelected ? T.gold : isUsedElsewhere ? T.edge : T.edge,
+                          opacity: isSelected ? 1 : isUsedElsewhere ? 0.65 : 1,
+                        }}
+                        onClick={() => handleSelect(slotIdx, a)}
+                        title={isUsedElsewhere ? `Currently receiving +${pool[otherSlotIdx]} — tap to swap` : undefined}
+                      >
+                        {ABIL_NAMES[a]}
+                        {isSelected && ` (+${bonusVal})`}
+                        {isUsedElsewhere && ` (+${pool[otherSlotIdx]})`}
+                        {baseScore !== null && isSelected && ` → ${baseScore + bonusVal}`}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -3284,6 +3457,8 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const [photo, setPhoto] = useState(null);
   const [race, setRace] = useState("Human");
   const [raceAbilPicks, setRaceAbilPicks] = useState([]);
+  const [customOriginAsi, setCustomOriginAsi] = useState(false);
+  const [customAsiSlots, setCustomAsiSlots] = useState([]);
   const [raceFeat, setRaceFeat] = useState(null);
   const [lineageTrait, setLineageTrait] = useState(null);
   const [cls, setCls] = useState("Fighter");
@@ -3323,12 +3498,26 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const raceFeatDef = raceData.feat && raceFeat?.name ? allFeats(customs).find((f) => f.name === raceFeat.name) : null;
   const raceFeatFx = raceFeat?.name ? FEAT_MECHANICS[raceFeat.name] : null;
   const featScoreCap = raceFeatDef?.cat === "Epic Boon" ? 30 : 20;
+
+  const racialPool = getRacialBonusPool(raceData, race);
+  const activeCustomSlots = customAsiSlots.length === racialPool.length ? customAsiSlots : getDefaultRacialSlots(raceData, race);
+
+  const effectiveRaceBonuses = {};
+  ABILITIES.forEach((a) => { effectiveRaceBonuses[a] = 0; });
+  if (customOriginAsi) {
+    racialPool.forEach((bonusVal, idx) => {
+      const a = activeCustomSlots[idx];
+      if (a) effectiveRaceBonuses[a] = (effectiveRaceBonuses[a] || 0) + bonusVal;
+    });
+  } else {
+    ABILITIES.forEach((a) => { effectiveRaceBonuses[a] = raceData.bonus[a] || 0; });
+    raceAbilPicks.forEach((a) => { effectiveRaceBonuses[a] = (effectiveRaceBonuses[a] || 0) + raceChooseAmt; });
+  }
+
   const preFeatScores = { ...scores };
-  ABILITIES.forEach((a) => { preFeatScores[a] += raceData.bonus[a] || 0; });
-  raceAbilPicks.forEach((a) => { preFeatScores[a] += raceChooseAmt; });
+  ABILITIES.forEach((a) => { preFeatScores[a] += effectiveRaceBonuses[a] || 0; });
   const finalScores = { ...preFeatScores };
   if (raceFeat?.bump) finalScores[raceFeat.bump] = Math.min(featScoreCap, finalScores[raceFeat.bump] + 1);
-
   const featSkillsEff = raceData.feat ? (raceFeat?.skills || []) : [];
   const conMod = mod(finalScores.con);
   const toughBonus = raceFeatFx?.hpPerLevel || 0;
@@ -3376,12 +3565,15 @@ function CreateWizard({ onDone, onCancel, customs }) {
       return it && (isArmorType(it.type) || it.type === "S" || isWeaponType(it.type)) ? { ...r, equipped: true } : r;
     });
   };
+  const customAsiReady = customOriginAsi
+    ? racialPool.every((_, i) => !!activeCustomSlots[i]) && new Set(activeCustomSlots.filter(Boolean)).size === racialPool.length
+    : raceAbilPicks.length === (raceData.choose || 0);
   const canNext =
     step === 0 ? name.trim().length > 0 :
     step === 1 ? (!raceData.lineageTrait || !!lineageTrait) :
     step === 2 ? langPicks.length === langNeed && (bg !== "Custom" || bgSkills.length === 2) && (race !== "Dragonborn" || ancestry) && raceSkills.length === raceSkillNeed && (race !== "High Elf" || heCantrip.trim()) :
     step === 3 ? skills.length === clsData.nSkills && (clsData.subLvl > 1 || subclass) && (cls !== "Fighter" || style) && (cls !== "Rogue" || rogueExp.length === 2) && (cls !== "Ranger" || (favEnemy && (favEnemy !== "Two humanoid races" || favHumanoids.trim()) && favLang)) :
-    step === 4 ? raceAbilPicks.length === (raceData.choose || 0) && (!raceData.feat || featPickDone(raceFeatDef, raceFeat)) :
+    step === 4 ? customAsiReady && (!raceData.feat || featPickDone(raceFeatDef, raceFeat)) :
     step === 6 ? (gearMode === "standard" ? standardReady : gearMode === "gold" ? gold !== null : false) :
     true;
 
@@ -3411,9 +3603,11 @@ function CreateWizard({ onDone, onCancel, customs }) {
         ancestry: race === "Dragonborn" ? ancestry : null,
         cantrip: race === "High Elf" ? heCantrip.trim() : null,
         lineage: raceData.lineageTrait ? lineageTrait : null,
+        customOriginAsi: !!customOriginAsi,
+        customAsi: customOriginAsi ? { ...effectiveRaceBonuses } : null,
       },
       maxHp: hp, hpLog: [{ cls, gained: hp, how: "1st level (max)" }],
-      log: [`Created as ${race} ${cls} 1${style ? ` · ${style}` : ""} · ${bg} · ${alignment}${raceFeat?.name ? ` · Feat: ${raceFeat.name}` : ""}${gearMode === "standard" ? " · standard gear" : ` · bought gear (${Math.max(0, goldLeft)} gp left)`}`],
+      log: [`Created as ${race} ${cls} 1${style ? ` · ${style}` : ""}${customOriginAsi ? ` · Custom Origin (${racialPool.map((b, i) => `+${b} ${ABIL_NAMES[activeCustomSlots[i]]}`).join(", ")})` : ""} · ${bg} · ${alignment}${raceFeat?.name ? ` · Feat: ${raceFeat.name}` : ""}${gearMode === "standard" ? " · standard gear" : ` · bought gear (${Math.max(0, goldLeft)} gp left)`}`],
     });
   };
 
@@ -3452,7 +3646,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 10 }}>
           {Object.entries(RACES).filter(([, d]) => !d.group).map(([r, d]) => (
             <div key={r} onClick={() => {
-              setRace(r); setRaceAbilPicks([]); setRaceSkills([]); setHeCantrip(""); setAncestry(null);
+              setRace(r); setRaceAbilPicks([]); setCustomAsiSlots([]); setRaceSkills([]); setHeCantrip(""); setAncestry(null);
               setRaceFeat(null); setLineageTrait(null);
               setLangPicks(langPicks.filter((l) => !RACE_LANGS[r].fixed.includes(l)));
             }}
@@ -3477,7 +3671,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
           </div>
           {showExpanded && Object.entries(RACES).filter(([, d]) => d.group).map(([r, d]) => (
             <div key={r} onClick={() => {
-              setRace(r); setRaceAbilPicks([]); setRaceSkills([]); setHeCantrip(""); setAncestry(null);
+              setRace(r); setRaceAbilPicks([]); setCustomAsiSlots([]); setRaceSkills([]); setHeCantrip(""); setAncestry(null);
               setRaceFeat(null); setLineageTrait(null);
               setLangPicks(langPicks.filter((l) => !RACE_LANGS[r].fixed.includes(l)));
             }}
@@ -3711,15 +3905,21 @@ function CreateWizard({ onDone, onCancel, customs }) {
 
       {step === 4 && (
         <AbilityStep scores={scores} setScores={setScores} method={method} setMethod={setMethod}
-          bonuses={Object.fromEntries(ABILITIES.map((a) => [a, (raceData.bonus[a] || 0) + (raceAbilPicks.includes(a) ? raceChooseAmt : 0)]))}
+          bonuses={effectiveRaceBonuses}
           featBonus={raceFeat?.bump ? { [raceFeat.bump]: finalScores[raceFeat.bump] - preFeatScores[raceFeat.bump] } : {}}
           featLabel={raceFeat?.name || "feat"}>
-          {raceData.choose > 0 && (
-            <div style={{ ...card, padding: 14, marginTop: 14 }}>
-              <LineageBonusPicker raceData={raceData} picks={raceAbilPicks} setPicks={setRaceAbilPicks} scores={scores}
-                extra={raceFeat?.bump ? { [raceFeat.bump]: finalScores[raceFeat.bump] - preFeatScores[raceFeat.bump] } : {}} />
-            </div>
-          )}
+          <OriginAsiPicker
+            race={race}
+            raceData={raceData}
+            customOrigin={customOriginAsi}
+            setCustomOrigin={setCustomOriginAsi}
+            slots={activeCustomSlots}
+            setSlots={setCustomAsiSlots}
+            raceAbilPicks={raceAbilPicks}
+            setRaceAbilPicks={setRaceAbilPicks}
+            scores={scores}
+            extra={raceFeat?.bump ? { [raceFeat.bump]: finalScores[raceFeat.bump] - preFeatScores[raceFeat.bump] } : {}}
+          />
           {raceData.feat && (
             <div style={{ ...card, padding: 14, marginTop: 14 }}>
               <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>Your 1st-level feat</div>
