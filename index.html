@@ -3,19 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
-    <!-- Lock the app to its own origin: no external scripts, no exfiltration
-         targets. Inline styles allowed (React style attributes and the boot
-         <style> below). -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.workers.dev wss://*.workers.dev http://localhost:8787 ws://localhost:8787; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'" />
     <title>The Adventurer's Ledger</title>
     <meta name="description" content="5e SRD character forge — full multiclass rules, live play tracking" />
     <meta name="theme-color" content="#141210" />
-    <!-- Link unfurling (iMessage, WhatsApp, Discord…): preview fetchers run no
-         JavaScript and never see the #share fragment, so these static tags ARE
-         the preview for every visit, app and shared sheet alike. The og:image
-         must be an absolute URL — it points at the deployed Pages site; update
-         it if the ledger ever moves house. The per-character flourish travels
-         separately, as a painted card attached by the in-app share sheet. -->
+    <!-- og:image must be an absolute URL for preview fetchers -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="The Adventurer's Ledger" />
     <meta property="og:title" content="The Adventurer's Ledger" />
@@ -27,7 +19,7 @@
     <meta name="twitter:title" content="The Adventurer's Ledger" />
     <meta name="twitter:description" content="A 5e character sheet awaits — read-only, dice included. Tap to open it." />
     <meta name="twitter:image" content="https://jordandav-is.github.io/adventurer-app/share-banner.jpg" />
-    <!-- iOS standalone mode -->
+    <!-- iOS standalone -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Ledger" />
@@ -35,8 +27,6 @@
     <link rel="manifest" href="./manifest.json" />
     <style>
       html { background: #141210; }
-      /* Keep content out of the iOS notch/status bar and home-indicator
-         areas when running standalone with viewport-fit=cover. */
       body {
         margin: 0;
         padding-top: env(safe-area-inset-top);
@@ -44,6 +34,7 @@
         padding-bottom: env(safe-area-inset-bottom);
         padding-left: env(safe-area-inset-left);
       }
+      .account-control:focus-visible { outline: 2px solid var(--account-focus); outline-offset: 2px; }
     </style>
   </head>
   <body style="margin:0">

@@ -1,12 +1,6 @@
 import React, { useState } from "react";
 import { GATE_SALT, GATE_HASH, GATE_ITERATIONS } from "./gate-config.js";
 
-/* A client-side passphrase gate in the ledger's livery. Unlocking is
-   remembered per device in localStorage, so the home-screen app only asks
-   once. This keeps casual visitors out of a public Pages URL — it is not
-   server-side auth. Characters live only in each device's own localStorage,
-   so no visitor can ever see another's data regardless. */
-
 const UNLOCK_KEY = "ledger-gate-unlock";
 
 async function hashPhrase(phrase) {

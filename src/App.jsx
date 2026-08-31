@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { SYNC_URL } from "./sync-config.js";
-
-/* ============ SRD 5.1 DATA (CC-BY-4.0) ============ */
+import { AccountPanel } from "./account.jsx";
+// SRD 5.1 data (CC-BY-4.0)
 
 const ABILITIES = ["str", "dex", "con", "int", "wis", "cha"];
 const ABIL_NAMES = { str: "Strength", dex: "Dexterity", con: "Constitution", int: "Intelligence", wis: "Wisdom", cha: "Charisma" };
@@ -19,20 +19,11 @@ const RACES = {
   "Half-Elf": { bonus: { cha: 2 }, choose: 2, chooseNot: ["cha"], skills: 2, speed: 30, traits: ["Darkvision 60 ft", "Fey Ancestry", "Two extra skills", "+1 to two abilities of your choice"] },
   "Half-Orc": { bonus: { str: 2, con: 1 }, speed: 30, traits: ["Darkvision 60 ft", "Relentless Endurance", "Savage Attacks", "Menacing (Intimidation)"] },
   "Tiefling": { bonus: { cha: 2, int: 1 }, speed: 30, traits: ["Darkvision 60 ft", "Hellish Resistance (fire)", "Infernal Legacy (thaumaturgy)"] },
-  /* ---- Lineages that trade fixed racial bonuses for a feat at 1st level. Not SRD:
-     these are optional rules many tables run, so they are offered alongside the SRD
-     folk and marked as such wherever the sheet names their source. ---- */
   "Variant Human": { bonus: {}, choose: 2, chooseAmt: 1, skills: 1, feat: true, speed: 30, optional: true,
     traits: ["+1 to two different ability scores", "One extra skill proficiency", "One feat of your choice at 1st level"] },
   "Custom Lineage": { bonus: {}, choose: 1, chooseAmt: 2, feat: true, lineageTrait: true, speed: 30, optional: true,
     traits: ["+2 to one ability score of your choice", "Darkvision 60 ft or one extra skill", "One feat of your choice at 1st level", "Size Small or Medium (your choice)"] },
 
-  /* ---- Expanded races (Volo's, the Elemental Evil folk, Tortle, Eberron), 2014
-     printings. Not SRD, but the compendium already carries that era in full. Beyond
-     the shared fields, these can carry: grantSkills (fixed proficiencies),
-     skillsFrom (a restricted pool for `skills` picks), grantSpells (innate casting,
-     keyed by the character level it arrives), natArmor (base + Dex), natArmorFlat
-     (a fixed AC, Dex ignored), and acBonus (always-on AC). ---- */
   "Aasimar (Protector)": { bonus: { cha: 2, wis: 1 }, speed: 30, group: "expanded", grantSpells: { 1: ["Light"] },
     traits: ["Darkvision 60 ft", "Celestial Resistance (necrotic, radiant)", "Healing Hands", "Light Bearer (light cantrip)", "Radiant Soul (from 3rd level)"] },
   "Aasimar (Scourge)": { bonus: { cha: 2, con: 1 }, speed: 30, group: "expanded", grantSpells: { 1: ["Light"] },
@@ -105,9 +96,6 @@ const RACE_LANGS = {
 const ANCESTRIES = { Black: "Acid", Blue: "Lightning", Brass: "Fire", Bronze: "Lightning", Copper: "Acid", Gold: "Fire", Green: "Poison", Red: "Fire", Silver: "Cold", White: "Cold" };
 const ALL_SKILLS = ["Acrobatics","Animal Handling","Arcana","Athletics","Deception","History","Insight","Intimidation","Investigation","Medicine","Nature","Perception","Performance","Persuasion","Religion","Sleight of Hand","Stealth","Survival"];
 
-/* ---- Backgrounds: two granted skills, bonus languages, tool proficiencies (kept as a
-   reminder — the sheet doesn't track tools), a signature feature, and the purse that
-   comes with the standard starting kit ---- */
 const BACKGROUNDS = {
   Acolyte: { skills: ["Insight", "Religion"], langs: 2, tools: null, gold: 15,
     flavor: "A life given over to the service of a temple, its rites, and its god.",
@@ -184,11 +172,8 @@ const PROF_TEXT = {
   Warlock: "Light armor, simple weapons",
   Wizard: "Daggers, darts, slings, quarterstaffs, light crossbows",
 };
-const START_GOLD = { Barbarian: [2, 10], Bard: [5, 10], Cleric: [5, 10], Druid: [2, 10], Fighter: [5, 10], Monk: [5, 1], Paladin: [5, 10], Ranger: [5, 10], Rogue: [4, 10], Sorcerer: [3, 10], Warlock: [4, 10], Wizard: [4, 10] }; // [n]d4 × mult
+const START_GOLD = { Barbarian: [2, 10], Bard: [5, 10], Cleric: [5, 10], Druid: [2, 10], Fighter: [5, 10], Monk: [5, 1], Paladin: [5, 10], Ranger: [5, 10], Rogue: [4, 10], Sorcerer: [3, 10], Warlock: [4, 10], Wizard: [4, 10] };
 
-/* PHB starting equipment. Each slot is an either/or choice; `pick` options open
-   a weapon/focus picker from the named list, choosing `n` of them. `fixed` gear
-   always comes along. */
 const GEAR_LISTS = {
   simpleMelee: ["Club", "Dagger", "Greatclub", "Handaxe", "Javelin", "Light Hammer", "Mace", "Quarterstaff", "Sickle", "Spear"],
   simpleRanged: ["Light Crossbow", "Dart", "Shortbow", "Sling"],
@@ -303,7 +288,6 @@ const STARTING_GEAR = {
   },
 };
 
-/* Subclass-granted spells (SRD). type: granted = always prepared, free; expanded = added to class list options. Keys are class level. */
 const LAND_TERRAINS = {
   Arctic: { 3: ["Hold Person", "Spike Growth"], 5: ["Sleet Storm", "Slow"], 7: ["Freedom of Movement", "Ice Storm"], 9: ["Commune with Nature", "Cone of Cold"] },
   Coast: { 3: ["Mirror Image", "Misty Step"], 5: ["Water Breathing", "Water Walk"], 7: ["Control Water", "Freedom of Movement"], 9: ["Conjure Elemental", "Scrying"] },
@@ -322,21 +306,18 @@ const SUB_SPELLS = {
   "The Fiend": { type: "expanded", label: "Expanded spell list (added to your Warlock options)", spells: { 1: ["Burning Hands", "Command"], 3: ["Blindness/Deafness", "Scorching Ray"], 5: ["Fireball", "Stinking Cloud"], 7: ["Fire Shield", "Wall of Fire"], 9: ["Flame Strike", "Hallow"] } },
 };
 const baseSubName = (sub) => (sub || "").replace(/\s*\([^)]*\)$/, "");
-/* Canonical form for subclass names so "The Archfey", "(Archfey)", "Life Domain" and "(Life)" all line up */
 const normSub = (s) => {
   let x = (s || "").toLowerCase().trim();
   const prefix = /^(the|college of|circle of|oath of|way of|path of|school of)\s+/;
   while (prefix.test(x)) x = x.replace(prefix, "");
   return x.replace(/\s+domain$/, "").trim();
 };
-/* Tokens a character's subclass answers to: base name plus any parenthetical (e.g. Land circle terrain) */
 const subTokens = (subclass) => {
   const toks = [normSub(baseSubName(subclass))];
   const m = (subclass || "").match(/\(([^)]+)\)$/);
   if (m) toks.push(normSub(m[1]));
   return toks;
 };
-/* Classes whose subclass spells are always prepared rather than added to the pickable list */
 const GRANTED_SUB_CLASSES = { Cleric: "Domain spells", Paladin: "Oath spells", Druid: "Circle spells" };
 function subSpellData(subclass, clsName, customs) {
   if (!subclass) return null;
@@ -347,7 +328,6 @@ function subSpellData(subclass, clsName, customs) {
     return terr ? { type: "granted", label: `Circle spells — ${m[1]} (always prepared)`, spells: terr } : null;
   }
   if (SUB_SPELLS[base]) return SUB_SPELLS[base];
-  /* Derive the list from imported compendium spells tagged "Class (Subclass)" */
   if (!clsName || !customs) return null;
   const toks = subTokens(subclass);
   const tagged = (customs.spells || []).filter((sp) => (sp.classes || "").split(",").some((e) => {
@@ -358,7 +338,7 @@ function subSpellData(subclass, clsName, customs) {
   const grantedLabel = GRANTED_SUB_CLASSES[clsName];
   const spells = {};
   tagged.forEach((sp) => {
-    let at = 1; // class level at which this spell's level unlocks
+    let at = 1;
     while (at < 20 && maxSpellLevel(clsName, at) < sp.level) at++;
     (spells[at] = spells[at] || []).push(sp.name);
   });
@@ -374,7 +354,6 @@ const METAMAGIC = ["Careful Spell", "Distant Spell", "Empowered Spell", "Extende
 const PACT_BOONS = ["Pact of the Blade", "Pact of the Chain", "Pact of the Tome"];
 const FAVORED_ENEMIES = ["Aberrations", "Beasts", "Celestials", "Constructs", "Dragons", "Elementals", "Fey", "Fiends", "Giants", "Monstrosities", "Oozes", "Plants", "Undead", "Two humanoid races"];
 const NE_TERRAINS = ["Arctic", "Coast", "Desert", "Forest", "Grassland", "Mountain", "Swamp"];
-/* SRD Eldritch Invocations: [name, min warlock level, other requirement] */
 const INVOCATION_DATA = [
   ["Agonizing Blast", 0, "eldritch blast cantrip"], ["Armor of Shadows", 0, ""], ["Ascendant Step", 9, ""],
   ["Beast Speech", 0, ""], ["Beguiling Influence", 0, ""], ["Bewitching Whispers", 7, ""],
@@ -436,8 +415,6 @@ const CLASSES = {
     skills: ["Athletics", "Insight", "Intimidation", "Medicine", "Persuasion", "Religion"], nSkills: 2,
     asi: [4, 8, 12, 16, 19],
     feats: { 1: ["Divine Sense", "Lay on Hands"], 2: ["Fighting Style", "Spellcasting", "Divine Smite"], 3: ["Divine Health", "Sacred Oath"], 5: ["Extra Attack"], 6: ["Aura of Protection"], 7: ["Oath feature"], 10: ["Aura of Courage"], 11: ["Improved Divine Smite"], 14: ["Cleansing Touch"], 15: ["Oath feature"], 18: ["Aura improvements"], 20: ["Oath feature"] } },
-  /* Ranger runs on the 2024 PHB (SRD 5.2): a prepared caster from 1st level whose
-     Favored Enemy is Hunter's Mark. The other classes keep their 2014 tables. */
   Ranger: { die: 10, saves: ["str", "dex"], caster: "half1", subLvl: 3, subName: "Ranger Subclass", subs: ["Hunter", "Beast Master", "Fey Wanderer", "Gloom Stalker"],
     skills: ["Animal Handling", "Athletics", "Insight", "Investigation", "Nature", "Perception", "Stealth", "Survival"], nSkills: 3,
     asi: [4, 8, 12, 16, 19],
@@ -460,7 +437,6 @@ const CLASSES = {
     feats: { 1: ["Spellcasting", "Arcane Recovery"], 2: ["Arcane Tradition"], 6: ["Tradition feature"], 10: ["Tradition feature"], 14: ["Tradition feature"], 18: ["Spell Mastery"], 20: ["Signature Spells"] } },
 };
 
-/* Subclass features by subclass level (SRD 5.1) */
 const SUB_FEATS = {
   "Path of the Berserker": { 3: ["Frenzy"], 6: ["Mindless Rage"], 10: ["Intimidating Presence"], 14: ["Retaliation"] },
   "College of Lore": { 3: ["Bonus Proficiencies", "Cutting Words"], 6: ["Additional Magical Secrets"], 14: ["Peerless Skill"] },
@@ -480,8 +456,6 @@ const SUB_FEATS = {
 };
 const subFeatsFor = (subclass, level) => (subclass && SUB_FEATS[baseSubName(subclass)]?.[level]) || [];
 
-/* ============ FULL RULES TEXT (SRD 5.1, CC-BY-4.0) ============ */
-/* So a choice can be read in full BEFORE it's made — and long-pressed afterward. */
 const SRD_FOOT = "Source: SRD 5.1 (CC-BY 4.0)";
 
 const CLASS_BLURB = {
@@ -499,13 +473,9 @@ const CLASS_BLURB = {
   Wizard: "A scholarly magic-user who bends reality through long study of the arcane.",
 };
 
-/* Class feature rules text, keyed by feature name stripped of any parenthetical.
-   "Class:Name" keys disambiguate features that differ between classes. */
 const FEATURE_TEXT = {
-  /* racial traits that would otherwise collide with a feat of the same name */
   "Halfling Luck": "When you roll a 1 on the d20 for an attack roll, ability check, or saving throw, you can reroll the die and must use the new roll. (This is the halfling trait, not the Lucky feat — the sheet applies it to every d20 automatically.)",
   "Darkvision 60 ft": "Within 60 feet you can see in dim light as if it were bright light, and in darkness as if it were dim light — discerning shapes and movement, though only in shades of grey.",
-  /* expanded-race traits (2014 printings) */
   "Celestial Resistance": "You have resistance to necrotic damage and radiant damage.",
   "Healing Hands": "As an action, touch a creature to restore hit points equal to your level. Once per long rest.",
   "Light Bearer": "You know the light cantrip. Charisma is your spellcasting ability for it.",
@@ -568,7 +538,6 @@ const FEATURE_TEXT = {
   "Sentry's Rest": "In a long rest you remain conscious, spending six hours motionless instead of sleeping.",
   "Integrated Protection": "You gain a +1 bonus to AC. Donning or doffing armor takes you an hour, as it integrates into your body — and it can't be removed against your will.",
   "Specialized Design": "You gain one skill proficiency and one tool proficiency of your choice.",
-  /* markers for the subclass choice itself */
   "Primal Path": "Choose the Primal Path that shapes the nature of your rage. It grants features at 3rd, 6th, 10th, and 14th level.",
   "Bard College": "Choose a Bard College reflecting how you honed your craft. It grants features at 3rd, 6th, and 14th level.",
   "Divine Domain": "Choose a domain related to your deity. It grants domain spells and features at 1st level, and again at 2nd, 6th, 8th, and 17th level.",
@@ -581,7 +550,6 @@ const FEATURE_TEXT = {
   "Sorcerous Origin": "Choose the origin of your innate magic. It grants features at 1st, 6th, 14th, and 18th level.",
   "Otherworldly Patron": "You have struck a bargain with an otherworldly being. Your choice of patron grants features at 1st, 6th, 10th, and 14th level, and expands your spell options.",
   "Arcane Tradition": "Choose a school of magic to specialize in. It grants features at 2nd, 6th, 10th, and 14th level.",
-  /* Barbarian */
   "Rage": "On your turn, enter a rage as a bonus action. While raging you have advantage on Strength checks and Strength saving throws, deal bonus damage with Strength-based melee attacks (+2, rising to +3 at 9th and +4 at 16th level), and have resistance to bludgeoning, piercing, and slashing damage. You can't cast or concentrate on spells while raging, and heavy armor blocks these benefits. The rage lasts 1 minute, ending early if you fall unconscious or your turn ends without you attacking or taking damage since your last turn. You start with 2 rages per long rest, gaining more as you level (unlimited at 20th).",
   "Barbarian:Unarmored Defense": "While not wearing armor, your AC equals 10 + your Dexterity modifier + your Constitution modifier. You can use a shield and still gain this benefit.",
   "Reckless Attack": "When you make your first attack on your turn, you can attack recklessly: you have advantage on melee weapon attack rolls using Strength this turn, but attack rolls against you have advantage until your next turn.",
@@ -593,7 +561,6 @@ const FEATURE_TEXT = {
   "Persistent Rage": "Your rage ends early only if you fall unconscious or choose to end it.",
   "Indomitable Might": "If your total for a Strength check is less than your Strength score, you can use that score in place of the total.",
   "Primal Champion": "Your Strength and Constitution scores increase by 4, and your maximum for those scores is now 24.",
-  /* Bard */
   "Bardic Inspiration": "As a bonus action, give one creature other than yourself within 60 feet an inspiration die (d6; d8 at 5th, d10 at 10th, d12 at 15th level). Once within the next 10 minutes, that creature can add the die to one ability check, attack roll, or saving throw after rolling the d20. You have uses equal to your Charisma modifier, regained on a long rest (short rest too, once you have Font of Inspiration).",
   "Jack of All Trades": "Add half your proficiency bonus, rounded down, to any ability check you make that doesn't already include your proficiency bonus.",
   "Song of Rest": "If you or friendly creatures who can hear your performance regain hit points during a short rest by spending Hit Dice, each regains an extra 1d6 (d8 at 9th, d10 at 13th, d12 at 17th level).",
@@ -602,24 +569,20 @@ const FEATURE_TEXT = {
   "Countercharm": "As an action, begin a performance lasting until the end of your next turn: you and friendly creatures within 30 feet who can hear you have advantage on saving throws against being frightened or charmed.",
   "Magical Secrets": "Choose two spells from ANY class's spell list — cantrips or spells of a level you can cast. They count as bard spells for you and don't count against your spells known.",
   "Superior Inspiration": "When you roll initiative and have no uses of Bardic Inspiration left, you regain one use.",
-  /* Cleric */
   "Channel Divinity": "Channel divine energy to fuel magical effects, once per short or long rest (twice at 6th, three times at 18th level). All clerics gain Turn Undead: as an action, each undead within 30 feet that can see or hear you must make a Wisdom save or spend 1 minute fleeing you. Your domain or oath grants further options.",
   "Destroy Undead": "When an undead of the listed challenge rating or lower fails its saving throw against your Turn Undead, it is instantly destroyed.",
   "Divine Intervention": "As an action, implore your deity to intervene: roll percentile dice, and if the roll is equal to or lower than your cleric level, the deity acts (the GM chooses the form). On a success you can't use this again for 7 days; on a failure, after a long rest.",
   "Divine Intervention Improvement": "Your call for divine intervention succeeds automatically — no roll required.",
-  /* Druid */
   "Druidic": "You know Druidic, the secret language of druids, and can use it to leave hidden messages. Those who know Druidic spot them automatically; others need a DC 15 Wisdom (Perception) check and can't decipher them without magic.",
   "Wild Shape": "As an action, magically assume the shape of a beast you have seen before, twice per short or long rest, for hours equal to half your druid level. At 2nd level: max CR 1/4, no flying or swimming speed. At 4th: CR 1/2, no flying. At 8th: CR 1. You keep your mental ability scores and personality, use the beast's physical stats, and can't cast spells while transformed.",
   "Wild Shape improvement": "Your Wild Shape improves — at 4th level you can take forms up to CR 1/2 (swimming allowed); at 8th level, CR 1 with no movement restrictions.",
   "Druid:Timeless Body": "The primal magic you wield slows your aging: for every 10 years that pass, your body ages only 1 year.",
   "Beast Spells": "You can perform the somatic and verbal components of druid spells while in a beast shape (but can't provide material components).",
   "Archdruid": "You can use Wild Shape an unlimited number of times, and you can ignore verbal and somatic components of your druid spells, as well as material components that lack a cost and aren't consumed.",
-  /* Fighter */
   "Fighting Style": "Adopt a particular style of fighting as your specialty. Choose one option — you can't take the same Fighting Style more than once.",
   "Second Wind": "On your turn, use a bonus action to regain hit points equal to 1d10 + your fighter level. Once per short or long rest.",
   "Action Surge": "On your turn, take one additional action on top of your regular action and possible bonus action. Once per short or long rest (twice per rest at 17th level, but only once per turn).",
   "Indomitable": "Reroll a saving throw that you fail; you must use the new roll. Once per long rest (twice at 13th, three times at 17th level).",
-  /* Monk */
   "Monk:Unarmored Defense": "While wearing no armor and not wielding a shield, your AC equals 10 + your Dexterity modifier + your Wisdom modifier.",
   "Unarmored Defense": "Barbarian: while not wearing armor, AC = 10 + Dex modifier + Con modifier (a shield is allowed). Monk: while wearing no armor and no shield, AC = 10 + Dex modifier + Wis modifier.",
   "Martial Arts": "While unarmed or wielding only monk weapons and wearing no armor or shield: you can use Dexterity for attack and damage rolls, roll a d4 in place of normal damage (rising with level to d10), and make one unarmed strike as a bonus action when you take the Attack action.",
@@ -639,7 +602,6 @@ const FEATURE_TEXT = {
   "Timeless Body": "Monk: you suffer none of the frailty of old age, can't be aged magically, and need no food or water. Druid: for every 10 years that pass, your body ages only 1 year.",
   "Empty Body": "Spend 4 ki as an action to become invisible for 1 minute, with resistance to all damage but force damage. Or spend 8 ki to cast the astral projection spell (yourself only).",
   "Perfect Self": "When you roll initiative and have no ki points remaining, you regain 4 ki points.",
-  /* Paladin */
   "Divine Sense": "As an action, until the end of your next turn you know the location of any celestial, fiend, or undead within 60 feet that isn't behind total cover, and you detect consecrated or desecrated places and objects. Uses: 1 + your Charisma modifier per long rest.",
   "Lay on Hands": "You have a pool of healing power equal to 5 × your paladin level, restored on a long rest. As an action, touch a creature to restore any number of remaining points, or expend 5 points to cure one disease or neutralize one poison.",
   "Divine Smite": "When you hit a creature with a melee weapon attack, you can expend one spell slot to deal an extra 2d8 radiant damage, +1d8 per slot level above 1st (max 5d8), and +1d8 against undead or fiends.",
@@ -649,7 +611,6 @@ const FEATURE_TEXT = {
   "Improved Divine Smite": "Whenever you hit a creature with a melee weapon, it takes an extra 1d8 radiant damage.",
   "Cleansing Touch": "As an action, end one spell on yourself or on one willing creature you touch. Uses equal to your Charisma modifier (minimum 1) per long rest.",
   "Aura improvements": "Your Aura of Protection and Aura of Courage now extend 30 feet from you.",
-  /* Ranger */
   "Favored Enemy": "You have significant experience studying, tracking, hunting, and even talking to a certain type of enemy.\nChoose a type of favored enemy: aberrations, beasts, celestials, constructs, dragons, elementals, fey, fiends, giants, monstrosities, oozes, plants, or undead. Alternatively, you can select two races of humanoid (such as gnolls and orcs) as favored enemies.\nYou have advantage on Wisdom (Survival) checks to track your favored enemies, as well as on Intelligence checks to recall information about them. When you gain this feature, you also learn one language of your choice that is spoken by your favored enemies, if they speak one at all.\nYou choose one additional favored enemy, as well as an associated language, at 6th and 14th level.\nYou also always have the Hunter's Mark spell prepared, castable for free a number of times tracked under Feature Uses (2, rising to 3/4/5/6 at ranger levels 5/9/13/17).",
   "Weapon Mastery": "Your training lets you use the mastery properties of two kinds of weapons of your choice with which you have proficiency. Whenever you finish a long rest, you can change the kinds of weapons you chose. (Mastery properties are rules text on each weapon — the sheet doesn't automate them.)",
   "Deft Explorer": "Thanks to your travels, you gain Expertise in one of your skill proficiencies, and you learn two languages of your choice.",
@@ -669,7 +630,6 @@ const FEATURE_TEXT = {
   "Vanish": "You can use the Hide action as a bonus action, and you can't be tracked by nonmagical means unless you choose to leave a trail.",
   "Feral Senses": "Your connection to the wilderness grants you blindsight with a range of 30 feet.",
   "Foe Slayer": "The damage die of your Hunter's Mark is a d10 rather than a d6.",
-  /* Rogue */
   "Sneak Attack": "Once per turn, deal extra damage (1d6, +1d6 every two rogue levels) to one creature you hit with a finesse or ranged weapon attack if you have advantage on the roll — or if another enemy of the target is within 5 feet of it and you don't have disadvantage.",
   "Thieves' Cant": "A secret mix of dialect, jargon, and code that hides messages in seemingly normal conversation (conveying one takes four times longer). You also understand secret thieves' signs and symbols.",
   "Cunning Action": "Take a bonus action on each of your turns to Dash, Disengage, or Hide.",
@@ -679,19 +639,15 @@ const FEATURE_TEXT = {
   "Slippery Mind": "Your mental strength grants you proficiency in Wisdom saving throws.",
   "Elusive": "No attack roll has advantage against you while you aren't incapacitated.",
   "Stroke of Luck": "Turn a missed attack into a hit, or treat a failed ability check as a natural 20. Once per short or long rest.",
-  /* Sorcerer */
   "Font of Magic": "You gain sorcery points equal to your sorcerer level, regained on a long rest. As a bonus action, convert points into a spell slot (2 → 1st, 3 → 2nd, 5 → 3rd, 6 → 4th, 7 → 5th) or break down a spell slot into points equal to its level.",
   "Metamagic": "Twist your spells with Metamagic options, fueled by sorcery points. You learn two options at 3rd level and one more at 10th and 17th. Only one option can apply to a spell (Empowered Spell excepted).",
   "Sorcerous Restoration": "You regain 4 expended sorcery points whenever you finish a short rest.",
-  /* Warlock */
   "Eldritch Master": "Spend 1 minute entreating your patron to regain all your expended Pact Magic spell slots. Once per long rest.",
-  /* Wizard */
   "Arcane Recovery": "Once per day when you finish a short rest, recover expended spell slots with a combined level up to half your wizard level (rounded up), none of them 6th level or higher.",
   "Spell Mastery": "Choose a 1st-level and a 2nd-level wizard spell from your spellbook: while you have them prepared, cast them at their lowest level without expending a slot. You may swap them after 8 hours of study.",
   "Signature Spells": "Choose two 3rd-level spells from your spellbook: they are always prepared (not counting against your total), and you can cast each once at 3rd level without a slot per short or long rest.",
 };
 
-/* Subclass flavor and full feature text, keyed by base subclass name. cls binds it to its class. */
 const SUB_LORE = {
   "Path of the Berserker": { cls: "Barbarian",
     flavor: "For some barbarians, rage is a means to an end — that end being violence. The Path of the Berserker is a path of untrammeled fury, slick with blood. As you enter the berserker's rage, you thrill in the chaos of battle, heedless of your own health or well-being.",
@@ -846,14 +802,11 @@ const SUB_LORE = {
       14: [{ n: "Overchannel", t: "When you cast a wizard spell of 1st–5th level that deals damage, you can deal maximum damage with it. The first use is safe; each further use before a long rest deals you 2d12 necrotic damage per level of the spell (increasing by 1d12 each time), which can't be prevented or reduced in any way." }],
     } },
 };
-/* Index subclass feature texts by stripped name so long-press works anywhere a feature is shown */
 Object.values(SUB_LORE).forEach((s) => Object.values(s.features).forEach((fx) => fx.forEach((f) => {
   const k = baseSubName(f.n);
   if (!FEATURE_TEXT[k]) FEATURE_TEXT[k] = f.t;
 })));
 
-/* Best-available rules text for a feature name: imported compendium text wins, then SRD text
-   (class-specific first), then the core fallbacks. */
 const TEXT_2024 = new Set([
   "Favored Enemy", "Feral Senses", "Foe Slayer", "Hunter's Prey", "Defensive Tactics", "Superior Hunter's Defense",
   "Hunter's Lore", "Superior Hunter's Prey", "Primal Companion", "Exceptional Training", "Bestial Fury", "Share Spells",
@@ -873,22 +826,8 @@ function featureBody(rawName, cls, customs) {
     || (/\bfeature\b$/i.test(strip) ? "Granted by your subclass at this level — read its entry for the details." : null);
 }
 
-/* ============ FEATS (CC-BY: SRD 5.1 + the full SRD 5.2 feat chapter) ============
-   Every entry carries what the sheet can actually act on, not just prose:
-
-     cat      Origin | General | Fighting Style | Epic Boon — how the picker groups them
-     desc     one line for the list; text is the full rules entry the lore panel shows
-     prereq   the printed prerequisite, always displayed
-     min      { str: 13 } — ALL of these ability minimums must be met
-     minAny   { str: 13, dex: 13 } — ANY one of them suffices ("Strength or Dexterity 13+")
-     lvl      minimum character level; caster — needs the Spellcasting feature
-     bump     abilities the feat's own +1 may be spent on (the picker asks, then applies it)
-     pick     further choices the feat forces — { skills: { n, from } }
-     fx       what the sheet derives from holding it: hpPerLevel, speed, init,
-              saveFromBump, mediumDexCap, style. Anything absent here is rules text
-              the player applies at the table (see featEffects below). */
+// SRD 5.1 / 5.2 Feats (CC-BY-4.0)
 const FEATS = [
-  /* ---- Origin feats: no prerequisite, and the usual fare for a 1st-level lineage feat ---- */
   { name: "Alert", cat: "Origin", desc: "Add your proficiency bonus to initiative; swap initiative with a willing ally", fx: { init: true },
     text: "Initiative Proficiency. When you roll Initiative, you can add your Proficiency Bonus to the roll.\nInitiative Swap. Immediately after you roll Initiative, you can swap your Initiative with the Initiative of one willing ally in the same combat. You can't make this swap if you or the ally has the Incapacitated condition." },
   { name: "Crafter", cat: "Origin", desc: "Three artisan's tool proficiencies, a 20% discount on gear, and faster crafting",
@@ -910,7 +849,6 @@ const FEATS = [
   { name: "Tough", cat: "Origin", desc: "Your hit point maximum increases by 2 per character level", fx: { hpPerLevel: 2 },
     text: "Your Hit Point maximum increases by an amount equal to twice your character level when you gain this feat. Whenever you gain a level thereafter, your Hit Point maximum increases by an additional 2 Hit Points.\n(The sheet applies the full amount for your current level automatically, and keeps it in step as you level.)" },
 
-  /* ---- General feats: level 4+, and each carries its own +1 ---- */
   { name: "Actor", cat: "General", desc: "Advantage on Deception & Performance when passing as someone else; mimic voices", prereq: "Level 4+, Charisma 13+", lvl: 4, min: { cha: 13 }, bump: ["cha"],
     text: "Ability Score Increase. Increase your Charisma by 1, to a maximum of 20.\nImpersonation. While you're disguised as a real or fictional person, you have Advantage on Charisma (Deception or Performance) checks to convince others that you are that person.\nMimicry. You can mimic the sounds of other creatures, including speech. A creature that hears the mimicry must succeed on a Wisdom (Insight) check against a DC of 8 plus your Charisma modifier and Proficiency Bonus to determine the sounds are faked." },
   { name: "Athlete", cat: "General", desc: "Stand from prone cheaply, climb at full speed, and run long jumps off 5 feet", prereq: "Level 4+, Strength or Dexterity 13+", lvl: 4, minAny: { str: 13, dex: 13 }, bump: ["str", "dex"],
@@ -992,7 +930,6 @@ const FEATS = [
   { name: "War Caster", cat: "General", desc: "Advantage on concentration saves, somatic casting with full hands, and spell opportunity attacks", prereq: "Level 4+, Spellcasting or Pact Magic feature", lvl: 4, caster: true, bump: ["int", "wis", "cha"],
     text: "Ability Score Increase. Increase your Intelligence, Wisdom, or Charisma by 1, to a maximum of 20.\nConcentration. You have Advantage on Constitution saving throws that you make to maintain Concentration.\nReactive Spell. When a creature provokes an Opportunity Attack from you, you can take that Reaction to cast a spell rather than making an Opportunity Attack. The spell must take an action to cast and must target only that creature.\nSomatic Components. You can perform the Somatic components of spells even when you have weapons or a Shield in one or both hands." },
 
-  /* ---- Fighting Style feats: the same styles a Fighter picks, taken as a feat ---- */
   { name: "Fighting Style: Archery", cat: "Fighting Style", desc: "+2 to ranged weapon attack rolls", prereq: "Fighting Style feature", fx: { style: "Archery" },
     text: "You gain a +2 bonus to attack rolls you make with Ranged weapons.\n(The sheet folds this into every ranged attack line.)" },
   { name: "Fighting Style: Blind Fighting", cat: "Fighting Style", desc: "Blindsight 10 ft — you see anything not behind total cover, even while blinded", prereq: "Fighting Style feature",
@@ -1014,7 +951,6 @@ const FEATS = [
   { name: "Fighting Style: Unarmed Fighting", cat: "Fighting Style", desc: "d6 unarmed strikes (d8 with hands free), and damage to those you grapple", prereq: "Fighting Style feature",
     text: "Your Unarmed Strikes deal 1d6 Bludgeoning damage on a hit — 1d8 if you aren't wielding any weapons or a Shield. In addition, at the start of each of your turns, you can deal 1d4 Bludgeoning damage to one creature you have Grappled." },
 
-  /* ---- Epic Boons: the rewards of 19th level ---- */
   { name: "Boon of Combat Prowess", cat: "Epic Boon", desc: "Once per turn, turn a miss into an automatic hit", prereq: "Level 19+", lvl: 19, bump: ["str", "dex", "con", "int", "wis", "cha"],
     text: "Ability Score Increase. Increase one ability score of your choice by 1, to a maximum of 30.\nPeerless Aim. When you miss with an attack roll against a creature, you can hit instead. Once you use this benefit, you can't use it again until the start of your next turn." },
   { name: "Boon of Dimensional Travel", cat: "Epic Boon", desc: "Teleport 30 feet after taking an action, once per turn", prereq: "Level 19+", lvl: 19, bump: ["str", "dex", "con", "int", "wis", "cha"],
@@ -1037,29 +973,16 @@ const FEATS = [
 const FEAT_INDEX = new Map(FEATS.map((f) => [f.name, f]));
 const FEAT_CATS = ["Origin", "General", "Fighting Style", "Epic Boon", "Imported"];
 
-/* What the sheet actually computes from a feat, keyed by the feat's exact name — so it
-   covers the built-in catalogue AND the names an imported compendium uses for the same
-   ground (the 2014 books split a feat's ability choice into "Resilient (Constitution)"
-   and friends, and carry feats like Mobile that the SRD has under another name). */
 const FEAT_MECHANICS = {
   ...Object.fromEntries(FEATS.filter((f) => f.fx).map((f) => [f.name, f.fx])),
-  /* ---- names that only an imported compendium brings ---- */
   "Mobile": { speed: 10 },
   "Squat Nimbleness (Dexterity)": { speed: 5 },
   "Squat Nimbleness (Strength)": { speed: 5 },
-  // the importer can't read "increase the chosen ability score" out of Resilient's prose,
-  // so the variant's own name supplies both the +1 and the save proficiency
   ...Object.fromEntries(ABILITIES.map((a) => [`Resilient (${ABIL_NAMES[a]})`, { save: a, bump: [a] }])),
 };
 
-/* A feat's own choices live on the character as featChoices[name] = { bump, skills } */
 const featChoiceOf = (ch, name) => (ch?.featChoices || {})[name] || {};
 
-/* Everything the sheet derives from the feats a character holds. Only mechanics the
-   ledger can compute honestly live here — the rest is rules text on the feat itself.
-   `customs` is optional: pass it and the numbers follow the entry the player actually
-   reads, which is how Alert lands on +5 from a 2014 compendium and on the proficiency
-   bonus from the SRD 5.2 entry. */
 function featEffects(ch, customs) {
   const out = { hpPerLevel: 0, speed: 0, init: null, saves: [], mediumDexCap: 2, styles: [], sources: [] };
   const defs = customs ? new Map(allFeats(customs).map((f) => [f.name, f])) : FEAT_INDEX;
@@ -1073,19 +996,15 @@ function featEffects(ch, customs) {
     if (f.save) out.saves.push({ abil: f.save, from: n });
     if (f.saveFromBump) { const b = featChoiceOf(ch, n).bump; if (b) out.saves.push({ abil: b, from: n }); }
     if (f.init) {
-      // the 2014 wording hands out a flat +5; the SRD 5.2 wording hands out your proficiency bonus
       const flat = (defs.get(n)?.text || "").match(/\+\s*(\d+)\s*bonus to initiative/i);
       out.init = { label: n, value: flat ? +flat[1] : profBonus(totalLevel(ch)) };
     }
   });
   return out;
 }
-/* A fighting style is yours whether a class granted it or a feat bought it */
 const hasStyle = (ch, name) => (ch?.styles || []).includes(name) || (ch?.feats || []).includes(`Fighting Style: ${name}`);
-/* Tough and its kin read the same in every edition, so max HP needs no compendium */
 const featHpBonus = (ch) => featEffects(ch).hpPerLevel * totalLevel(ch);
 
-/* Structured prerequisites the picker can actually enforce; everything else stays advisory */
 function featBlockedBy(def, { abilities, level, caster }) {
   if (!def) return null;
   if (def.lvl && level < def.lvl) return `needs character level ${def.lvl}`;
@@ -1099,7 +1018,6 @@ function featBlockedBy(def, { abilities, level, caster }) {
   }
   return null;
 }
-/* ---- Battle Master maneuvers, for Martial Adept (and anyone reading the archetype) ---- */
 const MANEUVERS = {
   "Commander's Strike": "Forgo one of your attacks and use a bonus action to direct an ally: they use their reaction to make one weapon attack, adding your superiority die to the damage roll.",
   "Disarming Attack": "On a weapon hit, add the superiority die to damage; the target must pass a Strength save or drop one held item of your choice at its feet.",
@@ -1119,22 +1037,8 @@ const MANEUVERS = {
   "Trip Attack": "On a weapon hit, add the superiority die to damage; a Large-or-smaller target must pass a Strength save or be knocked prone.",
 };
 
-/* ============ FEAT SELECTIONS ============
-   Structured sub-choices and fixed grants, keyed by the feat's exact name so both the
-   built-in catalogue and the bundled compendium's 2014 names resolve. Shapes:
-     skills    { n, from? }         — proficiencies to pick (marked on the sheet)
-     expertise { n }                — skills to double (from those you're proficient in)
-     langs     { n }                — languages to pick (added to the sheet)
-     choice    { label, options }   — one named choice (a class list, a damage type)
-     spells    { cantrips?, level1?, class? ("$choice" reads the choice above),
-                 schools?, ritual?, grant? }  — spell picks and fixed grants; grant is
-                 a flat list, or { level: [names] } for marks that grow with character level
-     maneuvers { n }                — Battle Master maneuvers
-     allSkills true                 — proficiency in every skill (Boon of Skill)
-     note      "…"                  — grants the sheet can't track (tools, instruments) */
 const CASTER_LISTS = ["Bard", "Cleric", "Druid", "Sorcerer", "Warlock", "Wizard"];
 const FEAT_PICKS = {
-  /* SRD 5.2 built-ins */
   "Magic Initiate": { choice: { label: "Spell list", options: ["Cleric", "Druid", "Wizard"] }, spells: { cantrips: 2, level1: 1, class: "$choice" } },
   "Ritual Caster": { choice: { label: "Ritual book's list", options: ["Cleric", "Druid", "Wizard"] }, spells: { level1: 2, ritual: true, class: "$choice" } },
   "Elemental Adept": { choice: { label: "Damage type", options: ["Acid", "Cold", "Fire", "Lightning", "Thunder"] } },
@@ -1147,7 +1051,6 @@ const FEAT_PICKS = {
   "Boon of Skill": { allSkills: true, expertise: { n: 3 } },
   "Crafter": { note: "Pick your three artisan's tools at the table — the sheet doesn't track tool proficiencies." },
   "Musician": { note: "Pick your three instruments at the table — the sheet doesn't track instrument proficiencies." },
-  /* 2014 compendium names */
   ...Object.fromEntries(CASTER_LISTS.map((c) => [`Magic Initiate (${c})`, { spells: { cantrips: 2, level1: 1, class: c } }])),
   ...Object.fromEntries(CASTER_LISTS.map((c) => [`Ritual Caster (${c})`, { spells: { level1: 2, ritual: true, class: c } }])),
   "Martial Adept": { maneuvers: { n: 2 } },
@@ -1155,15 +1058,13 @@ const FEAT_PICKS = {
   "Prodigy": { skills: { n: 1 }, langs: { n: 1 }, expertise: { n: 1 }, note: "Also grants one tool proficiency — note it at the table." },
   "Weapon Master (Strength)": { note: "Pick your four weapon proficiencies at the table — the sheet doesn't track them." },
   "Weapon Master (Dexterity)": { note: "Pick your four weapon proficiencies at the table — the sheet doesn't track them." },
-  /* racial spell-granting feats (2014) */
   "Wood Elf Magic": { spells: { cantrips: 1, class: "Druid", grant: ["Longstrider", "Pass without Trace"] } },
   "Drow High Magic": { spells: { grant: ["Detect Magic", "Levitate", "Dispel Magic"] } },
   "Fey Teleportation (Charisma)": { spells: { grant: ["Misty Step"] }, grantLangs: ["Sylvan"] },
   "Fey Teleportation (Intelligence)": { spells: { grant: ["Misty Step"] }, grantLangs: ["Sylvan"] },
   "Svirfneblin Magic": { spells: { grant: ["Nondetection", "Blindness/Deafness", "Blur", "Disguise Self"] } },
   "Aberrant Dragonmark": { spells: { cantrips: 1, level1: 1, class: "Sorcerer" } },
-  "Dragon Wings": {}, // flight is rules text; nothing to pick
-  /* Eberron dragonmarks: fixed spells that grow at character levels 5 and 9 */
+  "Dragon Wings": {},
   "Dragonmark of Detection": { spells: { grant: { 1: ["Detect Magic", "Mage Hand"], 5: ["Detect Thoughts"], 9: ["Clairvoyance"] } } },
   "Dragonmark of Finding": { spells: { grant: { 1: ["Identify", "Mage Hand"], 5: ["Locate Object"], 9: ["Clairvoyance"] } } },
   "Dragonmark of Handling": { spells: { grant: { 1: ["Druidcraft", "Speak with Animals"], 5: ["Beast Sense"], 9: ["Conjure Animals"] } } },
@@ -1179,14 +1080,12 @@ const FEAT_PICKS = {
 };
 const featPickOf = (name, def) => FEAT_PICKS[name] || def?.pick || null;
 
-/* Fixed spells a feat hands the character at a given character level */
 function featGrantedSpells(name, level = 20, def) {
   const g = featPickOf(name, def)?.spells?.grant;
   if (!g) return [];
   if (Array.isArray(g)) return g;
   return Object.entries(g).filter(([l]) => level >= +l).flatMap(([, arr]) => arr);
 }
-/* Innate spells the character's race grants at their current level */
 function raceGrantedSpells(ch) {
   const g = RACES[ch?.race]?.grantSpells;
   if (!g) return [];
@@ -1194,7 +1093,6 @@ function raceGrantedSpells(ch) {
   return Object.entries(g).filter(([l]) => lvl >= +l).flatMap(([, arr]) => arr);
 }
 
-/* Every spell a held feat contributes — fixed grants plus the player's own picks */
 function featSpellsOf(ch) {
   const lvl = totalLevel(ch);
   return (ch?.feats || []).map((n) => {
@@ -1203,7 +1101,6 @@ function featSpellsOf(ch) {
   }).filter((e) => e.names.length);
 }
 
-/* A feat is only fully chosen once its own sub-choices are made */
 function featPickDone(def, v) {
   if (!v?.name) return false;
   if (def?.bump?.length && !v.bump) return false;
@@ -1219,10 +1116,8 @@ function featPickDone(def, v) {
   return true;
 }
 
-/* Warlock invocations known by class level */
 const INVOCATIONS = (l) => (l >= 18 ? 8 : l >= 15 ? 7 : l >= 12 ? 6 : l >= 9 ? 5 : l >= 7 ? 4 : l >= 5 ? 3 : l >= 2 ? 2 : 0);
 
-/* ==== Spell selection rules (SRD) ==== */
 const CANTRIPS_KNOWN = {
   Bard: (l) => (l >= 10 ? 4 : l >= 4 ? 3 : 2), Cleric: (l) => (l >= 10 ? 5 : l >= 4 ? 4 : 3),
   Druid: (l) => (l >= 10 ? 4 : l >= 4 ? 3 : 2), Sorcerer: (l) => (l >= 10 ? 6 : l >= 4 ? 5 : 4),
@@ -1233,7 +1128,6 @@ const SPELLS_KNOWN = {
   Sorcerer: [2,3,4,5,6,7,8,9,10,11,12,12,13,13,14,14,15,15,15,15],
   Warlock: [2,3,4,5,6,7,8,9,10,10,11,11,12,12,13,13,14,14,15,15],
 };
-/* 2024 Ranger prepared-spell counts, index = class level - 1 */
 const RANGER_PREPARED = [2,3,4,5,6,6,7,7,9,9,10,10,11,11,12,12,14,14,15,15];
 const SPELL_ABILITY = { Bard: "cha", Cleric: "wis", Druid: "wis", Paladin: "cha", Ranger: "wis", Sorcerer: "cha", Warlock: "cha", Wizard: "int" };
 function spellCapacity(clsName, clsLevel, abilities) {
@@ -1260,14 +1154,11 @@ function maxSpellLevel(clsName, clsLevel) {
   if (c === "pact") return PACT(clsLevel).lvl;
   return 0;
 }
-/* Source XMLs list domain/oath/circle spells twice: "Bless" (Cleric, Paladin) and a starred
-   twin "Bless*" carrying only the subclass tags (Cleric (Life), …) plus a footnote. The twin
-   is pure metadata — fold its class tokens into the plain entry and drop it, so no picker
-   ever offers the same spell twice. Spells starred without a plain twin pass through untouched. */
+// Compendium XMLs contain duplicate subclass spell entries with a trailing asterisk; foldStarredSpells merges subclass tags into base spell entries and removes duplicates.
 function foldStarredSpells(spells) {
   const tok = (s) => (s || "").split(",").map((t) => t.trim()).filter(Boolean);
   const plainNames = new Set(spells.filter((sp) => !sp.name.endsWith("*")).map((sp) => sp.name));
-  const extras = new Map(); // plain name -> subclass tokens carried only by the starred twin
+  const extras = new Map();
   const kept = [];
   spells.forEach((sp) => {
     const plain = sp.name.replace(/\*+$/, "");
@@ -1277,7 +1168,7 @@ function foldStarredSpells(spells) {
     }
     kept.push(sp);
   });
-  if (!extras.size) return spells; // nothing to fold — hand back the same array
+  if (!extras.size) return spells;
   return kept.map((sp) => {
     const ex = extras.get(sp.name);
     if (!ex) return sp;
@@ -1287,8 +1178,6 @@ function foldStarredSpells(spells) {
   });
 }
 
-/* A spell's classes string lists entries like "Bard, Cleric (Arcana), Warlock (Archfey)".
-   A plain class entry fits any member of that class; a parenthesized entry fits only a matching subclass. */
 const spellFitsClass = (sp, clsName, subclass) => {
   const want = clsName.toLowerCase();
   const toks = subclass ? subTokens(subclass) : [];
@@ -1299,18 +1188,15 @@ const spellFitsClass = (sp, clsName, subclass) => {
   });
 };
 
-/* Multiclass spell slot table — index = combined caster level - 1 */
 const MC_SLOTS = [
   [2],[3],[4,2],[4,3],[4,3,2],[4,3,3],[4,3,3,1],[4,3,3,2],[4,3,3,3,1],[4,3,3,3,2],
   [4,3,3,3,2,1],[4,3,3,3,2,1],[4,3,3,3,2,1,1],[4,3,3,3,2,1,1],[4,3,3,3,2,1,1,1],[4,3,3,3,2,1,1,1],
   [4,3,3,3,2,1,1,1,1],[4,3,3,3,3,1,1,1,1],[4,3,3,3,3,2,1,1,1],[4,3,3,3,3,2,2,1,1],
 ];
-/* Native single-class half-caster table (Paladin, 2014-style), index = class level - 1 */
 const HALF_SLOTS = [
   [],[2],[3],[3],[4,2],[4,2],[4,3],[4,3],[4,3,2],[4,3,2],
   [4,3,3],[4,3,3],[4,3,3,1],[4,3,3,1],[4,3,3,2],[4,3,3,2],[4,3,3,3],[4,3,3,3],[4,3,3,3,1],[4,3,3,3,2],
 ];
-/* 2024 half-caster (Ranger): slots from 1st level, effectively caster level ⌈L/2⌉ */
 const HALF1_SLOTS = [
   [2],[2],[3],[3],[4,2],[4,2],[4,3],[4,3],[4,3,2],[4,3,2],
   [4,3,3],[4,3,3],[4,3,3,1],[4,3,3,1],[4,3,3,2],[4,3,3,2],[4,3,3,3,1],[4,3,3,3,1],[4,3,3,3,2],[4,3,3,3,2],
@@ -1322,7 +1208,6 @@ function spellSlots(classes) {
   if (!casters.length) return null;
   if (casters.length === 1 && CLASSES[casters[0].name].caster === "half") return HALF_SLOTS[casters[0].level - 1];
   if (casters.length === 1 && CLASSES[casters[0].name].caster === "half1") return HALF1_SLOTS[casters[0].level - 1];
-  // a 2024 half-caster rounds its contribution up; the 2014 kind still rounds down
   const cl = casters.reduce((s, c) => s + (CLASSES[c.name].caster === "full" ? c.level : CLASSES[c.name].caster === "half1" ? Math.ceil(c.level / 2) : Math.floor(c.level / 2)), 0);
   return cl > 0 ? MC_SLOTS[Math.min(cl, 20) - 1] : null;
 }
@@ -1330,21 +1215,16 @@ function spellSlots(classes) {
 const totalLevel = (ch) => ch.classes.reduce((s, c) => s + c.level, 0);
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-/* ============ SOURCEBOOK PREFERENCES ============ */
-/* Which books feed the pickers. A disabled source vanishes from spell pick lists and
-   summon musters — but never from a character: known spells still cast, mustered
-   creatures keep their stat blocks, lore still answers. */
 let __SRC_OFF = new Set();
-let __BESTIARY = []; // SRD + sourcebook stat blocks, riding in the base compendium
+let __BESTIARY = [];
 const SRD_SRC = "5e SRD";
 const spellSrcOf = (sp) => (((sp.text || "").match(/Source:\s*([^,\n]+)/) || [])[1] || "").trim() || "Homebrew & unsourced";
 const creatureSrcOf = (b) => b.src || SRD_SRC;
 const srcSpells = (list) => (__SRC_OFF.size ? list.filter((sp) => !__SRC_OFF.has(spellSrcOf(sp))) : list);
 
-/* ============ THEME ============ */
 const T = {
   bg: "#161219", panel: "#221c26", panel2: "#2b2330", ink: "#e8dfd0", dim: "#a2937f",
-  gold: "#c9a44c", blood: "#8e3b46", edge: "#3a3040", green: "#7da05f",
+  gold: "#c9a44c", blood: "#8e3b46", edge: "#3a3040", green: "#7da05f", error: "#d76a76",
 };
 const card = { background: T.panel, border: `1px solid ${T.edge}`, borderRadius: 10 };
 const btn = (primary) => ({
@@ -1353,15 +1233,12 @@ const btn = (primary) => ({
   background: primary ? T.blood : "transparent", color: primary ? T.ink : T.gold,
   border: primary ? `1px solid ${T.blood}` : `1px solid ${T.gold}`, fontFamily: "Georgia, serif",
 });
-/* The sheet's quiet corner buttons — share and the golden ?, exactly as tall as Roster */
 const cornerBtn = {
   flex: "0 0 auto", width: 44, borderRadius: 12, cursor: "pointer", boxSizing: "border-box",
   border: `1px solid ${T.edge}`, background: T.panel, color: T.gold, lineHeight: 1,
   display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.85,
   WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
 };
-/* One page shell and one stylesheet, worn by the app and by shared sheets alike,
-   so a sheet opened from a link is pixel-for-pixel the sheet its owner sees */
 const SHELL_STYLE = {
   minHeight: "100vh", background: T.bg, color: T.ink,
   fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
@@ -1379,13 +1256,9 @@ const GLOBAL_CSS = `
   @keyframes diceTumbleB { from { transform: rotate3d(0.6, 1, 0.45, 1440deg); } to { transform: rotate3d(0.6, 1, 0.45, 0deg); } }
   @keyframes sheetVeil { from { opacity: 0; } to { opacity: 1; } }
   @keyframes sheetRise { from { transform: translateY(100%); } to { transform: translateY(0); } }
-  /* dvh tracks the true visible viewport on mobile (vh hides under browser chrome); the vh line is the fallback */
   .sheet-tall { height: min(82vh, 700px); height: min(82dvh, 700px); }
   .sheet-cap { max-height: min(88vh, 700px); max-height: min(88dvh, 700px); }
   .sheet-body { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-  /* the horizon: a Bierstadt sunset at the page's foot, revealed as if the sky curtain
-     were drawn back — the page's own dark bleeds down through most of the painting so
-     only the glowing horizon and its lone rider surface, faint and atmospheric */
   .horizon { position: fixed; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 0;
     height: clamp(150px, 24vh, 250px); opacity: 0.72;
     background-image: linear-gradient(to bottom, ${T.bg} 0%, ${T.bg}f7 20%, ${T.bg}cc 42%, ${T.bg}80 64%, ${T.bg}33 85%, ${T.bg}00 100%), url('./horizon.jpg');
@@ -1397,7 +1270,6 @@ const GLOBAL_CSS = `
   .lore-lock, .lore-lock * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
 `;
 
-/* ============ ICONS (inline SVG, stroke = currentColor) ============ */
 const ICON_PATHS = {
   d20: <><path d="M12 2 3.34 7v10L12 22l8.66-5V7L12 2Z" /><path d="M12 22v-8.5" /><path d="M3.34 7 12 13.5 20.66 7" /><path d="m7.5 4.6 4.5 8.9 4.5-8.9" /></>,
   sword: <><path d="M14.5 17.5 3 6V3h3l11.5 11.5" /><path d="M13 19l6-6" /><path d="M16 16l4 4" /><path d="M19 21l2-2" /></>,
@@ -1430,7 +1302,6 @@ const Icon = ({ name, size = 15, style }) => (
   </svg>
 );
 
-/* Every class wears its own colors and sigil, everywhere it appears */
 const CLASS_THEMES = {
   Barbarian: { color: "#d1603d", icon: "axe" },
   Bard: { color: "#c77dca", icon: "music" },
@@ -1454,12 +1325,6 @@ const ClassTag = ({ name, size = 14, dim, children }) => {
   );
 };
 
-/* ============ ANIMATED 3D DICE ============ */
-/* Real polyhedra — tetrahedron, cube, octahedron, pentagonal trapezohedron,
-   dodecahedron, icosahedron — built from vertex hulls and rendered as CSS
-   matrix3d faces. The inner wrapper statically orients the rolled face toward
-   the viewer with its number upright; the outer wrapper's tumble animation
-   ends at identity, so the die spins wildly and lands exactly on the roll. */
 const V3 = {
   sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
   scale: (a, k) => [a[0] * k, a[1] * k, a[2] * k],
@@ -1475,15 +1340,14 @@ function dieVertices(sides) {
   if (sides === 6) { for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) v.push([x, y, z]); return v; }
   if (sides === 8) return [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
   if (sides === 10) {
-    // Pentagonal trapezohedron: two interleaved rings of 5, apexes set by kite planarity
     const h = 0.15, rad = (d) => (d * Math.PI) / 180;
     for (let k = 0; k < 5; k++) {
       v.push([Math.cos(rad(k * 72)), Math.sin(rad(k * 72)), h]);
       v.push([Math.cos(rad(k * 72 + 36)), Math.sin(rad(k * 72 + 36)), -h]);
     }
-    const [a, b, c] = [v[0], v[2], v[1]]; // ring neighbors A0, A1 and B0 between them
+    const [a, b, c] = [v[0], v[2], v[1]];
     const n = V3.cross(V3.sub(b, a), V3.sub(c, a));
-    const za = Math.abs(V3.dot(n, a) / n[2]); // where the kite's plane crosses the z-axis
+    const za = Math.abs(V3.dot(n, a) / n[2]);
     v.push([0, 0, za], [0, 0, -za]);
     return v;
   }
@@ -1492,12 +1356,10 @@ function dieVertices(sides) {
     for (const a of [-1, 1]) for (const b of [-1, 1]) { v.push([0, a / PHI, b * PHI], [a / PHI, b * PHI, 0], [a * PHI, 0, b / PHI]); }
     return v;
   }
-  for (const a of [-1, 1]) for (const b of [-1, 1]) { v.push([0, a, b * PHI], [a, b * PHI, 0], [a * PHI, 0, b]); } // icosahedron
+  for (const a of [-1, 1]) for (const b of [-1, 1]) { v.push([0, a, b * PHI], [a, b * PHI, 0], [a * PHI, 0, b]); }
   return v;
 }
 
-/* Convex hull by supporting planes: every triplet whose plane has all other
-   vertices on one side is a face plane; coplanar vertices are merged. */
 function hullFaces(verts) {
   const faces = [];
   for (let i = 0; i < verts.length; i++) for (let j = i + 1; j < verts.length; j++) for (let k = j + 1; k < verts.length; k++) {
@@ -1531,8 +1393,6 @@ function buildDie(sides, size) {
     const u0 = V3.norm(V3.cross(n, w0));
     const pts = idx.map((m) => verts[m])
       .sort((p, q) => Math.atan2(V3.dot(V3.sub(p, c), w0), V3.dot(V3.sub(p, c), u0)) - Math.atan2(V3.dot(V3.sub(q, c), w0), V3.dot(V3.sub(q, c), u0)));
-    // face-local "up": a vertex for triangles/pentagons (classic dice look), the kite's apex
-    // for the d10, and an edge midpoint for the cube so squares land flat, not diamond
     let up = pts[0];
     if (sides === 6) up = [(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2, (pts[0][2] + pts[1][2]) / 2];
     if (sides === 10) up = pts.reduce((best, p) => (Math.hypot(...V3.sub(p, c)) > Math.hypot(...V3.sub(best, c)) ? p : best), pts[0]);
@@ -1541,7 +1401,7 @@ function buildDie(sides, size) {
     const flat = pts.map((p) => [V3.dot(V3.sub(p, c), u), -V3.dot(V3.sub(p, c), w)]);
     const rmax = Math.max(...flat.map(([x, y]) => Math.hypot(x, y)));
     const clip = "polygon(" + flat.map(([x, y]) => `${(50 + (x / rmax) * 49).toFixed(2)}% ${(50 + (y / rmax) * 49).toFixed(2)}%`).join(", ") + ")";
-    const k = rmax / (size * 0.49); // model px per element px, so the outline spans the element
+    const k = rmax / (size * 0.49);
     const place = `matrix3d(${fmt([u[0] * k, u[1] * k, u[2] * k, 0, -w[0] * k, -w[1] * k, -w[2] * k, 0, n[0], n[1], n[2], 0, c[0], c[1], c[2], 1])})`;
     const land = `matrix3d(${fmt([u[0], -w[0], n[0], 0, u[1], -w[1], n[1], 0, u[2], -w[2], n[2], 0, 0, 0, 0, 1])})`;
     return { clip, place, land, n };
@@ -1555,12 +1415,9 @@ function Die3D({ sides, final, delay, size = 68 }) {
   const targetIdx = (final - 1) % faces.length;
   const target = faces[targetIdx];
   const fontK = { 4: 0.26, 6: 0.4, 8: 0.3, 10: 0.26, 12: 0.3, 20: 0.22 }[sides] || 0.3;
-  // the rolled face lands flat to the camera, so its number can run much larger
   const bigK = { 4: 0.32, 6: 0.5, 8: 0.4, 10: 0.36, 12: 0.4, 20: 0.33 }[sides] || 0.4;
   const dur = (1.15 + delay / 1000).toFixed(2);
   const tumble = (final + sides) % 2 ? "diceTumbleA" : "diceTumbleB";
-  // no spoilers: every face looks identical until the tumble ends, THEN the rolled
-  // number swells and the grazing faces' numbers fade
   const [landed, setLanded] = useState(false);
   useEffect(() => {
     setLanded(false);
@@ -1568,19 +1425,15 @@ function Die3D({ sides, final, delay, size = 68 }) {
     return () => clearTimeout(t);
   }, [sides, final, delay]);
   return (
-    // the drop-shadow lives outside the 3D chain: `filter` is a grouping property that
-    // would force transform-style back to flat and crush the polyhedron
+    // filter creates a stacking context that flattens preserve-3d child transforms.
     <div style={{ filter: "drop-shadow(0 10px 12px #00000073)", animation: `diceDrop 1.3s cubic-bezier(.22,1.6,.36,1) ${delay}ms both` }}>
       <div style={{ width: size, height: size, perspective: 700 }}>
         <div style={{ width: size, height: size, transformStyle: "preserve-3d", animation: `${tumble} ${dur}s cubic-bezier(.18,.8,.24,1.02) ${delay}ms both` }}>
           <div style={{ width: size, height: size, position: "relative", transformStyle: "preserve-3d", transform: target.land }}>
           {faces.map((f, i) => {
-            // numbers on faces tilted away from the landing face fade out, so grazing
-            // faces read as metal edges instead of ink smears
             const tilt = Math.max(0, V3.dot(target.n, f.n));
             return (
-              // clip-path lives on a child, not the 3D-transformed element itself —
-              // Chromium misculls clipped faces at steep angles (black wedge artifacts)
+              // clip-path is placed on the child element to avoid Chromium 3D rasterization culling artifacts at steep angles.
               <div key={i} style={{ position: "absolute", inset: 0, transform: f.place, backfaceVisibility: "hidden" }}>
                 <div style={{
                   position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
@@ -1605,7 +1458,6 @@ function Die3D({ sides, final, delay, size = 68 }) {
 const Die = ({ sides, final, delay, size = 68 }) => <Die3D sides={sides} final={final} delay={delay} size={size} />;
 
 function DiceTray({ title, dice, dropLowest, onAccept, onReroll, acceptLabel = "Accept", note, tally, rollId = 0, bonus = 0, bonusLabel = "" }) {
-  // dice: [{sides, value}] — values pre-rolled; tray animates the reveal
   const [revealDone, setRevealDone] = useState(false);
   useEffect(() => {
     setRevealDone(false);
@@ -1625,7 +1477,6 @@ function DiceTray({ title, dice, dropLowest, onAccept, onReroll, acceptLabel = "
         )}
         <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap", padding: "18px 0" }}>
           {dice.map((d, i) => (
-            // key includes rollId so a fresh batch remounts the dice and re-tumbles
             <div key={`${rollId}-${i}`} style={{ opacity: revealDone && i === lowIdx ? 0.3 : 1, transition: "opacity 400ms", position: "relative" }}>
               <Die sides={d.sides} final={d.value} delay={i * 150} />
               {revealDone && i === lowIdx && <div style={{ position: "absolute", top: -10, right: -6, color: T.blood, fontSize: 11, fontWeight: 700 }}>dropped</div>}
@@ -1646,8 +1497,6 @@ function DiceTray({ title, dice, dropLowest, onAccept, onReroll, acceptLabel = "
 }
 const roll = (sides) => 1 + Math.floor(Math.random() * sides);
 
-/* ============ D20 ROLL ENGINE ============ */
-/* Static features that bend d20 rolls, computed from the character */
 function rollFeatures(ch) {
   const lvl = totalLevel(ch);
   const pb = profBonus(lvl);
@@ -1656,14 +1505,14 @@ function rollFeatures(ch) {
   return {
     pb,
     lucky: ch.race === "Lightfoot Halfling",
-    jack: clsLv("Bard") >= 2 ? Math.floor(pb / 2) : 0,                       // Jack of All Trades
-    athlete: champLvl >= 7 ? Math.ceil(pb / 2) : 0,                          // Remarkable Athlete (Str/Dex/Con)
-    reliable: clsLv("Rogue") >= 11,                                          // Reliable Talent
-    aura: clsLv("Paladin") >= 6 ? Math.max(1, mod(ch.abilities.cha)) : 0,    // Aura of Protection
-    diamondSoul: clsLv("Monk") >= 14,                                        // proficiency in all saves
-    slipperyMind: clsLv("Rogue") >= 15,                                      // WIS save proficiency
-    ironMind: clsLv("Ranger") >= 7 && hasSub(ch, "Gloom Stalker"),           // WIS save proficiency (2024)
-    critRange: champLvl >= 15 ? 18 : champLvl >= 3 ? 19 : 20,                // Improved/Superior Critical
+    jack: clsLv("Bard") >= 2 ? Math.floor(pb / 2) : 0,
+    athlete: champLvl >= 7 ? Math.ceil(pb / 2) : 0,
+    reliable: clsLv("Rogue") >= 11,
+    aura: clsLv("Paladin") >= 6 ? Math.max(1, mod(ch.abilities.cha)) : 0,
+    diamondSoul: clsLv("Monk") >= 14,
+    slipperyMind: clsLv("Rogue") >= 15,
+    ironMind: clsLv("Ranger") >= 7 && hasSub(ch, "Gloom Stalker"),
+    critRange: champLvl >= 15 ? 18 : champLvl >= 3 ? 19 : 20,
     archery: hasStyle(ch, "Archery") ? 2 : 0,
     barbarian: clsLv("Barbarian"),
     savageAttacks: ch.race === "Half-Orc",
@@ -1671,7 +1520,6 @@ function rollFeatures(ch) {
   };
 }
 
-/* Situational reminders the dice can't decide for you */
 function rollNotes(ch, kind, abil) {
   const f = rollFeatures(ch);
   const n = [];
@@ -1697,11 +1545,9 @@ function rollNotes(ch, kind, abil) {
     if (ch.race === "Kobold") { n.push("Pack Tactics: advantage if an ally is within 5 ft of the target"); n.push("Sunlight Sensitivity: disadvantage in direct sunlight"); }
     if (ch.race === "Bugbear") n.push("Surprise Attack: +2d6 damage against a surprised creature on your first turn");
   }
-  /* Feats the dice can't spend for you */
   if (hasFeat(ch, "Lucky")) n.push("Lucky: you may spend a Luck Point on this roll — long-press the feat for your table's wording");
   if (kind === "save" && abil === "con" && hasFeat(ch, "War Caster")) n.push("War Caster: advantage on Constitution saves to maintain Concentration");
   const fx = fxMods(ch);
-  /* Effect notes are plain strings, or { t, abil } scoped to the ability being rolled */
   (fx.notes[kind === "skill" ? "check" : kind] || []).forEach((note) => {
     if (typeof note === "string") n.push(note);
     else if (!note.abil || !abil || [].concat(note.abil).includes(abil)) n.push(note.t);
@@ -1709,11 +1555,9 @@ function rollNotes(ch, kind, abil) {
   return n;
 }
 
-/* minion: the bones belong to a summoned creature — the character's own features
-   (Lucky, Reliable Talent, expanded crits) and effect notes stay out of its roll */
 function RollTray({ title, mode, parts, kind, abil, proficient, extra, ch, minion, onClose, onDamage }) {
   const f = minion ? { critRange: 20 } : rollFeatures(ch);
-  // roll once, in the state initializer — re-renders must not re-throw the bones
+  // Initialize roll state once during mount so component re-renders do not re-roll dice.
   const [res] = useState(() => {
     const dice = [{ v: roll(20) }];
     if (mode !== "normal") dice.push({ v: roll(20) });
@@ -1780,10 +1624,6 @@ function RollTray({ title, mode, parts, kind, abil, proficient, extra, ch, minio
   );
 }
 
-/* ============ FEATURE CHOICE GROUPS ============ */
-/* Some subclass options ride in the compendium as pseudo-spells (maneuvers, elemental
-   disciplines, arcane shots, trick shots) — tagged for a non-casting class, they're
-   techniques, not spells, and must stay out of real spell pickers. */
 const CASTING_CLASSES = new Set(["Bard", "Cleric", "Druid", "Paladin", "Ranger", "Sorcerer", "Warlock", "Wizard", "Artificer"]);
 const isTechnique = (sp) => !(sp.classes || "").split(",").some((e) => {
   const m = e.trim().match(/^(.+?)(?:\s*\(([^)]*)\))?$/);
@@ -1792,8 +1632,6 @@ const isTechnique = (sp) => !(sp.classes || "").split(",").some((e) => {
 
 const KENSEI_WEAPONS = ["Battleaxe", "Club", "Dagger", "Flail", "Glaive", "Greataxe", "Greatclub", "Greatsword", "Halberd", "Handaxe", "Javelin", "Light Hammer", "Longbow", "Longsword", "Mace", "Maul", "Morningstar", "Pike", "Quarterstaff", "Rapier", "Scimitar", "Shortbow", "Shortsword", "Sickle", "Spear", "Trident", "War Pick", "Warhammer", "Whip"];
 
-/* Choice-granting features: what you pick, where the options live, and how many you
-   hold at each class level (cumulative — missed picks are offered as catch-up). */
 const CHOICE_GROUPS = [
   { key: "Maneuvers", cls: "Fighter", sub: "Battle Master", source: { spellTag: true }, counts: { 3: 3, 7: 2, 10: 2, 15: 2 } },
   { key: "Arcane Shot Options", cls: "Fighter", sub: "Arcane Archer", source: { spellTag: true }, counts: { 3: 2, 7: 1, 10: 1, 15: 1, 18: 1 } },
@@ -1805,7 +1643,6 @@ const CHOICE_GROUPS = [
   { key: "Aspect of the Beast", cls: "Barbarian", sub: "Path of the Totem Warrior", source: { featurePrefix: "Aspect of the Beast" }, counts: { 6: 1 } },
   { key: "Totemic Attunement", cls: "Barbarian", sub: "Path of the Totem Warrior", source: { featurePrefix: "Totemic Attunement" }, counts: { 14: 1 } },
   { key: "Storm Aura", cls: "Barbarian", sub: "Path of the Storm Herald", source: { list: ["Storm Aura: Desert", "Storm Aura: Sea", "Storm Aura: Tundra"] }, counts: { 3: 1 } },
-  /* 2024 Hunter: two swappable options apiece, and no 11th/15th-level choices */
   { key: "Hunter's Prey", cls: "Ranger", sub: "Hunter", source: { list: ["Colossus Slayer", "Horde Breaker"] }, counts: { 3: 1 } },
   { key: "Defensive Tactics", cls: "Ranger", sub: "Hunter", source: { list: ["Escape the Horde", "Multiattack Defense"] }, counts: { 7: 1 } },
   { key: "Dragon Ancestor", cls: "Sorcerer", sub: "Draconic Bloodline", source: { featureSuffix: "Dragon Ancestor" }, counts: { 1: 1 } },
@@ -1832,7 +1669,6 @@ function choiceOptionsFor(g, customs) {
   }
   return [];
 }
-/* All groups relevant to a character, with current holdings and caps */
 function characterChoiceGroups(ch, customs) {
   const out = [];
   for (const g of CHOICE_GROUPS) {
@@ -1846,8 +1682,6 @@ function characterChoiceGroups(ch, customs) {
   }
   return out;
 }
-/* Every cantrip the character knows, from any source: class lists, Pact of the Tome,
-   racial pick, and the feats that teach one (picked or granted outright) */
 const GRANT_CANTRIPS = new Set(["Mage Hand", "Druidcraft", "Spare the Dying", "Friends", "Light", "Message", "Blade Ward", "Dancing Lights", "Shocking Grasp", "Resistance", "Mending", "Poison Spray", "Produce Flame", "Shape Water"]);
 function allKnownCantrips(ch) {
   return [
@@ -1862,7 +1696,6 @@ function allKnownCantrips(ch) {
   ];
 }
 
-/* ============ GEAR: types, sources, armor class ============ */
 const ITEM_TYPES = { LA: "Light armor", MA: "Medium armor", HA: "Heavy armor", S: "Shield", M: "Melee weapon", R: "Ranged weapon", A: "Ammunition", G: "Adventuring gear", W: "Wondrous item", P: "Potion", RG: "Ring", WD: "Wand", ST: "Staff", SC: "Scroll", RD: "Rod", "$": "Currency" };
 const DMG_TYPES = { S: "slashing", P: "piercing", B: "bludgeoning", R: "radiant", N: "necrotic", F: "fire", C: "cold", L: "lightning", T: "thunder", A: "acid", PS: "poison", PSY: "psychic", FC: "force" };
 const WEAPON_PROPS = { A: "ammunition", F: "finesse", H: "heavy", L: "light", LD: "loading", R: "reach", S: "special", T: "thrown", "2H": "two-handed", V: "versatile", M: "martial" };
@@ -1872,7 +1705,6 @@ const SOURCE_ABBR = [
   ["Elemental Evil", "EEPC"], ["Guildmasters' Guide", "GGtR"], ["Eberron", "ERLW"], ["Explorer's Guide to Wildemount", "EGtW"],
   ["Acquisitions Incorporated", "AI"], ["Curse of Strahd", "CoS"], ["Princes of the Apocalypse", "PotA"], ["Unearthed Arcana", "UA"], ["Wayfinder's Guide", "WGtE"],
 ];
-/* Pull "Source: Player's Handbook, p. 73" out of stored rules text, abbreviated */
 function sourceOf(text) {
   const m = (text || "").match(/Source:\s*([^\n]+)/);
   if (!m) return null;
@@ -1885,8 +1717,6 @@ const isArmorType = (t) => ["LA", "MA", "HA"].includes(t);
 const isWeaponType = (t) => ["M", "R"].includes(t);
 const equippedOf = (ch) => (ch.inventory || []).filter((r) => r.equipped);
 
-/* ---- who may wield what: structured armor & weapon proficiencies ---- */
-/* First class grants its full training; classes added by multiclassing grant the reduced multiclass set. */
 const CLASS_GEAR_PROFS = {
   Barbarian: { armor: ["LA", "MA", "S"], weapons: { martial: true } },
   Bard: { armor: ["LA"], weapons: { simple: true, named: ["Hand Crossbow", "Longsword", "Rapier", "Shortsword"] } },
@@ -1920,9 +1750,8 @@ const nameMatchesAny = (itemName, names) => {
   const hay = itemName.toLowerCase();
   return names.some((n) => n.toLowerCase().split(/[\s,]+/).every((w) => hay.includes(w)));
 };
-/* Can this character legitimately equip this item, per their training? */
 function canEquip(item, ch) {
-  if (!item) return true; // freeform items: the player's call
+  if (!item) return true;
   const profs = ch.classes.map((c, i) => (i === 0 ? CLASS_GEAR_PROFS[c.name] : MC_GEAR_PROFS[c.name])).filter(Boolean);
   if (isArmorType(item.type) || item.type === "S") {
     const want = item.type === "S" ? "S" : item.type;
@@ -1931,7 +1760,7 @@ function canEquip(item, ch) {
   if (isWeaponType(item.type)) {
     return profs.some((p) => {
       const w = p.weapons || {};
-      if (w.martial) return true; // martial training includes simple weapons
+      if (w.martial) return true;
       if (w.simple && !isMartial(item)) return true;
       return w.named ? nameMatchesAny(item.name, w.named) : false;
     });
@@ -1939,13 +1768,11 @@ function canEquip(item, ch) {
   return true;
 }
 
-/* The armor and shield actually on the character's body right now */
 function equippedGear(ch, customs) {
   const inv = equippedOf(ch).map((r) => findItem(r.name, customs)).filter(Boolean);
   return { armor: inv.find((x) => isArmorType(x.type)), shield: inv.find((x) => x.type === "S") };
 }
 
-/* Armor Class from equipped gear + class features + active effects, with a readable breakdown */
 function armorClass(ch, customs, fx = fxMods(ch)) {
   const dex = mod(ch.abilities.dex);
   const { armor, shield } = equippedGear(ch, customs);
@@ -1976,20 +1803,10 @@ function armorClass(ch, customs, fx = fxMods(ch)) {
   return { ac, parts, armor, shield };
 }
 
-/* ============ ACTIVE EFFECTS — buffs, boons, curses, and the state of being on fire ============ */
-/* Every trackable spell, feature, feat toggle, and condition. Mechanics the sheet can compute
-   are structured (AC, speed, max HP, attack/save/damage bonuses); everything the dice can't
-   decide for you becomes a reminder note on the relevant roll.
-   mods(val, ch, inst) → { ac:[{label,value}], acBase:{label,value}, acFloor:{label,value}, maxHp,
-   halveMaxHp, speedAdd:[{label,value}], speedMult, speedZero, atk/dmg:[{label,value,scope,abil?,prop?}],
-   save:[{label,value}], shillelagh, notes:{attack,save,check,dmg} } — scope: "melee" | "ranged" |
-   "weapon" | "spell" | "all"; notes entries are strings or { t, abil } scoped to the rolled ability */
 const classLevel = (ch, name) => ch.classes.find((c) => c.name === name)?.level || 0;
 const hasSub = (ch, name) => ch.classes.some((c) => c.subclass && subTokens(c.subclass).includes(normSub(name)));
 const hasFeat = (ch, name) => (ch.feats || []).includes(name);
-/* Imported ledgers aren't validated field-by-field — never trust ch.effects to be an array */
 const effectsOf = (ch) => (Array.isArray(ch.effects) ? ch.effects : []);
-/* Spells the character can actually cast: their picks plus always-prepared subclass grants */
 const knownSpellNames = (ch, customs) => {
   const out = new Set();
   Object.values(ch.spells || {}).forEach((b) => ["cantrips", "spells"].forEach((k) => (b?.[k] || []).forEach((n) => out.add(n))));
@@ -2001,19 +1818,15 @@ const knownSpellNames = (ch, customs) => {
 };
 const slugFx = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 const E = (kind, name, def) => ({ key: slugFx(name), kind, name, ...def });
-/* Shillelagh swings on the spellcasting ability of whichever class knows it (Druid Wis,
-   a Tome warlock Cha, a Nature cleric Wis…) — Wisdom is only the fallback */
 const shillAbil = (ch) => {
   for (const [cls, book] of Object.entries(ch.spells || {})) {
     if (SPELL_ABILITY[cls] && ["cantrips", "spells"].some((k) => (book?.[k] || []).includes("Shillelagh"))) return SPELL_ABILITY[cls];
   }
-  // A Pact of the Tome warlock's Shillelagh lives in the Book of Shadows, cast with Charisma
   if ((ch.tomeCantrips || []).includes("Shillelagh") && ch.classes.some((c) => c.name === "Warlock")) return SPELL_ABILITY.Warlock;
   return "wis";
 };
 
 const EFFECT_LIB = [
-  /* ---- Spells: the caster's wardrobe ---- */
   E("Spell", "Mage Armor", { dur: "8 hours", ends: "long", brief: "Base AC becomes 13 + Dex while you wear no armor", mods: () => ({ acBase: { label: "Mage Armor", value: 13 } }) }),
   E("Spell", "Shield", { dur: "until the start of your next turn", ends: "short", brief: "+5 AC, including against the attack that triggered it", mods: () => ({ ac: [{ label: "Shield", value: 5 }] }) }),
   E("Spell", "Shield of Faith", { conc: true, dur: "10 minutes", ends: "short", brief: "+2 AC", mods: () => ({ ac: [{ label: "Shield of Faith", value: 2 }] }) }),
@@ -2070,7 +1883,6 @@ const EFFECT_LIB = [
   E("Spell", "Water Walk", { dur: "1 hour", ends: "short", brief: "Stride across liquid surfaces as if they were solid ground" }),
   E("Spell", "Regenerate", { dur: "1 hour", ends: "short", brief: "Regain 1 HP at the start of each of your turns; severed bits reattach" }),
 
-  /* ---- Class features & actions in play ---- */
   E("Feature", "Rage", { dur: "1 minute (keep attacking or taking damage to sustain it)", ends: "short", brief: "Resistance to bludgeoning/piercing/slashing; bonus damage on Str melee hits; advantage on Str checks & saves; no spellcasting or concentration", mine: (ch) => classLevel(ch, "Barbarian") >= 1,
     mods: (v, ch) => { const l = classLevel(ch, "Barbarian"); const b = l >= 16 ? 4 : l >= 9 ? 3 : 2; return { dmg: [{ label: "Rage", value: b, scope: "melee", abil: "str" }], notes: { save: [{ t: "Rage: advantage on Strength saves · resistance to bludgeoning, piercing, slashing", abil: "str" }], check: [{ t: "Rage: advantage on Strength checks", abil: "str" }], attack: [{ t: `Rage: +${b} damage on Strength-based melee hits`, abil: "str" }] } }; } }),
   E("Feature", "Reckless Attack", { dur: "until your next turn", ends: "short", brief: "Advantage on Strength melee attacks this turn — and every attack against you has advantage too", mine: (ch) => classLevel(ch, "Barbarian") >= 2, mods: () => ({ notes: { attack: [{ t: "Reckless Attack: advantage on Strength-based melee attacks; enemies have advantage against you", abil: "str" }] } }) }),
@@ -2084,12 +1896,10 @@ const EFFECT_LIB = [
   E("Action", "Help (received)", { dur: "your next roll", ends: "short", brief: "Advantage on your next ability check, or on your first attack against the distracted target", mods: () => ({ notes: { attack: ["Help: advantage on your first attack against the target"], check: ["Help: advantage on the assisted check"] } }) }),
   E("Action", "Hidden", { dur: "until you're found, move into view, or attack", ends: "short", brief: "Attack with advantage from hiding — attacking reveals you", mods: () => ({ notes: { attack: ["Hidden: attack with advantage — and give away your position"] } }) }),
 
-  /* ---- Feat toggles (SRD sheets import these from the compendium) ---- */
   E("Feat", "Great Weapon Master", { dur: "declared before each attack", ends: "short", brief: "Take −5 to hit with a heavy melee weapon for +10 damage", mine: (ch) => hasFeat(ch, "Great Weapon Master"), mods: () => ({ atk: [{ label: "Great Weapon Master", value: -5, scope: "melee", prop: "H" }], dmg: [{ label: "Great Weapon Master", value: 10, scope: "melee", prop: "H" }] }) }),
   E("Feat", "Sharpshooter", { dur: "declared before each attack", ends: "short", brief: "Take −5 to hit with a ranged weapon for +10 damage; ignore cover and long range", mine: (ch) => hasFeat(ch, "Sharpshooter"), mods: () => ({ atk: [{ label: "Sharpshooter", value: -5, scope: "ranged" }], dmg: [{ label: "Sharpshooter", value: 10, scope: "ranged" }] }) }),
   E("Feat", "Defensive Duelist", { dur: "until the start of your next turn", ends: "short", brief: "Reaction while wielding a finesse weapon: add your proficiency bonus to AC against one melee hit", mine: (ch) => hasFeat(ch, "Defensive Duelist"), mods: (v, ch) => ({ ac: [{ label: "Defensive Duelist", value: profBonus(totalLevel(ch)) }] }) }),
 
-  /* ---- Conditions: the 5e catalogue of misery ---- */
   E("Condition", "Blinded", { dur: "until removed", ends: "manual", brief: "Auto-fail sight checks; your attacks have disadvantage, attacks against you have advantage", mods: () => ({ notes: { attack: ["Blinded: disadvantage on your attacks; attackers have advantage"], check: ["Blinded: automatic failure on checks that require sight"] } }) }),
   E("Condition", "Charmed", { dur: "until removed", ends: "manual", brief: "You can't attack the charmer; they have advantage on social checks against you" }),
   E("Condition", "Deafened", { dur: "until removed", ends: "manual", brief: "Auto-fail checks that require hearing", mods: () => ({ notes: { check: ["Deafened: automatic failure on checks that require hearing"] } }) }),
@@ -2118,32 +1928,25 @@ const EFFECT_LIB = [
 const EFFECT_BY_KEY = Object.fromEntries(EFFECT_LIB.map((e) => [e.key, e]));
 const hasEffect = (ch, key) => effectsOf(ch).some((e) => e.key === key);
 const effDefOf = (e) => (e.key === "custom" ? null : EFFECT_BY_KEY[e.key]);
-/* A concentration-flagged effect an ally cast on you (inst.ally) doesn't hold YOUR concentration */
 const isConcDef = (e) => (e.key === "custom" ? !!e.conc : !!effDefOf(e)?.conc);
 const isConcInst = (e) => !e.ally && isConcDef(e);
 const effEnds = (e) => (e.key === "custom" ? e.ends || "manual" : effDefOf(e)?.ends || "manual");
-/* How much max HP an effect instance grants — needed again when it ends (5e: current HP
-   only drops to the new maximum, so the grant is refunded from recorded damage) */
+// Max HP increases refund damage when the effect ends, ensuring current HP drops only if above the base maximum.
 const instMaxHp = (e, ch) => {
   if (e.key === "custom") return (e.mods || {}).maxHp || 0;
   const def = effDefOf(e);
   return (def?.mods ? def.mods(e.val, ch, e).maxHp : 0) || 0;
 };
 
-/* One readable line for a custom effect's numbers */
 const describeCustomFx = (m) => [m.ac && `AC ${fmtMod(m.ac)}`, m.atk && `attacks ${fmtMod(m.atk)}`, m.save && `saves ${fmtMod(m.save)}`, m.dmg && `weapon damage ${fmtMod(m.dmg)}`, m.speed && `speed ${fmtMod(m.speed)} ft`, m.maxHp && `max HP ${fmtMod(m.maxHp)}`].filter(Boolean).join(" · ");
 
-/* Raising an effect is the same bargain everywhere: your own concentration evicts its rival
-   (refunding any max-HP grant the loser carried), duplicates refresh rather than stack,
-   stacking conditions deepen, and temp HP keeps the larger pool. One patch, shared by the
-   Effects card and the use prompt. */
 function applyEffectPatch(ch, inst, grantTemp) {
   const effects = effectsOf(ch);
   let next = effects, dropped = [];
   const def = effDefOf(inst);
   if (isConcInst(inst)) { dropped = next.filter(isConcInst); next = next.filter((e) => !isConcInst(e)); }
   if (def?.stacks && next.some((e) => e.key === inst.key)) next = next.map((e) => (e.key === inst.key ? { ...e, stacks: Math.min(def.stacks, (e.stacks || 1) + 1) } : e));
-  else if (inst.key !== "custom" && next.some((e) => e.key === inst.key)) { /* refreshed, not stacked */ }
+  else if (inst.key !== "custom" && next.some((e) => e.key === inst.key)) {}
   else next = [...next, inst];
   const refund = dropped.reduce((s, e) => s + instMaxHp(e, ch), 0);
   return {
@@ -2153,7 +1956,6 @@ function applyEffectPatch(ch, inst, grantTemp) {
   };
 }
 
-/* Aggregate every active effect into the numbers and reminders the sheet consumes */
 function fxMods(ch) {
   const out = { ac: [], acBase: null, acFloor: null, maxHp: 0, halveMaxHp: false, speedAdd: [], speedMult: 1, speedZero: false, atk: [], save: [], dmg: [], shillelagh: null, conc: [], notes: { attack: [], save: [], check: [], dmg: [] } };
   for (const inst of effectsOf(ch)) {
@@ -2188,15 +1990,12 @@ function fxMods(ch) {
   return out;
 }
 
-/* Effective max HP: base + feats that scale with level (Tough) + effect increases,
-   halved by deep exhaustion. Feat HP is derived, never banked into ch.maxHp, so it
-   stays correct the moment you level — or if the feat is ever taken back. */
+// Exhaustion level 4 halves effective max HP without modifying the stored base maxHp.
 function effMaxHp(ch, fx = fxMods(ch)) {
   const t = ch.maxHp + featHpBonus(ch) + fx.maxHp;
   return Math.max(1, fx.halveMaxHp ? Math.floor(t / 2) : t);
 }
 
-/* Speed was never derived before effects needed to bend it; now it earns a breakdown */
 function speedOf(ch, customs, fx = fxMods(ch)) {
   let v = RACES[ch.race].speed;
   const parts = [`base ${v}`];
@@ -2213,11 +2012,6 @@ function speedOf(ch, customs, fx = fxMods(ch)) {
   return { v: Math.max(0, v), parts, modified: parts.length > 1 };
 }
 
-/* ============ LIMITED-USE FEATURES — the ledger of daily heroics ============ */
-/* Everything with a per-rest budget gets spell-slot-style pips (or a pool counter when the
-   numbers run big). `when` decides who owns it, `max` how many, `per` when it refills;
-   `effect` links a tracker to its EFFECT_LIB entry so expending a use activates the buff.
-   Unlimited-at-20 features (Rage, Wild Shape) simply stop tracking at that level. */
 const USE_TRACKERS = [
   { key: "rage-uses", name: "Rage", cls: "Barbarian", when: (ch) => classLevel(ch, "Barbarian") >= 1 && classLevel(ch, "Barbarian") < 20, max: (ch) => { const l = classLevel(ch, "Barbarian"); return l >= 17 ? 6 : l >= 12 ? 5 : l >= 6 ? 4 : l >= 3 ? 3 : 2; }, per: "long", effect: "rage" },
   { key: "second-wind", name: "Second Wind", cls: "Fighter", when: (ch) => classLevel(ch, "Fighter") >= 1, max: () => 1, per: "short", die: () => 10, dieBonus: (ch) => classLevel(ch, "Fighter"), dieLabel: "healing", heal: true },
@@ -2258,15 +2052,9 @@ const USE_TRACKERS = [
   { key: "grovel-cower-beg", name: "Grovel, Cower, and Beg", when: (ch) => ch.race === "Kobold", max: () => 1, per: "short" },
   { key: "relentless-endurance", name: "Relentless Endurance", when: (ch) => ch.race === "Half-Orc", max: () => 1, per: "long" },
 ];
-/* Beyond the curated list, ANY feature whose rules text names its own recharge earns a
-   tracker automatically — imported subclasses included. "Once you use this feature, you
-   can't use it again until you finish a short or long rest" is machine-readable, so the
-   sheet reads it: Fey Presence, Hexblade's Curse, Wrath of the Storm, invocation daily
-   castings — if the text says it recharges, it gets pips. */
 function parseLimitedUse(text, ch) {
   if (!text) return null;
   const t = text.toLowerCase().replace(/[’‘]/g, "'");
-  // the sentence that forbids re-use AND names the rest that lifts the ban
   const limiter = t.split(/\.\s+/).find((s) => /(rest|dawn)/.test(s) &&
     /(can't (use|do)[^.]*again|once (you have )?(use|used|per)|must finish a[^.]*rest before|regain[^.]*expended (uses|points|luck))/.test(s));
   if (!limiter) return null;
@@ -2282,8 +2070,6 @@ function parseLimitedUse(text, ch) {
   return { max: Math.max(1, Math.min(20, max)), per };
 }
 function derivedTrackers(ch, customs) {
-  // compare with trailing parentheticals stripped: "Bardic Inspiration (d6)" and its (d8)
-  // sibling are the same feature as the curated "Bardic Inspiration", not three trackers
   const normFeatName = (s) => baseSubName(String(s || "").trim()).toLowerCase();
   const curated = new Set(USE_TRACKERS.map((t) => normFeatName(t.name)));
   const names = [], seen = new Set();
@@ -2308,34 +2094,20 @@ function derivedTrackers(ch, customs) {
   });
   return out;
 }
-/* The trackers a character actually owns right now: curated, text-derived, and hand-forged */
 function useTrackersFor(ch, customs) {
   const built = USE_TRACKERS.filter((t) => t.when(ch)).map((t) => ({ ...t, max: t.max(ch), per: typeof t.per === "function" ? t.per(ch) : t.per, die: typeof t.die === "function" ? t.die(ch) : t.die, dieBonus: typeof t.dieBonus === "function" ? t.dieBonus(ch) : t.dieBonus }));
   const custom = (Array.isArray(ch.customTrackers) ? ch.customTrackers : []).map((t) => ({ key: `custom-${t.id}`, name: t.name, max: Math.max(1, t.max || 1), per: t.per === "short" ? "short" : "long", pool: (t.max || 1) > 12, custom: true, id: t.id }));
   return [...built, ...derivedTrackers(ch, customs), ...custom];
 }
 
-/* ============ MINIONS & SUMMONS — every creature that answers the call ============ */
-/* A minion is a tracked creature the character brought to the table: a conjured wolf pack,
-   a raised skeleton, a familiar, a beast companion, a wild shape form. Each instance keeps
-   its own HP the same way the character does — maxHp recorded, dmg counted up, temp HP
-   soaked first — plus a role so the table remembers what each body is for.
-   Instance shape: { id, key, kind, name, role, source, maxHp, dmg, tempHp, ac, ends, note } */
 const minionsOf = (ch) => (Array.isArray(ch.minions) ? ch.minions : []);
 
-/* ---- The bestiary: full stat blocks, riding in the base compendium ----
-   Loaded once by fetchBaseCompendium alongside spells and items. Summon sources
-   query it by creature type and CR; long-pressing any creature reads its block. */
 const SIZE_RANK = { Tiny: 0, Small: 1, Medium: 2, Large: 3, Huge: 4, Gargantuan: 5 };
 const crShow = (cr) => (cr === 0.125 ? "⅛" : cr === 0.25 ? "¼" : cr === 0.5 ? "½" : String(cr));
 const creatureByName = (n) => {
   const q = String(n || "").trim().toLowerCase();
   return (q && __BESTIARY.find((c) => c.name.toLowerCase() === q)) || null;
 };
-/* The stat block, typeset the way the books do it: tapered blood-red rules, the
-   ability array in its own row of cards, bold-italic trait names running into their
-   text, and section headings for Actions and their kin. The grid wraps 6 → 3 ability
-   cards as the sheet narrows, so it reads as well on a phone as on a desktop. */
 function StatBlock({ c }) {
   const Rule = () => <div style={{ height: 2, margin: "10px 0", borderRadius: 1, background: `linear-gradient(90deg, ${T.blood}, ${T.blood}66 65%, transparent)` }} />;
   const Prop = ({ label, children }) => (
@@ -2389,9 +2161,6 @@ function StatBlock({ c }) {
     </div>
   );
 }
-/* The creatures a summon source can call: named picks or a type/CR query against the
-   bestiary, each carrying its real HP and AC; the hand-listed forms only stand in
-   when the compendium hasn't loaded (offline first visit). */
 function summonFormsFor(def) {
   if (__BESTIARY.length) {
     let hits = null;
@@ -2407,12 +2176,8 @@ function summonFormsFor(def) {
   }
   return def.forms;
 }
-/* `ends` follows the effects convention: "short" summons dissolve on any rest (the
-   concentration menagerie), "long" outlast an hour's breather but not the night,
-   "manual" creatures (familiars, steeds, the walking dead) stay until dismissed. */
 const SM = (kind, source, def) => ({ key: slugFx(source), kind, source, ...def });
 const SUMMON_LIB = [
-  /* ---- Spells: the conjurer's bestiary ---- */
   SM("Spell", "Find Familiar", { ends: "manual", role: "Scout", pickNames: ["Bat", "Cat", "Crab", "Frog", "Hawk", "Lizard", "Octopus", "Owl", "Poisonous Snake", "Quipper", "Rat", "Raven", "Sea Horse", "Spider", "Weasel"], brief: "A spirit takes an animal form of your choosing; it can deliver your touch spells and lend you its eyes", forms: [
     ["Owl", 1, 11], ["Bat", 1, 12], ["Cat", 2, 12], ["Raven", 1, 12], ["Hawk", 1, 13], ["Weasel", 1, 13],
     ["Spider", 1, 12], ["Rat", 1, 10], ["Frog", 1, 11], ["Lizard", 2, 10], ["Crab", 2, 11], ["Octopus", 3, 12], ["Poisonous Snake", 2, 13], ["Fish (Quipper)", 1, 13],
@@ -2457,7 +2222,6 @@ const SUMMON_LIB = [
   SM("Spell", "Summon Greater Demon", { ends: "short", conc: true, role: "Striker", pick: { types: ["fiend"], maxCr: 5 }, countHint: "one demon of CR ≤ 5; +1 CR per slot level above 4th — it slips your leash when concentration ends", brief: "A greater demon answers, straining against your commands every round", forms: [
     ["Barlgura", 68, 15], ["Shadow Demon", 66, 13], ["Vrock", 104, 15],
   ] }),
-  /* ---- Class features & pact boons ---- */
   SM("Feature", "Wild Shape", { ends: "manual", role: "Wild Shape", mine: (ch) => classLevel(ch, "Druid") >= 2, pick: { types: ["beast"], maxCr: 6 }, countHint: "CR caps by druid level: ¼ at 2nd (no fly/swim), ½ at 4th (no fly), 1 at 8th — Circle of the Moon goes higher. At 0 HP the form breaks and leftover damage carries to your true body", brief: "Track your beast form's own hit-point pool here while you wear it", forms: [
     ["Wolf", 11, 13], ["Panther", 13, 12], ["Giant Wolf Spider", 11, 13], ["Black Bear", 19, 11], ["Brown Bear", 34, 11], ["Dire Wolf", 37, 14], ["Giant Spider", 26, 14], ["Giant Eagle", 26, 13],
   ] }),
@@ -2468,9 +2232,6 @@ const SUMMON_LIB = [
     ["Imp", 10, 13], ["Quasit", 7, 13], ["Pseudodragon", 7, 13], ["Sprite", 2, 15],
   ] }),
   SM("Feature", "Wildfire Spirit", { ends: "manual", role: "Companion", mine: (ch) => hasSub(ch, "Circle of Wildfire"), hpOf: (ch) => 5 + 5 * classLevel(ch, "Druid"), countHint: "AC 13 · HP 5 + 5 × your druid level", brief: "The Circle of Wildfire's bonded spirit — it ferries allies and scorches what it leaves behind", forms: [["Wildfire Spirit", 30, 13]] }),
-  /* ---- The Summon-spirit family (Tasha's, Fizban's): one spirit whose AC and HP
-     scale with the slot — `slot` is the base level, AC = acPlus + slot level,
-     HP = the form's base + hpStep per slot level above the base. ---- */
   SM("Spell", "Summon Beast", { ends: "short", conc: true, spirit: true, slot: 2, acPlus: 11, hpStep: 5, role: "Companion", countHint: "Bestial Spirit — AC 11 + slot level · HP 30 (land/water) or 20 (air), +5 per slot level above 2nd", brief: "A bestial spirit answers in air, land, or water form", forms: [
     { name: "Bestial Spirit (Land)", hp: 30 }, { name: "Bestial Spirit (Water)", hp: 30 }, { name: "Bestial Spirit (Air)", hp: 20 },
   ] }),
@@ -2501,20 +2262,14 @@ const SUMMON_LIB = [
   SM("Spell", "Summon Draconic Spirit", { ends: "short", conc: true, spirit: true, slot: 5, acPlus: 14, hpStep: 10, role: "Striker", countHint: "Draconic Spirit — AC 14 + slot level · HP 50 + 10 per slot level above 5th", brief: "A draconic spirit — chromatic, gem, or metallic", forms: [
     { name: "Draconic Spirit (Chromatic)", hp: 50 }, { name: "Draconic Spirit (Gem)", hp: 50 }, { name: "Draconic Spirit (Metallic)", hp: 50 },
   ] }),
-  /* ---- The whole bestiary, for everything else: feats, magic items, DM gifts ---- */
   SM("Bestiary", "Any creature", { ends: "manual", role: "Companion", pick: {}, brief: "Every SRD stat block — muster anything a feat, item, or DM's whim can grant", forms: [["Creature", 10, 10]] }),
 ].map((d) => ({ ...d, forms: d.forms.map((f) => (Array.isArray(f) ? { name: f[0], hp: f[1], ac: f[2] } : f)) }));
-/* Match a tapped spell/feature name to its summon entry — "(Ritual Only)" twins included */
 const summonDefFor = (name) => {
   const n = baseSubName(String(name || "").trim());
   return SUMMON_LIB.find((d) => d.source === n || d.source === String(name || "").trim()) || null;
 };
-/* Spirit arithmetic: the Summon-spirit spells build their creature from the slot */
 const spiritHp = (def, form, slot) => (form.hp || 1) + (def.hpStep || 0) * Math.max(0, (slot || def.slot) - def.slot);
 const spiritAc = (def, form, slot) => (form.acPlus ?? def.acPlus) + (slot || def.slot);
-/* An imported summon spell the catalog doesn't know still gets a muster if its own
-   text carries the spirit formulas ("AC 11 + the level of the spell", "40 + 10 for
-   each spell level above 4th") — the whole def is conjured from the spell. */
 function spiritDefFromSpell(sp) {
   if (!sp || sp.level == null) return null;
   const t = String(sp.text || "");
@@ -2531,10 +2286,6 @@ function spiritDefFromSpell(sp) {
     forms: [{ name: sp.name.replace(/^summon\s+/i, "") + " Spirit", hp: hpM ? +hpM[1] : 20 }],
   };
 }
-/* ---- Reading the dice out of a stat block ----
-   An attack action names its to-hit bonus and its damage dice in prose; every
-   parenthesized dice group in the Hit clause rolls together (a bite's piercing
-   plus its venom). Spirit attacks that scale with the slot keep a reminder note. */
 function minionAttackRolls(c) {
   const out = [];
   (c?.acts || []).forEach((a) => {
@@ -2554,8 +2305,6 @@ function minionAttackRolls(c) {
   });
   return out;
 }
-/* A spirit swings with its summoner's spell attack: proficiency plus the casting
-   ability of whichever class knows the source spell (first caster as a fallback). */
 function summonerSpellAtk(ch, spellName) {
   let cls = null;
   for (const c of ch.classes) {
@@ -2567,8 +2316,6 @@ function summonerSpellAtk(ch, spellName) {
   const abil = SPELL_ABILITY[cls];
   return abil ? profBonus(totalLevel(ch)) + mod(ch.abilities[abil]) : null;
 }
-/* Saves use the block's listed proficiencies where they exist, the bare modifier
-   elsewhere; skills come straight off the block's own line. */
 function minionSaves(c) {
   const listed = {};
   (c?.saves || "").split(",").forEach((s) => {
@@ -2582,8 +2329,6 @@ const minionSkills = (c) => (c?.skills || "").split(",").map((s) => {
   return m && { name: m[1], mod: +m[2] };
 }).filter(Boolean);
 
-/* Damage a minion the same way the character takes it: temp HP soaks first, then the wound
-   is recorded; healing unwinds recorded damage and never overshoots the maximum. */
 const minionHp = (m) => Math.max(0, (m.maxHp || 1) - Math.max(0, m.dmg || 0));
 function minionApplyHp(m, delta) {
   if (delta >= 0) return { ...m, dmg: Math.max(0, Math.max(0, m.dmg || 0) - delta) };
@@ -2592,22 +2337,9 @@ function minionApplyHp(m, delta) {
   return { ...m, tempHp: temp - fromTemp, dmg: Math.min(m.maxHp || 1, Math.max(0, m.dmg || 0) + (d - fromTemp)) };
 }
 
-/* ============ TAP TO ACT — resolve a tapped name into its use recipe ============ */
-/* A tap on a spell, feature, feat, or trait gathers everything the sheet knows about USING
-   it: the spell entry (slot level, ritual flag, concentration in the duration text), any
-   catalog effects it raises (Enlarge/Reduce yields two — the prompt offers the choice), and
-   the limited-use tracker that pays for it. A name that resolves nothing stays a lore tap. */
-/* Booming Blade & Green-Flame Blade: cantrips cast AS a melee weapon attack whose on-hit
-   elemental rider (thunder / fire) grows at levels 5, 11, 17. They ride the weapon, not a
-   spell attack, so the strike uses the weapon's own attack and damage. */
 const isBladeCantrip = (name) => /(booming|green[- ]?flame)\s*blade/i.test(String(name || ""));
 const bladeRiderTier = (lvl) => (lvl >= 17 ? 3 : lvl >= 11 ? 2 : lvl >= 5 ? 1 : 0);
 
-/* ===== The strike framework: read a spell's own words to learn whether casting it wants an
-   attack roll, a saving throw, and/or a damage roll — and how the dice grow (cantrips with
-   character level at 5/11/17; leveled spells with the slot). Returns null for spells that
-   roll no damage, so buffs and utility keep their plain cast. A few projectile spells don't
-   describe their dice the usual way and are pinned by name. ===== */
 const DMG_WORD_CODE = { acid: "A", bludgeoning: "B", cold: "C", fire: "F", force: "FC", lightning: "L", necrotic: "N", piercing: "P", poison: "PS", psychic: "PSY", radiant: "R", slashing: "S", thunder: "T" };
 const SPELL_STRIKE_SPECIAL = {
   "Magic Missile": { special: "missiles", attack: null, type: "FC", die: 4, plusEach: 1, count: (castLvl) => 3 + Math.max(0, castLvl - 1), what: "dart" },
@@ -2619,11 +2351,9 @@ function strikeProfile(sp) {
   if (SPELL_STRIKE_SPECIAL[sp.name]) return { name: sp.name, level: sp.level, ...SPELL_STRIKE_SPECIAL[sp.name] };
   const t = sp.text || "";
   const dmgM = t.match(/(\d+)d(\d+)\s*(?:\+\s*(\d+)\s*)?(acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder)?\s*damage/i);
-  if (!dmgM) return null; // nothing to roll for damage
+  if (!dmgM) return null;
   const atkM = t.match(/make a (ranged|melee) spell attack/i);
   const saveM = t.match(/\b(strength|dexterity|constitution|intelligence|wisdom|charisma) saving throw/i);
-  // Only a spell attack or a saving throw makes casting a "roll now" strike. Without either, the
-  // dice belong to a rider (Hex, a smite), a summon's own attack, or a mishap — not the cast.
   if (!atkM && !saveM) return null;
   const up = t.match(/increases by (\d+)d(\d+) for each slot level above (\d+)/i);
   return {
@@ -2649,9 +2379,7 @@ function useRecipe(name, ch, customs) {
   return { name: sp?.name || effs[0]?.name || tracker.name, sp, effs, tracker };
 }
 
-/* ============ CONSUMABLES — arrows fly away, potions go down the hatch ============ */
 const usesAmmo = (it) => (it.property || "").split(",").map((x) => x.trim()).includes("A");
-/* Which inventory row feeds this weapon: the matching ammo word first, any ammunition second */
 function ammoRowFor(ch, customs, weapon) {
   const rows = (ch.inventory || []).filter((r) => (r.qty || 1) > 0);
   const ammo = rows.filter((r) => { const it = findItem(r.name, customs); return (it && it.type === "A") || /arrow|bolt|bullet|needle/i.test(r.name); });
@@ -2662,8 +2390,6 @@ function ammoRowFor(ch, customs, weapon) {
 const isConsumableRow = (row, item) => (item ? ["P", "SC"].includes(item.type) : false) || /potion|elixir|philter|oil of|scroll of|antitoxin|holy water|alchemist's fire|acid \(vial\)|tanglefoot/i.test(row.name);
 const HEALING_TIERS = [[/supreme/i, { n: 10, sides: 4, plus: 20 }], [/superior/i, { n: 8, sides: 4, plus: 8 }], [/greater/i, { n: 4, sides: 4, plus: 4 }], [/./, { n: 2, sides: 4, plus: 2 }]];
 const healingDiceFor = (name) => (/potion of.*healing|healing potion/i.test(name) ? HEALING_TIERS.find(([re]) => re.test(name))[1] : null);
-/* A potion named after a catalog effect raises that effect when drunk — and potions never
-   require concentration, so the effect rides the ally/held-for-you flag */
 const POTION_EFFECT_ALIAS = { speed: "haste", flying: "fly", growth: "enlarge", diminution: "reduce" };
 function consumableEffectKey(name) {
   const m = name.match(/^\s*(?:potion|philter|elixir|oil)\s+of\s+(.+?)\s*(?:\(.*\))?\s*$/i);
@@ -2674,7 +2400,6 @@ function consumableEffectKey(name) {
   return hit ? hit.key : null;
 }
 
-/* ============ LORE LIBRARY (long-press anything to read it) ============ */
 const LANG_INFO = {
   Common: "The trade tongue of humans, spoken nearly everywhere. Script: Common.",
   Dwarvish: "Full of hard consonants and guttural sounds. Typical speakers: dwarves. Script: Dwarvish.",
@@ -2780,8 +2505,6 @@ const CORE_FEATURE_INFO = {
   "Channel Divinity": "Channel divine energy to fuel magical effects determined by your domain or oath. Once per short or long rest (twice at higher levels).",
 };
 
-/* ============ CHOICE PREVIEWS ============ */
-/* One feature, name + full rules text — the unit of "know what you're getting". */
 function FeatureLine({ name, cls, customs }) {
   const body = featureBody(name, cls, customs);
   return (
@@ -2792,8 +2515,6 @@ function FeatureLine({ name, cls, customs }) {
   );
 }
 
-/* Everything a subclass grants — flavor, spell lists, and every feature at every level —
-   rendered inline so the choice can be read in full before it is made. */
 function SubclassDetail({ name, cls, customs, nowLevel = 1, terrain }) {
   const base = baseSubName(name);
   const lore = SUB_LORE[base];
@@ -2834,7 +2555,6 @@ function SubclassDetail({ name, cls, customs, nowLevel = 1, terrain }) {
   );
 }
 
-/* What a class gives you at level 1, in full — shown under the class picker. */
 function ClassDetail({ cls, customs }) {
   const d = CLASSES[cls];
   return (
@@ -2851,7 +2571,6 @@ function ClassDetail({ cls, customs }) {
   );
 }
 
-/* Resolve a name into readable lore, searching compendium imports then built-in tables */
 const creatureInfo = (b) => ({
   title: b.name,
   meta: [[b.size, b.type].filter(Boolean).join(" "), b.align].filter(Boolean).join(", "),
@@ -2861,7 +2580,6 @@ const creatureInfo = (b) => ({
 function infoFor(rawName, customs) {
   const name = String(rawName || "").trim();
   if (!name) return null;
-  // "creature:Wolf" insists on the stat block even where an item shares the name (mounts)
   if (name.startsWith("creature:")) {
     const b = creatureByName(name.slice(9));
     if (b) return creatureInfo(b);
@@ -2890,7 +2608,6 @@ function infoFor(rawName, customs) {
   if (MANEUVERS[strip]) return { title: strip, meta: "Battle Master maneuver", body: MANEUVERS[strip] + "\n\nManeuvers ride on superiority dice — a Battle Master's own, or the single d6 the Martial Adept feat grants (regained on a short or long rest)." };
   if (BOON_INFO[name]) return { title: name, meta: "Pact Boon", body: BOON_INFO[name] };
   const fs = strip.replace(/^Fighting Style:\s*/, "");
-  // a "Fighting Style: X" name is the feat — let its fuller entry answer before the one-liner
   if (STYLE_DESC[fs] && fs === strip) return { title: `Fighting Style: ${fs}`, meta: "Fighting Style", body: STYLE_DESC[fs] };
   if (LANG_INFO[name]) return { title: name, meta: "Language", body: LANG_INFO[name] };
   if (ABILITY_INFO[name]) return { title: name, meta: "Ability score", body: ABILITY_INFO[name] };
@@ -2910,8 +2627,6 @@ function infoFor(rawName, customs) {
     return { title: strip, meta: `${CLASSES[sl.cls].subName} · ${sl.cls}`, body: lines.join("\n"), foot: SRD_FOOT };
   }
   if (SUB_FEATS[strip]) return { title: strip, meta: "Subclass", body: Object.entries(SUB_FEATS[strip]).map(([l, fx]) => `Level ${l}: ${fx.join(", ")}`).join("\n") };
-  /* Backgrounds resolve ahead of the feature-text sweep so the meta line carries their
-     mechanics; the compendium's fuller prose (when imported) still supplies the body */
   const bgd = BACKGROUNDS[name] || BACKGROUNDS[strip];
   if (bgd) {
     const bgTitle = BACKGROUNDS[name] ? name : strip;
@@ -2937,14 +2652,11 @@ function infoFor(rawName, customs) {
   return null;
 }
 
-/* Long-press (or right-click) to open the lore sheet. data-lore kills text selection on the
-   element itself via CSS, but iOS will happily start selecting NEIGHBORING text mid-press —
-   so the whole page gets a selection lock the moment a lore press begins, any selection that
-   snuck in is dissolved, and the lock lifts only when the press aborts or the sheet closes. */
+// iOS Safari text selection callouts during long-press holds are suppressed via lore-lock CSS and clearing window selection ranges.
 let __showLore = null;
 function loreLock(on) {
   document.documentElement.classList.toggle("lore-lock", on);
-  if (on) { try { const sel = window.getSelection(); if (sel && !sel.isCollapsed) sel.removeAllRanges(); } catch { /* selection API sulking — the CSS lock still holds */ } }
+  if (on) { try { const sel = window.getSelection(); if (sel && !sel.isCollapsed) sel.removeAllRanges(); } catch {} }
 }
 function lorePress(name) {
   return {
@@ -2952,20 +2664,18 @@ function lorePress(name) {
     onContextMenu: (e) => { e.preventDefault(); e.stopPropagation(); __showLore && __showLore(name); },
     onPointerDown: (e) => {
       const el = e.currentTarget;
-      // a long-press whose release landed on the sheet's backdrop never got its click,
-      // so the fired flag can go stale — each new press starts with a clean slate
       delete el.dataset.loreFired;
       const sx = e.clientX, sy = e.clientY;
       loreLock(true);
       const t = setTimeout(() => {
         el.dataset.loreFired = "1";
-        loreLock(true); // re-dissolve anything iOS selected during the hold
+        loreLock(true);
         if (__showLore) __showLore(name); else loreLock(false);
       }, 480);
       const move = (ev) => { if (Math.hypot(ev.clientX - sx, ev.clientY - sy) > 12) end(); };
       const end = () => {
         clearTimeout(t);
-        if (!el.dataset.loreFired) loreLock(false); // aborted press; a fired one unlocks when the sheet closes
+        if (!el.dataset.loreFired) loreLock(false);
         el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", end); el.removeEventListener("pointercancel", end); el.removeEventListener("pointerleave", end);
       };
       el.addEventListener("pointermove", move); el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end); el.addEventListener("pointerleave", end);
@@ -2982,7 +2692,6 @@ function LoreSheet({ customs }) {
   __showLore = (name) => { openedAt.current = Date.now(); loreLock(true); setItem(infoFor(name, customs) || { title: String(name), meta: "", body: null }); };
   if (!item) return null;
   const close = () => { setItem(null); loreLock(false); };
-  // the release of the long-press lands on this backdrop — a short grace period keeps it open
   const dismiss = () => { if (Date.now() - openedAt.current > 400) close(); };
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 80, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={dismiss}>
@@ -3005,7 +2714,6 @@ function LoreSheet({ customs }) {
   );
 }
 
-/* ============ STORAGE ============ */
 const KEY = "dnd-srd-characters-v1";
 async function loadChars() {
   try { const r = await window.storage.get(KEY); return r ? JSON.parse(r.value) : []; } catch { return []; }
@@ -3014,7 +2722,6 @@ async function saveChars(chars) {
   try { await window.storage.set(KEY, JSON.stringify(chars)); } catch (e) { console.error("save failed", e); }
 }
 
-/* ---- sourcebook preferences persist beside the characters ---- */
 const SRCKEY = "dnd-source-prefs-v1";
 async function loadSrcPrefs() {
   try { const r = await window.storage.get(SRCKEY); return new Set(JSON.parse(r.value).off || []); } catch { return new Set(); }
@@ -3023,15 +2730,10 @@ async function saveSrcPrefs(off) {
   try { await window.storage.set(SRCKEY, JSON.stringify({ off: [...off] })); } catch (e) { console.error("save failed", e); }
 }
 
-/* ============ CUSTOM (HOMEBREW) CONTENT ============ */
 const CKEY = "dnd-custom-content-v1";
 const EMPTY_CUSTOM = { subs: {}, feats: [], spells: [], items: [], featureTexts: {} };
 
-/* ---- the built-in compendium: baked to JSON at build time, fetched once, never "imported" ----
-   The base layer lives in the deploy (public/compendium.json, generated from the source XML by
-   scripts/bake-compendium.cjs). Stored customs hold ONLY the user's own content; the two layers
-   merge in memory at boot, and anything identical to the base is stripped before every save —
-   which also shrinks legacy stores that still carry a full imported copy. */
+// stripBase diffs custom content against the base compendium before saving to keep storage minimal.
 let __BASE = null;
 async function fetchBaseCompendium() {
   if (__BASE) return __BASE;
@@ -3042,7 +2744,7 @@ async function fetchBaseCompendium() {
     __BESTIARY = Array.isArray(__BASE.bestiary) ? __BASE.bestiary : [];
     if (typeof window !== "undefined") window.__ledgerBase = __BASE;
     return __BASE;
-  } catch { return null; /* offline first visit or no bundled data — stored customs stand alone */ }
+  } catch { return null; }
 }
 function stripBase(c, base) {
   if (!base) return c;
@@ -3074,7 +2776,6 @@ async function loadCustom() {
 async function saveCustom(c) {
   try { await window.storage.set(CKEY, JSON.stringify(c)); } catch (e) { console.error("save failed", e); }
 }
-/* ---- export / import: the ledger escapes the vault ---- */
 function exportLedger(chars, customs) {
   const payload = { app: "adventurers-ledger", version: 1, exported: new Date().toISOString(), chars, customs };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -3108,9 +2809,6 @@ function mergeLedger(payload, chars, customs) {
   return { chars: [...chars, ...incoming], customs: mergedCustoms, added: incoming.length };
 }
 
-/* Union of two homebrew collections, base winning name clashes — the first
-   sign-in on a device that already forged its own homebrew folds both sides
-   together instead of letting either erase the other. */
 function unionCustoms(base, add) {
   const by = (a = [], b = []) => { const have = new Set(a.map((x) => x?.name)); return [...a, ...b.filter((x) => x?.name && !have.has(x.name))]; };
   const subs = {};
@@ -3126,19 +2824,12 @@ const customSubFeats = (subclass, level, customs) => {
   }
   return [];
 };
-/* Where a built-in table exists for a subclass, it is the current printing — the imported
-   2014 copy of the same name stays out of the feature list entirely */
 const allSubFeats = (subclass, level, customs) =>
   SUB_FEATS[baseSubName(subclass || "")]
     ? subFeatsFor(subclass, level)
     : subFeatsFor(subclass, level).concat(customSubFeats(subclass, level, customs));
 const allFeats = (customs) => {
   const map = new Map(FEATS.map((f) => [f.name, f]));
-  /* An imported compendium is the table's own rulebook: where it names a feat the built-in
-     catalogue also carries, its wording, prerequisites and ability bump win outright — the
-     SRD entry is the fallback for tables that import nothing. Only the picker's forced
-     sub-choices (which proficiencies a feat makes you pick) carry over, since the importer
-     has no way to express them. */
   (customs?.feats || []).forEach((f) => {
     const base = map.get(f.name);
     const fx = FEAT_MECHANICS[f.name];
@@ -3147,17 +2838,9 @@ const allFeats = (customs) => {
       ...(!f.bump?.length && fx?.bump ? { bump: fx.bump } : {}),
     });
   });
-  // every entry resolves its structured sub-choices through the selections table
   return [...map.values()].map((f) => ({ ...f, pick: featPickOf(f.name, f) }));
 };
 
-/* ============ SHARE — one soul, sealed inside a link ============ */
-/* There is no server to hold a shared sheet, and none is needed: the character
-   itself rides in the URL fragment — JSON, deflated by the browser's native
-   CompressionStream, then base64url. The fragment never leaves the device that
-   opens it (servers don't see fragments), the passphrase gate stays shut on
-   everything else, and the link reveals exactly what its sender chose to put
-   in it: this one character, as they stood that day. */
 const b64uFromBytes = (bytes) => {
   let bin = "";
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
@@ -3166,10 +2849,7 @@ const b64uFromBytes = (bytes) => {
 const bytesFromB64u = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
 const pipeBytes = async (bytes, transform) => new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(transform)).arrayBuffer());
 
-/* A viewer's browser only carries the base compendium, so any homebrew the
-   character actually leans on — gear in the pack, spells known, their subclass,
-   their feats and rules text — travels with them. Only the referenced slice:
-   a whole imported compendium would sink the link. */
+// shareCustomsFor extracts only the custom homebrew entries referenced by the character to minimize share payload size.
 function shareCustomsFor(ch, customs) {
   const own = stripBase(customs, __BASE);
   const norm = (s) => String(s || "").toLowerCase();
@@ -3221,13 +2901,6 @@ function shareCustomsFor(ch, customs) {
   };
 }
 
-/* ---- the share card: a hand-drawn banner worth its pixels ----
-   Link unfurlers never run JavaScript, and a static host serves every visitor
-   the same HTML — so a per-character link preview is physically impossible
-   here. This is better: the OWNER's device holds everything (even the portrait
-   that stays out of the link), so the share sheet paints a full 1200×630
-   character card and sends it through the native share tray as a real image,
-   beside the link. The recipient sees the character, not a favicon. */
 const SHARE_W = 1200, SHARE_H = 630;
 const CARD_SERIF = 'Georgia, "Liberation Serif", "Times New Roman", serif';
 const CARD_SANS = '-apple-system, "SF Pro Text", "DejaVu Sans", system-ui, sans-serif';
@@ -3237,8 +2910,6 @@ const loadImg = (src) => new Promise((res, rej) => {
   img.onerror = rej;
   img.src = src;
 });
-/* ICON_PATHS holds JSX; walk the fragment's children back into SVG markup so
-   the class sigils can be stamped onto a canvas in their class colors */
 function iconDataUri(name, color) {
   const frag = ICON_PATHS[name];
   if (!frag) return null;
@@ -3258,7 +2929,6 @@ const roundedRect = (ctx, x, y, w, h, r) => {
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 };
-/* Shrink a line until it fits — a long name deserves the width, not a crop */
 const fitFont = (ctx, text, weight, px, family, maxW) => {
   for (; px > 20; px -= 2) {
     ctx.font = `${weight} ${px}px ${family}`;
@@ -3280,7 +2950,6 @@ async function drawShareCard(ch, customs) {
   const hpColor = hpRatio > 0.5 ? T.green : hpRatio > 0.25 ? T.gold : "#d76a76";
   const lvl = totalLevel(ch), photo = ch.photo ? await loadImg(ch.photo).catch(() => null) : null;
 
-  // the ground, and the horizon sinking along the card's foot as it does on the roster
   ctx.fillStyle = T.bg;
   ctx.fillRect(0, 0, SHARE_W, SHARE_H);
   const horizon = await loadImg("./horizon.jpg").catch(() => null);
@@ -3296,21 +2965,18 @@ async function drawShareCard(ch, customs) {
     ctx.fillStyle = veil;
     ctx.fillRect(0, SHARE_H - hh, SHARE_W, hh);
   }
-  // a double gold rule, like the cover of a good book
   ctx.strokeStyle = `${T.gold}99`; ctx.lineWidth = 3;
   ctx.strokeRect(16, 16, SHARE_W - 32, SHARE_H - 32);
   ctx.strokeStyle = `${T.gold}40`; ctx.lineWidth = 1;
   ctx.strokeRect(26, 26, SHARE_W - 52, SHARE_H - 52);
 
-  // masthead
   const X = 64;
   ctx.fillStyle = T.dim;
   ctx.font = `24px ${CARD_SANS}`;
-  try { ctx.letterSpacing = "8px"; } catch { /* older engines: tighter, still fine */ }
+  try { ctx.letterSpacing = "8px"; } catch {}
   ctx.fillText("THE ADVENTURER'S LEDGER", X, 92);
-  try { ctx.letterSpacing = "0px"; } catch { /* noop */ }
+  try { ctx.letterSpacing = "0px"; } catch {}
 
-  // the portrait, if one hangs in the hall — it never rides in the link, but this card is painted at home
   let rightEdge = SHARE_W - X;
   if (photo) {
     const R = 92, cx = SHARE_W - X - R, cy = 168;
@@ -3324,12 +2990,10 @@ async function drawShareCard(ch, customs) {
     rightEdge = cx - R - 40;
   }
 
-  // the name, gold and as large as it can stand
   ctx.fillStyle = T.gold;
   fitFont(ctx, ch.name, 700, 88, CARD_SERIF, rightEdge - X);
   ctx.fillText(ch.name, X, 196);
 
-  // race and classes, each class wearing its sigil and colors
   let x = X;
   const midY = 264;
   ctx.font = `36px ${CARD_SERIF}`;
@@ -3352,7 +3016,6 @@ async function drawShareCard(ch, customs) {
     x += ctx.measureText(label).width + 16;
   }
 
-  // the vitals, as chips: level, hit points with their bar, armor class, proficiency
   const chipY = 320, chipH = 128, gap = 20;
   const chips = [
     { label: "LEVEL", value: `${lvl}`, w: 170 },
@@ -3378,16 +3041,14 @@ async function drawShareCard(ch, customs) {
     cx2 += chip.w + gap;
   }
 
-  // the colophon
   ctx.fillStyle = T.dim; ctx.font = `22px ${CARD_SANS}`;
   ctx.fillText(`Read-only snapshot · shared ${new Date().toISOString().slice(0, 10)}`, X, SHARE_H - 58);
   return cv;
 }
 
-/* The payload's first character names its wrapping: "1" deflate-raw, "0" plain.
-   Bump `v` if the shape ever changes so old links fail loudly, not weirdly. */
+// Token prefix 1 indicates deflate-raw CompressionStream wrapping; 0 indicates uncompressed JSON fallback.
 async function encodeShare(ch, customs) {
-  const { photo, log, hpLog, ...soul } = ch; // the portrait is megabytes and the chronicle is history — neither belongs in a link
+  const { photo, log, hpLog, ...soul } = ch;
   const payload = { v: 1, t: new Date().toISOString().slice(0, 10), c: soul, x: shareCustomsFor(ch, customs) };
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
   const canDeflate = typeof CompressionStream !== "undefined";
@@ -3400,10 +3061,8 @@ async function decodeShare(token) {
     ? new TextDecoder().decode(await pipeBytes(body, new DecompressionStream("deflate-raw")))
     : token[0] === "0" ? new TextDecoder().decode(body)
     : null;
-  const payload = JSON.parse(json); // a null or clipped token throws here, and the caller shows the faded-link card
+  const payload = JSON.parse(json);
   const c = payload?.v === 1 ? payload.c : null;
-  // the sheet dereferences race, classes, and abilities without mercy — a link that
-  // doesn't hold all three (mangled, or forged by hand) dies here, on the error card
   if (!c?.name || !RACES[c.race] || !Array.isArray(c.classes) || !c.classes.length || c.classes.some((x) => !CLASSES[x?.name]) || ABILITIES.some((a) => typeof c.abilities?.[a] !== "number")) {
     throw new Error("not a shared character");
   }
@@ -3413,7 +3072,6 @@ async function decodeShare(token) {
 }
 
 
-/* ============ PHOTO ============ */
 function usePhotoUpload(onPhoto) {
   return useCallback((e) => {
     const file = e.target.files?.[0];
@@ -3446,15 +3104,11 @@ function Portrait({ photo, size = 72, name }) {
   );
 }
 
-/* ============ ABILITY SCORE GENERATION ============ */
 const STD_ARRAY = [15, 14, 13, 12, 10, 8];
 const PB_COST = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
 
-const ABIL_MIN = 1, ABIL_MAX = 30; // Direct Entry trusts the table: anything a DM can hand out
+const ABIL_MIN = 1, ABIL_MAX = 30;
 
-/* The +N-to-abilities-of-your-choice picker some lineages carry (Half-Elf, Variant Human,
-   Custom Lineage). It appears twice on purpose: on the Race step, and again beside the
-   Abilities grid — where `scores` previews what each button does to the real number. */
 function LineageBonusPicker({ raceData, picks, setPicks, scores, extra = {} }) {
   const amt = raceData.chooseAmt || 1;
   const opts = ABILITIES.filter((a) => !(raceData.chooseNot || []).includes(a));
@@ -3481,12 +3135,11 @@ function LineageBonusPicker({ raceData, picks, setPicks, scores, extra = {} }) {
 }
 
 function AbilityStep({ scores, setScores, method, setMethod, bonuses = {}, featBonus = {}, featLabel = "feat", children }) {
-  // everything that lands on top of the raw score, for the live per-card preview
   const lift = (a) => (bonuses[a] || 0) + (featBonus[a] || 0);
-  const [rolling, setRolling] = useState(null); // {dice, targetIdx}
-  const [rolled, setRolled] = useState([]); // pool of rolled totals
-  const [assignIdx, setAssignIdx] = useState({}); // ability -> pool index
-  const [typed, setTyped] = useState({}); // Direct Entry: raw text, so a field can sit empty mid-edit
+  const [rolling, setRolling] = useState(null);
+  const [rolled, setRolled] = useState([]);
+  const [assignIdx, setAssignIdx] = useState({});
+  const [typed, setTyped] = useState({});
 
   const pbSpent = ABILITIES.reduce((s, a) => s + (PB_COST[scores[a]] ?? 0), 0);
 
@@ -3619,26 +3272,20 @@ function AbilityStep({ scores, setScores, method, setMethod, bonuses = {}, featB
   );
 }
 
-/* ============ THE HORIZON — a promise of adventure at the page's foot ============
-   public/horizon.jpg: Albert Bierstadt (1830–1902), "On the Plains, Sunset" — a lone
-   rider against a blazing prairie sunset, the painter's gold-and-blood palette a twin
-   of the app's own. Public domain (author died 1902). Cropped to a wide band and served
-   same-origin, as the CSP admits no outside art. Curtain gradient lives in .horizon. */
+// Albert Bierstadt (1830–1902), "On the Plains, Sunset" (Public domain)
 function HorizonArt() {
   return <div className="horizon" aria-hidden="true" />;
 }
 
-/* ============ CREATION WIZARD ============ */
 function CreateWizard({ onDone, onCancel, customs }) {
   const [step, setStep] = useState(0);
-  // each step is its own page — land at its top, not wherever the last one left the scroll
   useEffect(() => { window.scrollTo(0, 0); }, [step]);
   const [name, setName] = useState("");
   const [photo, setPhoto] = useState(null);
   const [race, setRace] = useState("Human");
-  const [raceAbilPicks, setRaceAbilPicks] = useState([]); // abilities the lineage lets you raise
-  const [raceFeat, setRaceFeat] = useState(null); // { name, bump, skills } for lineages that grant a feat
-  const [lineageTrait, setLineageTrait] = useState(null); // Custom Lineage: 'darkvision' | 'skill'
+  const [raceAbilPicks, setRaceAbilPicks] = useState([]);
+  const [raceFeat, setRaceFeat] = useState(null);
+  const [lineageTrait, setLineageTrait] = useState(null);
   const [cls, setCls] = useState("Fighter");
   const [subclass, setSubclass] = useState(null);
   const [skills, setSkills] = useState([]);
@@ -3651,18 +3298,18 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const [spellPicks, setSpellPicks] = useState({ cantrips: [], spells: [] });
   const [rogueExp, setRogueExp] = useState([]);
   const [favEnemy, setFavEnemy] = useState(null);
-  const [favHumanoids, setFavHumanoids] = useState(""); // the two named races, when that mode is chosen
-  const [favLang, setFavLang] = useState(null); // the associated language
+  const [favHumanoids, setFavHumanoids] = useState("");
+  const [favLang, setFavLang] = useState(null);
   const [natTerrain, setNatTerrain] = useState(null);
   const [persona, setPersona] = useState({ traits: "", ideals: "", bonds: "", flaws: "" });
   const [goldRoll, setGoldRoll] = useState(null);
-  const [gearMode, setGearMode] = useState(null); // 'standard' | 'gold'
-  const [gearPicks, setGearPicks] = useState({}); // slotIdx -> { opt, picks: [] }
-  const [purchases, setPurchases] = useState([]); // { name, qty, price }
+  const [gearMode, setGearMode] = useState(null);
+  const [gearPicks, setGearPicks] = useState({});
+  const [purchases, setPurchases] = useState([]);
   const [shopQ, setShopQ] = useState("");
   const [langPicks, setLangPicks] = useState([]);
   const [ancestry, setAncestry] = useState(null);
-  const [raceSkills, setRaceSkills] = useState([]); // extra skills the lineage itself grants
+  const [raceSkills, setRaceSkills] = useState([]);
   const [showExpanded, setShowExpanded] = useState(false);
   const [heCantrip, setHeCantrip] = useState("");
   const [method, setMethod] = useState("Standard Array");
@@ -3671,14 +3318,11 @@ function CreateWizard({ onDone, onCancel, customs }) {
 
   const raceData = RACES[race];
   const clsData = CLASSES[cls];
-  /* Lineages that let you place their bonuses (Half-Elf, Variant Human, Custom Lineage)
-     share one picker: `choose` says how many abilities, `chooseAmt` how much each gets. */
   const raceChooseAmt = raceData.chooseAmt || 1;
   const raceAbilOpts = ABILITIES.filter((a) => !(raceData.chooseNot || []).includes(a));
   const raceFeatDef = raceData.feat && raceFeat?.name ? allFeats(customs).find((f) => f.name === raceFeat.name) : null;
   const raceFeatFx = raceFeat?.name ? FEAT_MECHANICS[raceFeat.name] : null;
   const featScoreCap = raceFeatDef?.cat === "Epic Boon" ? 30 : 20;
-  /* Scores before the lineage feat's own +1 — that's what its prerequisites are read against */
   const preFeatScores = { ...scores };
   ABILITIES.forEach((a) => { preFeatScores[a] += raceData.bonus[a] || 0; });
   raceAbilPicks.forEach((a) => { preFeatScores[a] += raceChooseAmt; });
@@ -3687,21 +3331,20 @@ function CreateWizard({ onDone, onCancel, customs }) {
 
   const featSkillsEff = raceData.feat ? (raceFeat?.skills || []) : [];
   const conMod = mod(finalScores.con);
-  const toughBonus = raceFeatFx?.hpPerLevel || 0; // level 1, so exactly one level's worth
+  const toughBonus = raceFeatFx?.hpPerLevel || 0;
   const hp = clsData.die + conMod + (race === "Hill Dwarf" ? 1 : 0);
 
   const steps = ["Identity", "Race", "Origins", "Class", "Abilities", "Spells", "Gear", "Confirm"];
-  const bgData = BACKGROUNDS[bg] || null; // null = Custom
-  const bgLangs = bgData ? bgData.langs : 2; // customized backgrounds take the two-language default
+  const bgData = BACKGROUNDS[bg] || null;
+  const bgLangs = bgData ? bgData.langs : 2;
   const langNeed = (RACE_LANGS[race].choose || 0) + bgLangs;
   const wizCantrips = srcSpells(customs?.spells || []).filter((x) => x.level === 0 && spellFitsClass(x, "Wizard"));
-  // Skills granted by one source shouldn't be selectable from another
   const raceSkillNeed = (raceData.skills || 0) + (race === "Custom Lineage" && lineageTrait === "skill" ? 1 : 0);
   const raceSkillsEff = raceSkills.slice(0, raceSkillNeed);
   const bgGrantSkills = bgData ? bgData.skills : bgSkills;
   const skillsElsewhere = [...bgGrantSkills, ...raceSkillsEff, ...featSkillsEff, ...(raceData.grantSkills || [])];
   let clsSkillOpts = clsData.skills.filter((s) => !skillsElsewhere.includes(s));
-  if (clsSkillOpts.length < clsData.nSkills) // all overlapping — open up the remaining skills (PHB duplicate-proficiency rule)
+  if (clsSkillOpts.length < clsData.nSkills)
     clsSkillOpts = [...clsSkillOpts, ...ALL_SKILLS.filter((s) => !skillsElsewhere.includes(s) && !clsData.skills.includes(s))];
   const racialCantrip = race === "High Elf" ? heCantrip.trim() : "";
   const castsAt1 = !!CLASSES[cls].caster && CLASSES[cls].caster !== "half";
@@ -3735,7 +3378,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
   };
   const canNext =
     step === 0 ? name.trim().length > 0 :
-    step === 1 ? (!raceData.lineageTrait || !!lineageTrait) : // ability picks may wait for the Abilities step
+    step === 1 ? (!raceData.lineageTrait || !!lineageTrait) :
     step === 2 ? langPicks.length === langNeed && (bg !== "Custom" || bgSkills.length === 2) && (race !== "Dragonborn" || ancestry) && raceSkills.length === raceSkillNeed && (race !== "High Elf" || heCantrip.trim()) :
     step === 3 ? skills.length === clsData.nSkills && (clsData.subLvl > 1 || subclass) && (cls !== "Fighter" || style) && (cls !== "Rogue" || rogueExp.length === 2) && (cls !== "Ranger" || (favEnemy && (favEnemy !== "Two humanoid races" || favHumanoids.trim()) && favLang)) :
     step === 4 ? raceAbilPicks.length === (raceData.choose || 0) && (!raceData.feat || featPickDone(raceFeatDef, raceFeat)) :
@@ -3756,7 +3399,6 @@ function CreateWizard({ onDone, onCancel, customs }) {
       abilities: finalScores, method,
       classes: [{ name: cls, level: 1, subclass: clsData.subLvl === 1 ? subclass : null }],
       skills: [...skills, ...raceSkillsEff, ...bgGrantSkills, ...featSkillsEff, ...(raceData.grantSkills || [])].filter((v, i, a) => a.indexOf(v) === i),
-      // Tough and friends are derived from the feat itself, never banked into maxHp
       feats: raceFeat?.name ? [raceFeat.name] : [],
       featChoices: raceFeat?.name ? { [raceFeat.name]: {
         bump: raceFeat.bump || null, skills: raceFeat.skills || [], choice: raceFeat.choice || null,
@@ -3890,7 +3532,6 @@ function CreateWizard({ onDone, onCancel, customs }) {
                 const d = BACKGROUNDS[b];
                 const pickBg = () => {
                   setBg(b); setBgSkills([]);
-                  // skills this background grants can't also be picked elsewhere; language quota may shrink
                   const keep = (s) => !(d ? d.skills : []).includes(s);
                   setRaceSkills(raceSkills.filter(keep)); setSkills(skills.filter(keep)); setRogueExp(rogueExp.filter(keep));
                   setLangPicks(langPicks.slice(0, (RACE_LANGS[race].choose || 0) + (d ? d.langs : 2)));
@@ -4328,7 +3969,6 @@ function CreateWizard({ onDone, onCancel, customs }) {
   );
 }
 
-/* exact match first, then prefix, then substring */
 const searchRank = (name, q) => {
   const n = name.toLowerCase(), s = q.toLowerCase();
   return n === s ? 0 : n.startsWith(s) ? 1 : 2;
@@ -4336,10 +3976,6 @@ const searchRank = (name, q) => {
 const SCHOOL_NAMES = { A: "Abjuration", C: "Conjuration", D: "Divination", EN: "Enchantment", EV: "Evocation", I: "Illusion", N: "Necromancy", T: "Transmutation" };
 const schoolName = (s) => SCHOOL_NAMES[(s || "").toUpperCase()] || s;
 
-/* Scrollable list that renders in batches and keeps loading as you approach the
-   bottom — long compendium lists (1,700 items, 850 spells) stay fully reachable
-   without mounting thousands of rows up front. resetKey (usually the search
-   query) snaps back to the top batch when it changes. */
 function LazyList({ items, render, resetKey, empty, style }) {
   const BATCH = 80;
   const [count, setCount] = useState(BATCH);
@@ -4365,7 +4001,6 @@ function LazyList({ items, render, resetKey, empty, style }) {
   );
 }
 
-/* Searchable multi-pick list used by the level-up flow for cantrips, spells, and arcanum */
 function SpellPickGrid({ options, picks, cap, onChange, placeholder = "Search spells…" }) {
   const [q, setQ] = useState("");
   const shown = options.filter((sp) => !picks.includes(sp.name) && sp.name.toLowerCase().includes(q.toLowerCase()))
@@ -4400,24 +4035,18 @@ function SpellPickGrid({ options, picks, cap, onChange, placeholder = "Search sp
   );
 }
 
-/* ============ FEAT PICKER ============
-   One picker serves both places a feat is ever taken: the forge (a lineage that grants
-   one at 1st level) and the ASI at level-up. It carries the feat's own choices with it —
-   the +1 it hands out, and any proficiencies it forces — so nothing is silently dropped.
-   value: { name, bump, skills: [] } | null */
 function FeatChooser({ customs, abilities, level, caster, held = [], styles = [], skillsTaken = [], knownCantrips = [], knownLangs = [], profSkills = [], value, onChange, allowEpic = true, waiveLevel = false, note }) {
   const [cat, setCat] = useState("All");
   const [q, setQ] = useState("");
   const pool = allFeats(customs)
     .filter((f) => !held.includes(f.name))
-    .filter((f) => !(f.fx?.style && styles.includes(f.fx.style))) // the style is already yours
+    .filter((f) => !(f.fx?.style && styles.includes(f.fx.style)))
     .filter((f) => allowEpic || f.cat !== "Epic Boon");
   const cats = ["All", ...FEAT_CATS.filter((c) => pool.some((f) => f.cat === c))];
   const needle = q.trim().toLowerCase();
   const shown = pool.filter((f) =>
     (cat === "All" || f.cat === cat) &&
     (!needle || f.name.toLowerCase().includes(needle) || (f.desc || "").toLowerCase().includes(needle)));
-  // a lineage feat at 1st level waives the level gate the general feats otherwise carry
   const ctx = { abilities, level: waiveLevel ? Infinity : level, caster };
 
   const set = (patch) => onChange({ ...(value || {}), ...patch });
@@ -4446,7 +4075,6 @@ function FeatChooser({ customs, abilities, level, caster, held = [], styles = []
               {f.cat && <span style={{ color: T.dim, fontSize: 10.5, letterSpacing: 0.6, textTransform: "uppercase" }}> · {f.cat}</span>}
               <span style={{ color: T.dim, fontSize: 12 }}> — {f.desc}</span>
               {(() => {
-                // a waived level gate shouldn't still be printed as a prerequisite
                 const req = waiveLevel ? f.prereq?.replace(/^Level \d+\+(,\s*)?/, "") : f.prereq;
                 return req ? <div style={{ color: blocked ? T.blood : T.dim, fontSize: 11, marginTop: 2 }}>Prerequisite: {req}{blocked ? ` — ${blocked}` : ""}</div> : null;
               })()}
@@ -4472,9 +4100,6 @@ function FeatChooser({ customs, abilities, level, caster, held = [], styles = []
   );
 }
 
-/* The sub-choices a selected feat forces, rendered inside its card. Chip rows for the
-   small pools (skills, languages, maneuvers, the one named choice), searchable spell
-   grids for the big ones, and a read-only line for fixed spell grants. */
 function FeatPickPanel({ pick: pk, value, set, customs, level = 20, skillsTaken, knownCantrips, knownLangs, profSkills, skillPool }) {
   const chipRow = (label, opts, key, cap, renderName = (x) => x, pressable = false) => (
     <div style={{ marginTop: 8 }}>
@@ -4549,19 +4174,17 @@ function FeatPickPanel({ pick: pk, value, set, customs, level = 20, skillsTaken,
   );
 }
 
-/* ============ LEVEL UP (with full multiclassing) ============ */
 function LevelUp({ ch, onDone, onCancel, customs }) {
   const lvl = totalLevel(ch);
-  const [stage, setStage] = useState("class"); // class -> hp -> extras -> done
-  // the overlay scrolls its own container — snap it back to the top on each stage
+  const [stage, setStage] = useState("class");
   const scrollRef = useRef(null);
   useEffect(() => { scrollRef.current?.scrollTo(0, 0); }, [stage]);
   const [pick, setPick] = useState(() => [...ch.classes].sort((a, b) => b.level - a.level)[0]?.name || null);
   const [rollingHp, setRollingHp] = useState(false);
   const [hpGain, setHpGain] = useState(null);
-  const [asiMode, setAsiMode] = useState(null); // 'asi' | 'feat'
+  const [asiMode, setAsiMode] = useState(null);
   const [asiPicks, setAsiPicks] = useState([]);
-  const [featSel, setFeatSel] = useState(null); // { name, bump, skills, expertise, langs, choice, cantrips, spells, maneuvers }
+  const [featSel, setFeatSel] = useState(null);
   const featPick = featSel?.name || null;
   const featBump = featSel?.bump || null;
   const featSkills = featSel?.skills || [];
@@ -4581,19 +4204,19 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const [spellSwapOut, setSpellSwapOut] = useState(null);
   const [spellSwapIn, setSpellSwapIn] = useState(null);
   const [arcanumPick, setArcanumPick] = useState(null);
-  const [boasPicks, setBoasPicks] = useState([]);       // Book of Ancient Secrets rituals
-  const [tomePicks, setTomePicks] = useState([]);       // Pact of the Tome cantrips
-  const [secretsPicks, setSecretsPicks] = useState([]); // Magical Secrets (any class)
+  const [boasPicks, setBoasPicks] = useState([]);
+  const [tomePicks, setTomePicks] = useState([]);
+  const [secretsPicks, setSecretsPicks] = useState([]);
   const [favEnemyPick, setFavEnemyPick] = useState(null);
-  const [feHumanoids, setFeHumanoids] = useState(""); // the two named races, when that mode is chosen
-  const [favLang2, setFavLang2] = useState(null); // the associated language
+  const [feHumanoids, setFeHumanoids] = useState("");
+  const [favLang2, setFavLang2] = useState(null);
   const [terrainPick2, setTerrainPick2] = useState(null);
-  const [deftExp, setDeftExp] = useState(null); // Deft Explorer: one expertise skill
-  const [deftLangs, setDeftLangs] = useState([]); // Deft Explorer: two languages
-  const [glamourPick, setGlamourPick] = useState(null); // Fey Wanderer: Otherworldly Glamour skill
-  const [masteryPicks, setMasteryPicks] = useState({}); // { 1: spell, 2: spell }
+  const [deftExp, setDeftExp] = useState(null);
+  const [deftLangs, setDeftLangs] = useState([]);
+  const [glamourPick, setGlamourPick] = useState(null);
+  const [masteryPicks, setMasteryPicks] = useState({});
   const [signaturePicks, setSignaturePicks] = useState([]);
-  const [groupPicks, setGroupPicks] = useState({});     // maneuvers, disciplines, totems, …
+  const [groupPicks, setGroupPicks] = useState({});
 
   if (lvl >= 20) return (
     <div style={{ ...card, padding: 24, textAlign: "center" }}>
@@ -4732,13 +4355,11 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const metaPool = METAMAGIC.filter((m) => !(ch.metamagic || []).includes(m));
   const gainsBoon = feats.some((f) => f === "Pact Boon");
 
-  /* ---- BG3-style gained choices: invocations, cantrips, spells, arcanum ---- */
   const effSub = gainsSub ? (gainsTerrain && terrPick ? `${newSub} (${terrPick})` : newSub) : entry?.subclass;
   const book = ch.spells?.[pick] || { cantrips: [], spells: [] };
   const pool = srcSpells(customs?.spells || []);
   const fits = (sp) => spellFitsClass(sp, pick, effSub);
 
-  // Eldritch invocations — pick new ones when the known cap rises, swap one freely
   const curInv = ch.invocations || [];
   const invCap = pick === "Warlock" ? INVOCATIONS(newClsLevel) : 0;
   const invNeed = Math.max(0, invCap - curInv.length);
@@ -4750,7 +4371,6 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const invTaken = [...curInv.filter((n) => n !== invSwapOut), ...invPicks, ...(invSwapIn ? [invSwapIn] : [])];
   const invOptions = INVOCATION_DATA.filter(([n, lvl]) => newClsLevel >= lvl && !invTaken.includes(n));
 
-  // Cantrips and spells known — required picks are what this level grants; deficits may be filled too
   const sortSp = (a, b) => a.level - b.level || a.name.localeCompare(b.name);
   const cantripTarget = CANTRIPS_KNOWN[pick] ? CANTRIPS_KNOWN[pick](newClsLevel) : 0;
   const cantripPrev = entry && CANTRIPS_KNOWN[pick] ? CANTRIPS_KNOWN[pick](newClsLevel - 1) : 0;
@@ -4770,24 +4390,20 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const gainsSpells = spellAllow > 0 && spellPool.length > 0;
   const canSwapSpell = knownCaster && (book.spells || []).length > 0 && spellPool.length > 0;
 
-  // Mystic Arcanum — one spell of the unlocked level at Warlock 11/13/15/17
   const arcLvlGained = pick === "Warlock" ? { 11: 6, 13: 7, 15: 8, 17: 9 }[newClsLevel] : null;
   const arcPool = arcLvlGained && !ch.spells?.Warlock?.arcanum?.[arcLvlGained]
     ? pool.filter((sp) => sp.level === arcLvlGained && fits(sp)).sort(sortSp) : [];
   const gainsArcanum = arcPool.length > 0;
 
-  // Book of Ancient Secrets — two 1st-level rituals from any class when the invocation is taken
   const takingBoAS = invPicks.includes("Book of Ancient Secrets") || invSwapIn === "Book of Ancient Secrets";
   const boasPool = takingBoAS && !(ch.boasRituals || []).length
     ? pool.filter((sp) => sp.level === 1 && sp.ritual && !boasPicks.includes(sp.name)).sort(sortSp) : [];
   const gainsBoAS = boasPool.length > 0 || boasPicks.length > 0;
 
-  // Pact of the Tome — three cantrips from any class's list (excluding any already known)
   const tomePool = boonPick === "Pact of the Tome"
     ? pool.filter((sp) => sp.level === 0 && !knownCans.includes(sp.name) && !cantripPicks.includes(sp.name)).sort(sortSp) : [];
   const gainsTome = tomePool.length > 0;
 
-  // Magical Secrets — Bard 10/14/18 (counted in spells known) and College of Lore 6 (extra)
   const secretsN = pick === "Bard"
     ? ([10, 14, 18].includes(newClsLevel) ? 2 : 0) + (baseSubName(effSub || "") === "College of Lore" && newClsLevel === 6 ? 2 : 0) : 0;
   const secretsPool = secretsN > 0
@@ -4797,16 +4413,14 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const countedSecrets = pick === "Bard" && [10, 14, 18].includes(newClsLevel) ? 2 : 0;
   const spellReqNet = Math.max(0, Math.min(spellReq, spellAllow - Math.min(countedSecrets, secretsPicks.length)));
 
-  // Ranger — additional Favored Enemy (6, 14) and Natural Explorer terrain (6, 10)
   const rc = ch.rangerChoices || {};
   const enemiesTaken = [rc.favEnemy, ...(rc.extraEnemies || [])].filter(Boolean);
   const terrainsTaken = [rc.natTerrain, ...(rc.extraTerrains || [])].filter(Boolean);
   const gainsFavEnemy = pick === "Ranger" && [6, 14].includes(newClsLevel);
-  const gainsNatTerrain = false; // Natural Explorer stays retired
+  const gainsNatTerrain = false;
   const gainsDeft = pick === "Ranger" && newClsLevel === 2;
   const gainsGlamour = pick === "Ranger" && newClsLevel === 3 && baseSubName(newSub || entry?.subclass || "") === "Fey Wanderer";
 
-  // Wizard — Spell Mastery (18: one 1st- and one 2nd-level from the spellbook), Signature Spell (20: two 3rd-level)
   const spLevel = (n) => pool.find((sp) => sp.name === n)?.level;
   const masteryPools = pick === "Wizard" && newClsLevel === 18 && !ch.choices?.["Spell Mastery"]
     ? { 1: (book.spells || []).filter((n) => spLevel(n) === 1), 2: (book.spells || []).filter((n) => spLevel(n) === 2) } : null;
@@ -4815,7 +4429,6 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     ? (book.spells || []).filter((n) => spLevel(n) === 3) : [];
   const gainsSignature = signaturePool.length > 0;
 
-  // Subclass option groups (maneuvers, disciplines, totems, shots, runes…) with catch-up for missed levels
   const choiceGroupsDue = CHOICE_GROUPS.map((g) => {
     if (!pick || !groupMatches(g, pick, effSub)) return null;
     const options = choiceOptionsFor(g, customs);
@@ -5254,12 +4867,8 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   );
 }
 
-/* ============ GRIMOIRE (SPELL MANAGEMENT) ============ */
-/* ============ INVENTORY & EQUIPMENT ============ */
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-/* readOnly (shared sheets): the pack and purse read as a manifest — nothing can
-   be bought, sold, drunk, equipped, or discarded */
 function InventoryCard({ ch, customs, onUpdate, onConsume, readOnly }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -5269,13 +4878,12 @@ function InventoryCard({ ch, customs, onUpdate, onConsume, readOnly }) {
   const inv = ch.inventory || [];
   const pool = customs?.items || [];
   const save = (rows) => onUpdate({ inventory: rows });
-  /* ---- the coin purse: money is checked before it is spent, and the ledger remembers ---- */
   const gold = round2(Math.max(0, ch.gold ?? 0));
   const priceOf = (it) => parseFloat(it?.value) || 0;
   const coinAmt = Math.max(0, parseFloat(coin) || 0);
   const buy = (it) => {
     const price = priceOf(it);
-    if (price > gold) return; // the shopkeeper's arms stay crossed
+    if (price > gold) return;
     const has = inv.find((r) => r.name === it.name);
     onUpdate({
       inventory: has ? inv.map((r) => (r.name === it.name ? { ...r, qty: (r.qty || 1) + 1 } : r)) : [...inv, { name: it.name, qty: 1 }],
@@ -5300,7 +4908,6 @@ function InventoryCard({ ch, customs, onUpdate, onConsume, readOnly }) {
       if (r.name === row.name) return { ...r, equipped: !r.equipped };
       if (!it || !r.equipped) return r;
       const other = findItem(r.name, customs);
-      // one suit of armor, one shield at a time
       if (other && ((isArmorType(it.type) && isArmorType(other.type)) || (it.type === "S" && other.type === "S"))) return { ...r, equipped: false };
       return r;
     }));
@@ -5420,8 +5027,6 @@ function InventoryCard({ ch, customs, onUpdate, onConsume, readOnly }) {
   );
 }
 
-/* ============ INVOCATIONS (sheet management) ============ */
-/* readOnly (shared sheets): invocations list without learn/unlearn */
 function InvocationManager({ ch, onInvocations, readOnly }) {
   const wl = ch.classes.find((c) => c.name === "Warlock");
   const [open, setOpen] = useState(false);
@@ -5468,12 +5073,10 @@ function InvocationManager({ ch, onInvocations, readOnly }) {
   );
 }
 
-const ARCANUM_UNLOCK = { 6: 11, 7: 13, 8: 15, 9: 17 }; // arcanum spell level -> warlock level
+const ARCANUM_UNLOCK = { 6: 11, 7: 13, 8: 15, 9: 17 };
 
-/* Classes that know their whole list and prepare a subset — preparations change freely after a long rest */
 const PREP_ALL_CLASSES = ["Cleric", "Druid", "Paladin", "Ranger"];
 
-/* Long-rest preparation: swap what's held in mind, from the full class list */
 function PrepareSpells({ ch, customs, onSpells, onClose }) {
   const pool = srcSpells(customs?.spells || []);
   const book = ch.spells || {};
@@ -5489,7 +5092,7 @@ function PrepareSpells({ ch, customs, onSpells, onClose }) {
           const maxLvl = maxSpellLevel(c.name, c.level);
           const subData = subSpellData(c.subclass, c.name, customs);
           const upTo = (spells) => Object.entries(spells).filter(([l]) => +l <= c.level).flatMap(([, arr]) => arr);
-          const plain = (n) => n.replace(/\*+$/, ""); // subclass-tagged twins ride in the compendium with a trailing *
+          const plain = (n) => n.replace(/\*+$/, "");
           const grantedSet = new Set(upTo(subData?.type === "granted" ? subData.spells : {}).map(plain));
           const granted = [...grantedSet];
           const expanded = subData?.type === "expanded" ? upTo(subData.spells) : [];
@@ -5519,14 +5122,12 @@ function PrepareSpells({ ch, customs, onSpells, onClose }) {
   );
 }
 
-/* readOnly (shared sheets): the grimoire reads in full, but nothing can be
-   scribed, prepared, or transcribed — and tapping a spell opens its text */
 function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readOnly }) {
   const casters = ch.classes.filter((c) => CLASSES[c.name].caster);
   const wl = ch.classes.find((c) => c.name === "Warlock");
   const hasBoAS = (ch.invocations || []).includes("Book of Ancient Secrets");
   const hasTome = ch.pactBoon === "Pact of the Tome";
-  const [adding, setAdding] = useState(null); // { cls, kind: 'cantrips'|'spells'|'arcanum', lvl? }
+  const [adding, setAdding] = useState(null);
   const [q, setQ] = useState("");
   const featSp = featSpellsOf(ch);
   if (!casters.length && !featSp.length && !ch.racialChoices?.cantrip && !raceGrantedSpells(ch).length) return null;
@@ -5572,10 +5173,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
     onSpells({ ...book, [clsName]: { cantrips: [], spells: [], ...(book[clsName] || {}), arcanum: arc } });
   };
 
-  /* Everything held, regrouped by spell level, then by where it came from */
   const spLvl = (n) => pool.find((sp) => sp.name === n)?.level ?? SPELL_LVL_HINT[n] ?? 1;
-  /* Can any resource pay for this spell right now? Cantrips and rituals always cast; leveled
-     spells need a slot of their level or higher, a big-enough pact slot, or their arcanum. */
   const slotsAll = spellSlots(ch.classes) || [];
   const usedSlotsArr = ch.usedSlots || [];
   const pactAll = wl ? PACT(wl.level) : null;
@@ -5584,15 +5182,14 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
   const canPay = (n) => {
     const lvl = spLvl(n);
     if (lvl === 0) return true;
-    if (featSpellNames.has(n)) return true; // a feat spell carries its own once-per-rest use
+    if (featSpellNames.has(n)) return true;
     if (pool.find((s) => s.name === n)?.ritual) return true;
     if (Object.entries(book.Warlock?.arcanum || {}).some(([l, an]) => an === n && !(ch.usedArcanum || []).includes(+l))) return true;
     for (let L = lvl; L <= slotsAll.length; L++) if ((slotsAll[L - 1] || 0) - Math.min(usedSlotsArr[L - 1] || 0, slotsAll[L - 1] || 0) > 0) return true;
     return !!(pactAll && pactAll.lvl >= lvl && pactLeft > 0);
   };
-  /* an active catalog effect marks its spell chip, so buffs read at a glance from the Grimoire */
   const activeFxNames = new Set(effectsOf(ch).map((e) => { const d = effDefOf(e); return d ? d.match || d.name : e.name; }));
-  const groups = new Map(); // level -> [{ source, names, tint }]
+  const groups = new Map();
   const addGroup = (lvl, source, names, tint) => {
     if (!names.length) return;
     if (!groups.has(lvl)) groups.set(lvl, []);
@@ -5754,10 +5351,9 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
 }
 
 
-/* ============ FEATURE CHOICE MANAGER (sheet-side) ============ */
 function ChoiceManager({ ch, customs, onUpdate }) {
   const groups = characterChoiceGroups(ch, customs);
-  const [open, setOpen] = useState(null); // group key
+  const [open, setOpen] = useState(null);
   if (!groups.length) return null;
   const shortName = (n) => baseSubName(n.replace(/^[^:]+:\s*/, ""));
   const save = (key, arr) => onUpdate({ choices: { ...(ch.choices || {}), [key]: arr } });
@@ -5807,22 +5403,17 @@ function ChoiceManager({ ch, customs, onUpdate }) {
   );
 }
 
-/* ============ CHARACTER SHEET ============ */
-/* ============ ACTIVE EFFECTS CARD — the buff tracker ============ */
 const pillBtn = { width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.edge}`, background: T.panel, color: T.gold, fontSize: 16, cursor: "pointer", lineHeight: 1, padding: 0, WebkitTapHighlightColor: "transparent", touchAction: "manipulation" };
 const pip = (filled, color) => ({ cursor: "pointer", fontSize: 18, fontFamily: "Georgia, serif", color: filled ? color : T.dim, opacity: filled ? 1 : 0.45, userSelect: "none", padding: "0 1px" });
 const fieldStyle = { background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 10px", fontSize: 15, fontFamily: "inherit", boxSizing: "border-box", width: "100%" };
 const FX_KIND_COLOR = { Spell: "#6c91e0", Feature: "#7fb069", Feat: "#c77dca", Action: "#5eb1bf", Condition: "#d76a76", Custom: "#c9a44c", Bestiary: "#c9a44c" };
 
-/* readOnly (shared sheets): effects and temp HP display but cannot be granted,
-   stacked, or removed — the sheet is a sealed snapshot */
 function EffectsCard({ ch, customs, fx, onUpdate, readOnly }) {
   const effects = effectsOf(ch);
   const tempHp = Math.max(0, ch.tempHp || 0);
   const dmgRaw = Math.max(0, ch.dmg || 0);
   const [adding, setAdding] = useState(false);
-  /* Ending an effect that granted max HP refunds the grant from recorded damage,
-     so current HP only drops to the new maximum (the 5e rule for Aid & kin) */
+  // Ending a max HP grant refunds the amount from recorded damage so current HP only drops if above the new maximum.
   const withRefund = (removed, patch) => {
     const refund = removed.reduce((s, e) => s + instMaxHp(e, ch), 0);
     return refund ? { ...patch, dmg: Math.max(0, dmgRaw - refund) } : patch;
@@ -5898,8 +5489,6 @@ function EffectsCard({ ch, customs, fx, onUpdate, readOnly }) {
   );
 }
 
-/* ============ FEATURE USES CARD — pips for every daily heroic ============ */
-/* readOnly (shared sheets): the pips show what stands spent, but expend nothing */
 function FeatureUsesCard({ ch, customs, onUpdate, onUse, readOnly }) {
   const trackers = useTrackersFor(ch, customs);
   const used = ch.usedFeatures || {};
@@ -5909,7 +5498,6 @@ function FeatureUsesCard({ ch, customs, onUpdate, onUse, readOnly }) {
   const setUsed = (t, n) => onUpdate({ usedFeatures: { ...used, [t.key]: Math.max(0, Math.min(t.max, n)) } });
   const spend = (t) => {
     const patch = { usedFeatures: { ...used, [t.key]: usedOf(t) + 1 } };
-    // spending a use of a tracked buff also raises the buff itself
     if (t.effect && EFFECT_BY_KEY[t.effect] && !hasEffect(ch, t.effect)) patch.effects = [...effectsOf(ch), { id: uid(), key: t.effect, name: EFFECT_BY_KEY[t.effect].name }];
     onUpdate(patch);
   };
@@ -5975,18 +5563,17 @@ function FeatureUsesCard({ ch, customs, onUpdate, onUse, readOnly }) {
 
 function AddEffectSheet({ ch, customs, existing, onAdd, onClose }) {
   const [q, setQ] = useState("");
-  const [pending, setPending] = useState(null); // a picked effect awaiting its number (slot level, rolled HP…)
+  const [pending, setPending] = useState(null);
   const [val, setVal] = useState(1);
-  const [ally, setAlly] = useState(false); // concentration effect held by an ally, not this character
-  const [concAsk, setConcAsk] = useState(null); // a picked concentration effect awaiting "whose concentration?"
+  const [ally, setAlly] = useState(false);
+  const [concAsk, setConcAsk] = useState(null);
   const [custom, setCustom] = useState(null);
-  /* the page beneath holds still while the sheet is up — only the sheet's own list scrolls */
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = prev; };
   }, []);
-  const sheetField = { ...fieldStyle, fontSize: 16 }; // 16px keeps mobile Safari from zooming into focused inputs
+  const sheetField = { ...fieldStyle, fontSize: 16 };
   const known = knownSpellNames(ch, customs);
   const have = new Set(existing.map((e) => e.key));
   const concActive = existing.filter(isConcInst).map((e) => e.name);
@@ -6006,7 +5593,6 @@ function AddEffectSheet({ ch, customs, existing, onAdd, onClose }) {
   const commit = (d, v, isAlly) => onAdd({ id: uid(), key: d.key, name: d.name, ...(v != null ? { val: v } : {}), ...(d.stacks ? { stacks: 1 } : {}), ...(isAlly ? { ally: true } : {}) }, d.tempHp ? d.tempHp(v, ch) : 0);
   const proceed = (d, isAlly) => { setConcAsk(null); setAlly(isAlly); if (d.input) { setPending(d); setVal(d.input.def); } else commit(d, undefined, isAlly); };
   const pick = (d) => (d.conc ? setConcAsk(d) : proceed(d, false));
-  // free typing in the value field; the bounds bite only when it's applied
   const clampVal = () => pending && Math.max(pending.input.min, Math.min(pending.input.max, parseInt(val, 10) || pending.input.def));
   const blankCustom = { name: "", ac: "", atk: "", save: "", dmg: "", speed: "", maxHp: "", tempHp: "", note: "", conc: false, dur: "", ends: "short" };
   const submitCustom = () => {
@@ -6020,9 +5606,6 @@ function AddEffectSheet({ ch, customs, existing, onAdd, onClose }) {
       <input type="number" value={custom[f]} placeholder="0" onChange={(e) => setCustom({ ...custom, [f]: e.target.value })} style={sheetField} />
     </label>
   );
-  /* Browsing the catalog fills a steady share of the screen — the sheet doesn't jump around
-     as search narrows the list. The focused sub-views (value, concentration, custom forge)
-     shrink to hug their content at the bottom, like a proper bottom sheet detent. */
   const browsing = !concAsk && !pending && !custom;
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center", animation: "sheetVeil 200ms ease" }} onClick={onClose}>
@@ -6125,15 +5708,10 @@ function AddEffectSheet({ ch, customs, existing, onAdd, onClose }) {
   );
 }
 
-/* ============ MINIONS & SUMMONS CARD — the creatures at your side ============ */
-/* Every summoned body gets its own chip: name, role, and a hit-point pool tracked the same
-   way the character's is. The amount field arms both buttons — one tap wounds or heals one
-   minion, so a wolf pack under a fireball is eight taps, not eight sums.
-   readOnly (shared sheets): the menagerie shows, nothing bleeds. */
 function MinionsCard({ ch, customs, onUpdate, onSummon, onRoll, onDice, readOnly }) {
   const minions = minionsOf(ch);
   const [amt, setAmt] = useState(1);
-  const [rolling, setRolling] = useState(null); // the minion whose dice are out
+  const [rolling, setRolling] = useState(null);
   if (readOnly && minions.length === 0) return null;
   const n = Math.max(1, parseInt(amt, 10) || 1);
   const patchOne = (id, fn) => onUpdate({ minions: minions.map((m) => (m.id === id ? fn(m) : m)) });
@@ -6211,10 +5789,9 @@ function MinionsCard({ ch, customs, onUpdate, onSummon, onRoll, onDice, readOnly
         const attacks = minionAttackRolls(c);
         const saves = minionSaves(c);
         const skills = minionSkills(c);
-        const slot = rolling.slot || null; // spirits remember the slot that called them
+        const slot = rolling.slot || null;
         const spellAtk = attacks.some((a) => a.useSpellAtk) ? summonerSpellAtk(ch, rolling.source) : null;
         const dmgBonus = (a) => a.bonus + (a.scaled && slot ? slot : 0);
-        /* the roll trays sit at z 60, beneath this sheet — it steps aside before the dice fall */
         const closeThen = (fn) => { setRolling(null); fn(); };
         const pill = { ...btn(false), padding: "7px 12px", minHeight: 0, fontSize: 12.5, fontFamily: "inherit" };
         const secTitle = { color: T.dim, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 14 };
@@ -6290,11 +5867,6 @@ function MinionsCard({ ch, customs, onUpdate, onSummon, onRoll, onDice, readOnly
   );
 }
 
-/* ============ SUMMON SHEET — pick what answers the call ============ */
-/* The bottom-sheet picker behind ＋ Summon and behind every conjuring cast. Browsing shows
-   the catalog with the character's own sources first; picking a source opens the muster —
-   choose the form, how many, their HP, their role — and commits one instance per body.
-   `preset` (from the Use prompt) skips browsing and lands straight on the source just cast. */
 function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
   const presetDef = preset?.def || null;
   const defaultsFor = (d, f, slot) => ({
@@ -6310,13 +5882,12 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
   const [fields, setFields] = useState(presetDef ? defaultsFor(presetDef, summonFormsFor(presetDef)[0], preset?.slotLvl || presetDef.slot) : null);
   const [custom, setCustom] = useState(null);
   const slotNow = (d) => (d?.spirit ? Math.max(d.slot, Math.min(9, parseInt(slotLv, 10) || d.slot)) : null);
-  /* the page beneath holds still while the sheet is up — only the sheet's own list scrolls */
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = prev; };
   }, []);
-  const sheetField = { ...fieldStyle, fontSize: 16 }; // 16px keeps mobile Safari from zooming into focused inputs
+  const sheetField = { ...fieldStyle, fontSize: 16 };
   const known = knownSpellNames(ch, customs);
   const isMine = (d) => (d.kind === "Spell" ? known.has(d.source) : d.mine ? d.mine(ch) : false);
   const ql = q.trim().toLowerCase();
@@ -6335,7 +5906,6 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
   };
   const pickForm = (f) => {
     setForm(f);
-    // a new form refreshes the stats it owns; the count and a hand-typed role survive
     const s = slotNow(pending);
     setFields((prev) => ({ ...prev, name: f.name, hp: String(pending.hpOf ? pending.hpOf(ch) : pending.spirit ? spiritHp(pending, f, s) : f.hp), ac: String(pending.spirit ? spiritAc(pending, f, s) : (f.ac ?? "")) }));
   };
@@ -6350,7 +5920,6 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
     const hp = Math.max(1, parseInt(f.hp, 10) || 1);
     const ac = Math.max(0, parseInt(f.ac, 10) || 0);
     const existing = minionsOf(ch);
-    // "Wolf", then "Wolf 2"… — numbering picks up where the standing pack left off
     const already = existing.filter((m) => m.name === nm || m.name.startsWith(nm + " ")).length;
     const insts = Array.from({ length: count }, (_, i) => ({
       id: uid(), key: def.key, kind: def.kind, source: def.source,
@@ -6438,7 +6007,6 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
               );
             })()}
             {(() => {
-              /* spirit forms carry a parenthetical mood — the block lives under the base name */
               const statName = form && (form.stat ? form.name : (creatureByName(form.name) || creatureByName(baseSubName(form.name)))?.name);
               return statName ? (
                 <button data-statblock-btn style={{ ...btn(false), padding: "7px 12px", minHeight: 0, fontSize: 12.5, marginTop: 10 }}
@@ -6518,9 +6086,6 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
   );
 }
 
-/* ============ SOURCEBOOK SHEET — choose which books feed the pickers ============ */
-/* Every source found in the compendium gets a toggle. Off means: gone from spell pick
-   lists and summon musters. Known spells, mustered creatures, and lore stay whole. */
 function SourcebookSheet({ customs, off, onToggle, onEnableAll, onClose }) {
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -6575,28 +6140,19 @@ function SourcebookSheet({ customs, off, onToggle, onEnableAll, onClose }) {
   );
 }
 
-/* ============ USE PROMPT — tap a spell or feature, confirm, the sheet does the rest ============ */
-/* The front door for casting and feature use: name, cost, consequences, one confirming tap.
-   Slots and tracked uses are spent here; catalog effects raise through the same patch the
-   Effects card uses; concentration states its eviction before it happens. Pips everywhere
-   stay hand-tappable — this sheet is the front door, not the only door. */
 function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onSummon, onClose }) {
   const recipe = useRecipe(name, ch, customs);
   const sp = recipe?.sp || null, tracker = recipe?.tracker || null, effs = recipe?.effs || [];
   const [variant, setVariant] = useState(0);
   const [bladeWpn, setBladeWpn] = useState(0);
   const eff = effs[Math.min(variant, Math.max(0, effs.length - 1))] || null;
-  /* Blade cantrips (Booming/Green-Flame) are cast AS a melee weapon attack — pick the weapon */
   const blade = !!sp && isBladeCantrip(sp.name);
   const meleeOptions = blade ? equippedOf(ch).map((r) => findItem(r.name, customs)).filter((x) => x && x.type === "M") : [];
   const bladeLvl = totalLevel(ch);
   const bladeTier = bladeRiderTier(bladeLvl);
-  /* Damaging spells (attack, save, or auto-hit) hand off to the strike flow after paying the
-     cost. A spell that's really a catalog effect (Hex, Armor of Agathys) keeps its effect flow. */
   const strike = sp && !blade && !eff ? strikeProfile(sp) : null;
   const damaging = !!strike;
 
-  /* ---- every way this could be paid for ---- */
   const slots = spellSlots(ch.classes) || [];
   const usedSlots = ch.usedSlots || [];
   const wl = ch.classes.find((c) => c.name === "Warlock");
@@ -6605,7 +6161,6 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
   const usedArc = ch.usedArcanum || [];
   const arcanum = ch.spells?.Warlock?.arcanum || {};
   const usedFeats = ch.usedFeatures || {};
-  // a Book of Ancient Secrets ritual the character doesn't otherwise know casts ONLY as a ritual
   const boasOnly = sp ? (ch.boasRituals || []).includes(sp.name) && !knownSpellNames(ch, customs).has(sp.name) : false;
   const options = [];
   if (sp && sp.level >= 1 && !boasOnly) {
@@ -6625,11 +6180,8 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
   const [manual, setManual] = useState(eff?.input && eff.input.unit !== "slot" ? eff.input.def : 1);
   if (!recipe) return null;
 
-  /* a conjuring cast opens the muster afterward, so each creature lands with its own HP;
-     unknown imported summon spells conjure their def from their own text */
   const summonDef = summonDefFor(recipe.name) || spiritDefFromSpell(sp);
 
-  /* effects that scale with the slot read it straight off the chosen cost */
   const slotVal = chosen && chosen.lvl != null && chosen.type !== "ritual" && chosen.type !== "tracker" ? chosen.lvl : null;
   const clampIn = (v) => (eff?.input ? Math.max(eff.input.min, Math.min(eff.input.max, parseInt(v, 10) || eff.input.def)) : undefined);
   const effVal = eff?.input ? (eff.input.unit === "slot" ? clampIn(slotVal ?? eff.input.def) : clampIn(manual)) : undefined;
@@ -6637,14 +6189,10 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
 
   const activeInst = effs.map((d) => effectsOf(ch).find((e) => e.key === d.key)).find(Boolean) || null;
   const concNow = effectsOf(ch).filter(isConcInst);
-  /* a concentration spell with no catalog entry still holds concentration — it rides
-     as a bare custom instance so the jealousy rule and rest sweeps see it */
   const spConc = !eff && sp ? /concentration/i.test(sp.duration || "") : false;
   const concEnding = eff?.conc ? concNow.filter((e) => e.key !== eff.key) : spConc ? concNow.filter((e) => !(e.key === "custom" && e.name === sp.name)) : [];
   const verb = sp ? "Cast" : tracker ? "Use" : "Declare";
-  const freeToggle = options.length === 0 && !!activeInst; // a stance already held, nothing to spend
-  /* the confirm button wears the color of whatever pays for the act: the tracker's class,
-     pact violet, the casting class's hue for slots and cantrips, the effect's kind otherwise */
+  const freeToggle = options.length === 0 && !!activeInst;
   const spellClassOf = () => {
     if (!sp) return null;
     for (const c of ch.classes) {
@@ -6696,8 +6244,6 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
       onDice({ title: `${tracker.name} — d${tracker.die}${tracker.dieBonus ? ` + ${tracker.dieBonus}` : ""}`, dice: [{ sides: tracker.die, value: roll(tracker.die) }], bonus: tracker.dieBonus || 0, bonusLabel: tracker.dieBonus ? tracker.dieLabel || "" : "", note: tracker.heal ? "Accept to heal yourself." : "Add it where the feature calls for it.", heal: !!tracker.heal });
     onClose();
   };
-  /* Pay for a damaging spell, then hand its cast level to the strike flow (attack/damage). The
-     effective level scales upcasts: the chosen slot for leveled spells, the character for cantrips. */
   const strikeCastLvl = sp ? (sp.level === 0 ? 0 : (slotVal || sp.level)) : 0;
   const finishCast = (free) => { commit(free); if (damaging && onStrike) onStrike(sp, strikeCastLvl); };
   const endIt = () => {
@@ -6820,9 +6366,6 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
   );
 }
 
-/* ---- The guided tour: every tap, hold, and hidden trick the sheet knows, laid out for
-   first-timers. Two gestures run the whole app — tap to act, long-press to read — so the
-   guide leads with that and then walks each panel top to bottom. ---- */
 const SHEET_GUIDE = [
   {
     icon: "book", title: "First, the one golden rule",
@@ -6983,27 +6526,23 @@ function GuideSheet({ onClose }) {
   );
 }
 
-/* The share scroll: forge the link, paint the card, hand both over. Copying
-   is the primary road; the native share tray appears where the device offers
-   one, and carries the painted card as a real image beside the link — the
-   only way a static host can put the character's face on a message. */
 function ShareSheet({ ch, customs, onClose }) {
   const [url, setUrl] = useState(null);
   const [failed, setFailed] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [card, setCard] = useState(null); // { src, blob } — the painted banner
+  const [card, setCard] = useState(null);
   useEffect(() => {
     let live = true;
     encodeShare(ch, customs).then((u) => { if (live) setUrl(u); }, () => { if (live) setFailed(true); });
     drawShareCard(ch, customs)
       .then((cv) => new Promise((res) => cv.toBlob((b) => res({ src: cv.toDataURL("image/png"), blob: b }), "image/png")))
       .then((c) => { if (live) setCard(c); })
-      .catch(() => {}); // no card is no tragedy — the link still carries everything
+      .catch(() => {});
     return () => { live = false; };
   }, [ch, customs]);
   const copy = async () => {
     try { await navigator.clipboard.writeText(url); }
-    catch { // clipboard API needs a secure context; fall back to the old select-and-copy rite
+    catch {
       const ta = document.createElement("textarea");
       ta.value = url;
       ta.style.cssText = "position:fixed;opacity:0";
@@ -7015,12 +6554,10 @@ function ShareSheet({ ch, customs, onClose }) {
   };
   const nativeShare = async () => {
     const line = shareLine(ch, customs);
-    // ride with the painted card when the tray accepts files; the link travels in
-    // the text so no app can drop it. Fall back to plain text + url otherwise.
     if (card?.blob && navigator.canShare?.({ files: [new File([card.blob], "card.png", { type: "image/png" })] })) {
       const file = new File([card.blob], `${(ch.name || "character").replace(/[^\w -]/g, "")} — character card.png`, { type: "image/png" });
       try { await navigator.share({ files: [file], text: `${line}\n${url}` }); return; }
-      catch (e) { if (e?.name === "AbortError") return; /* some targets refuse files — send the plain form */ }
+      catch (e) { if (e?.name === "AbortError") return; }
     }
     navigator.share({ title: `${ch.name} — The Adventurer's Ledger`, text: line, url }).catch(() => {});
   };
@@ -7079,12 +6616,9 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   const photoUpload = usePhotoUpload(onPhoto);
   const [confirmDel, setConfirmDel] = useState(false);
 
-  /* ---- play state: damage taken, temp HP, active effects, expended slots, rests ---- */
   const fx = fxMods(ch);
   const effMax = effMaxHp(ch, fx);
   const spd = speedOf(ch, customs, fx);
-  /* dmgRaw is the recorded truth; the display clamps to the effective max so a temporarily
-     halved maximum (Exhaustion 4) hides — but never erases — damage beyond it */
   const dmgRaw = Math.max(0, ch.dmg || 0);
   const curHp = Math.max(0, effMax - dmgRaw);
   const tempHp = Math.max(0, ch.tempHp || 0);
@@ -7095,11 +6629,9 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   useEffect(() => { if (concNote && !fx.conc.length) setConcNote(null); }, [concNote, fx.conc.length]);
   const applyHp = (delta) => {
     if (delta >= 0) { onUpdate({ dmg: Math.max(0, dmgRaw - delta) }); return; }
-    // damage chews through temporary hit points before touching the real ones
     const d = -delta;
     const fromTemp = Math.min(tempHp, d);
     const patch = {};
-    if (fromTemp) patch.tempHp = tempHp - fromTemp;
     if (d - fromTemp > 0) patch.dmg = Math.max(dmgRaw, Math.min(effMax, dmgRaw + (d - fromTemp)));
     onUpdate(patch);
     if (fx.conc.length) setConcNote(`Concentration check — Con save DC ${Math.max(10, Math.floor(d / 2))} or lose ${fx.conc.join(", ")}.`);
@@ -7115,9 +6647,6 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   const arcLevels = Object.keys(arcanum).map(Number).sort();
   const usedArc = ch.usedArcanum || [];
   const toggleArc = (lvl) => onUpdate({ usedArcanum: usedArc.includes(lvl) ? usedArc.filter((l) => l !== lvl) : [...usedArc, lvl] });
-  /* Which effects survive a rest: short-fuse ones clear on any rest, long-fuse on a long
-     rest, conditions cling until removed by hand — except stacking effects with restDecay
-     (exhaustion), which fade a level instead */
   const restTouches = (e, kind) => {
     const def = effDefOf(e);
     if (def?.stacks && def.restDecay === kind) return true;
@@ -7130,13 +6659,9 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     if (def?.stacks && def.restDecay === kind) return (e.stacks || 1) > 1 ? [{ ...e, stacks: (e.stacks || 1) - 1 }] : [];
     return [];
   });
-  /* limited-use features refill on their own schedule */
   const usedFeats = ch.usedFeatures || {};
   const trackers = useTrackersFor(ch, customs);
-  /* prepared casters re-pick their spells at dawn, so a long rest is never a no-op for them */
   const canPrep = ch.classes.some((c) => PREP_ALL_CLASSES.includes(c.name) && spellCapacity(c.name, c.level, ch.abilities).n > 0) && (customs?.spells || []).length > 0;
-  /* summoned creatures dissolve on the rest that outlasts them; familiars, steeds,
-     and the raised dead (ends: "manual") wait faithfully through the night */
   const restMinions = (kind) => minionsOf(ch).filter((m) => (kind === "short" ? m.ends !== "short" : m.ends === "manual"));
   const shortWould = usedPact > 0 || effectsOf(ch).some((e) => restTouches(e, "short")) || trackers.some((t) => t.per === "short" && (usedFeats[t.key] || 0) > 0) || restMinions("short").length < minionsOf(ch).length;
   const longWould = dmgRaw > 0 || tempHp > 0 || usedSlots.some(Boolean) || usedPact > 0 || usedArc.length > 0 || effectsOf(ch).some((e) => restTouches(e, "long")) || trackers.some((t) => (usedFeats[t.key] || 0) > 0) || canPrep || restMinions("long").length < minionsOf(ch).length;
@@ -7147,27 +6672,24 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   };
   const shortRest = () => {
     const kept = new Set(restEffects("short").map((e) => e.id));
-    // granted max HP walks out with its effect: refund it from recorded damage
     const refund = effectsOf(ch).filter((e) => !kept.has(e.id)).reduce((s, e) => s + instMaxHp(e, ch), 0);
     onUpdate({ usedPact: 0, effects: restEffects("short"), usedFeatures: resetUses("short"), minions: restMinions("short"), ...(refund ? { dmg: Math.max(0, dmgRaw - refund) } : {}) });
   };
   const [prepOpen, setPrepOpen] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false); // the guided tour of every trick this sheet knows
-  const [shareOpen, setShareOpen] = useState(false); // the scroll that seals this soul into a link
-  const [restAsk, setRestAsk] = useState(null); // "short" | "long" — a rest waits for a confirming word
-  const [summoning, setSummoning] = useState(null); // {} browses the bestiary; {key, slotLvl} lands on the source just cast
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [restAsk, setRestAsk] = useState(null);
+  const [summoning, setSummoning] = useState(null);
   const longRest = () => {
     onUpdate({ dmg: 0, usedSlots: [], usedPact: 0, usedArcanum: [], tempHp: 0, effects: restEffects("long"), usedFeatures: {}, minions: restMinions("long") });
-    if (canPrep) setPrepOpen(true); // dawn — swap your prepared spells
+    if (canPrep) setPrepOpen(true);
   };
 
-  /* ---- the bones: d20 rolls with every modifier the sheet knows about ---- */
   const [rollSpec, setRollSpec] = useState(null);
   const [advMode, setAdvMode] = useState("normal");
-  /* ---- tap to act: a name that resolves to a use recipe opens the prompt; the rest read ---- */
   const [useTarget, setUseTarget] = useState(null);
   const openUse = (n) => {
-    if (shared) { if (__showLore) __showLore(n); return; } // a sealed sheet reads; it does not spend
+    if (shared) { if (__showLore) __showLore(n); return; }
     if (useRecipe(n, ch, customs)) setUseTarget(n);
     else if (__showLore) __showLore(n);
   };
@@ -7198,7 +6720,6 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     const hp2 = halfProf(a);
     return [{ label: ABIL_NAMES[a], value: mod(ch.abilities[a]) }, ...(hp2 ? [hp2] : []), ...glamour(a)];
   };
-  /* Initiative is a Dexterity check that the Alert feat alone adds proficiency to */
   const initPartsFor = () => [
     ...checkPartsFor("dex"),
     ...(fEff.init ? [{ label: fEff.init.label, value: fEff.init.value }] : []),
@@ -7213,12 +6734,9 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
       { label: ABIL_NAMES[a], value: mod(ch.abilities[a]) },
       ...(prof ? [{ label: exp ? "expertise" : "proficiency", value: pb * (exp ? 2 : 1) }] : []),
       ...(hp2 ? [hp2] : []),
-      ...glamour(a),
     ];
   };
   const rollIt = (title, parts, kind, abil, proficient, extra) => setRollSpec({ title, parts, kind, abil, proficient, extra });
-  /* Loosing a shot from an ammunition weapon spends a piece from the pack — and says so.
-     On a sealed sheet the quiver is beyond reach: the dice still fall, nothing is spent. */
   const fireAmmo = (it) => {
     if (shared || !usesAmmo(it)) return null;
     const row = ammoRowFor(ch, customs, it);
@@ -7227,23 +6745,17 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     onUpdate({ inventory: left > 0 ? (ch.inventory || []).map((r) => (r.name === row.name ? { ...r, qty: left } : r)) : (ch.inventory || []).filter((r) => r.name !== row.name) });
     return `${row.name} spent — ${left > 0 ? `${left} left` : "that was the last one!"}`;
   };
-  /* Consumables: drinking/using decrements the row; healing potions roll their dice first */
-  const [drinkRoll, setDrinkRoll] = useState(null); // { row, title, dice, bonus }
+  const [drinkRoll, setDrinkRoll] = useState(null);
   const decremented = (row) => (ch.inventory || []).flatMap((r) => (r.name === row.name ? ((r.qty || 1) > 1 ? [{ ...r, qty: (r.qty || 1) - 1 }] : []) : [r]));
   const consume = (row) => {
     const heal = healingDiceFor(row.name);
     if (heal) { setDrinkRoll({ row, title: row.name, dice: Array.from({ length: heal.n }, () => ({ sides: heal.sides, value: roll(heal.sides) })), bonus: heal.plus }); return; }
     const key = consumableEffectKey(row.name);
     const patch = { inventory: decremented(row), log: [...(ch.log || []), `Consumed ${row.name}.`] };
-    if (key && EFFECT_BY_KEY[key] && !hasEffect(ch, key)) patch.effects = [...effectsOf(ch), { id: uid(), key, name: EFFECT_BY_KEY[key].name, ally: true }];
-    onUpdate(patch);
   };
   const acInfo = armorClass(ch, customs, fx);
-  const [dmgRoll, setDmgRoll] = useState(null); // { title, dice, bonus, bonusLabel, note }
-  const [pendingDmg, setPendingDmg] = useState(null); // a blade cantrip's damage, held until its attack tray closes
-  /* Active-effect attack/damage bonuses, filtered to the attack being made: its scope
-     (melee/ranged/weapon/spell), the ability behind the swing (Rage is Strength-only),
-     and any required weapon property (Great Weapon Master demands Heavy) */
+  const [dmgRoll, setDmgRoll] = useState(null);
+  const [pendingDmg, setPendingDmg] = useState(null);
   const fxInScope = (b, scope, abil, props) =>
     (b.scope === "all" || b.scope === scope || (b.scope === "weapon" && scope !== "spell")) &&
     (!b.abil || b.abil === abil) && (!b.prop || (props || []).includes(b.prop));
@@ -7262,9 +6774,6 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   const rollWeaponDamage = (it) => {
     const m = weaponDie(it).match(/(\d+)d(\d+)/);
     if (!m) return;
-    const abil = weaponAbility(it);
-    const props = (it.property || "").split(",").map((x) => x.trim());
-    const dueling = hasStyle(ch, "Dueling") && it.type === "M" && !props.includes("2H") ? 2 : 0;
     const extras = fxDmg(it.type === "R" ? "ranged" : "melee", abil, props);
     const bonus = mod(ch.abilities[abil]) + dueling + extras.reduce((s, b) => s + b.value, 0);
     const dmgNotes = rollNotes(ch, "dmg", abil);
@@ -7275,8 +6784,6 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
       note: `${DMG_TYPES[it.dmgType] || "damage"}${it.dmg2 && !shillTarget(it) ? ` · versatile: ${it.dmg2} two-handed` : ""}${hasStyle(ch, "Great Weapon Fighting") && props.includes("2H") ? " · GWF: you may reroll 1s and 2s" : ""}${dmgNotes.length ? " · " + dmgNotes.join(" · ") : ""}`,
     });
   };
-  /* Booming/Green-Flame Blade: a weapon attack carrying a scaling elemental rider. The bones
-     fall in order — the attack tray first, then its damage tray follows when that one closes. */
   const bladeSpellMod = () => {
     const casters = ch.classes.filter((c) => CLASSES[c.name].caster && SPELL_ABILITY[c.name]);
     return casters.length
@@ -7316,16 +6823,12 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
       note,
     });
   };
-  /* Which class casts this spell (for the attack bonus, save DC, and scaling) and its ability */
   const strikeClassOf = (sp) =>
     ch.classes.find((c) => { const b = (ch.spells || {})[c.name]; return b && ["cantrips", "spells"].some((k) => (b[k] || []).includes(sp.name)); })?.name
     || ((ch.tomeCantrips || []).includes(sp.name) ? "Warlock" : null)
     || ch.classes.find((c) => CLASSES[c.name].caster && spellFitsClass(sp, c.name, c.subclass))?.name
     || ch.classes.find((c) => CLASSES[c.name].caster)?.name || null;
   const bestMentalMod = () => Math.max(mod(ch.abilities.int), mod(ch.abilities.wis), mod(ch.abilities.cha));
-  /* Casting a damaging spell: roll one d8 of thunder... no — read its profile, roll the spell
-     attack (if any) into pendingDmg, or drop straight to a damage tray for saves and auto-hits.
-     Dice scale by character level for cantrips, by the chosen slot for leveled spells. */
   const castSpellStrike = (sp, castLvl) => {
     const prof = strikeProfile(sp);
     if (!prof) return;
@@ -7346,7 +6849,6 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
       extraNote.push(`${count} ${prof.what}${count > 1 ? "s" : ""} — roll each ${prof.what}'s attack & this damage`);
     } else {
       let n = prof.base.n;
-      // upcast only scales the primary when its die matches (Ice Knife's +1d6 grows a separate burst)
       if (prof.level === 0 && prof.cantripScale) n = prof.base.n * (1 + bladeRiderTier(lvl));
       else if (prof.upcast && prof.upcast.sides === prof.base.sides && castLvl > prof.upcast.above) n = prof.base.n + (castLvl - prof.upcast.above) * prof.upcast.n;
       dice = rollN(n, prof.base.sides); bonus = prof.base.plus || 0; bonusLabel = prof.base.plus ? "flat" : "";
@@ -7358,7 +6860,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
       setRollSpec({ title: `${sp.name} — ${prof.attack} spell attack`, parts, kind: "attack", abil, extra: [`${sp.name}: a ${prof.attack} spell attack — roll damage once it lands.`] });
       setPendingDmg(dmgSpec);
     } else {
-      setDmgRoll(dmgSpec); // saves and auto-hits have no attack roll
+      setDmgRoll(dmgSpec);
     }
   };
   const equippedWeapons = equippedOf(ch).map((r) => findItem(r.name, customs)).filter((x) => x && isWeaponType(x.type));
@@ -7760,7 +7262,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
               style={{ width: "100%", boxSizing: "border-box", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 16, resize: "vertical", fontFamily: "inherit" }} />
           )}
         </div>
-        {!shared && ( /* the chronicle is play history — it stays home when a sheet is shared */
+        {!shared && (
           <div style={{ ...card, padding: 16 }}>
             <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>Chronicle</div>
             <div style={{ color: T.dim, fontSize: 12, lineHeight: 1.8, maxHeight: 220, overflowY: "auto" }}>
@@ -7787,7 +7289,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
       {useTarget && (
         <UsePrompt key={useTarget} name={useTarget} ch={ch} customs={customs} onUpdate={onUpdate} onDice={setDmgRoll} onBlade={castBlade} onStrike={castSpellStrike} onSummon={(def, slotLvl) => setSummoning({ def, slotLvl })} onClose={() => setUseTarget(null)} />
       )}
-      {drinkRoll && (
+        {!shared && (
         <DiceTray title={drinkRoll.title} dice={drinkRoll.dice} bonus={drinkRoll.bonus} bonusLabel="healing"
           note="Drink to apply the healing and spend the potion" acceptLabel="Drink"
           onAccept={(total) => {
@@ -7803,9 +7305,6 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
 
 
 
-/* ============ COMPENDIUM XML IMPORT ============ */
-/* Fold a parsed compendium into stored custom content: duplicates are skipped unless the
-   incoming copy carries rules text the stored one lacks (same rules as the Forge import). */
 function mergeCompendium(customs, res) {
   const existingSubs = new Set(Object.values(customs.subs || {}).flat().map((x) => x.name));
   const subsIn = {};
@@ -7834,8 +7333,6 @@ function parseCompendiumXML(text) {
   const doc = new DOMParser().parseFromString(text, "text/xml");
   if (doc.querySelector("parsererror")) throw new Error("Not valid XML");
   const out = { subs: {}, feats: [], spells: [], skippedClasses: [], featureTexts: {}, items: [] };
-  const splitColon = (x) => { const m = x.match(/^([^:]+):\s*(.+)$/); return m ? [m[1].trim(), m[2].trim()] : null; };
-  const splitParen = (x) => { const m = x.match(/^(.+?)\s*\(([^()]+)\)$/); return m ? [m[1].trim(), m[2].trim()] : null; };
 
   const keepText = (key, txt) => {
     if (!key || !txt) return;
@@ -7853,21 +7350,17 @@ function parseCompendiumXML(text) {
         if (!t) return;
         const txt = [...fe.querySelectorAll(":scope > text")].map((x) => x.textContent).join("\n").replace(/\n{3,}/g, "\n\n").trim();
         rows.push({ lvl, n: t });
-        // the rules text library: keyed by the full feature name and its display forms
         keepText(t, txt);
         const pp = splitParen(t); if (pp) keepText(pp[0], txt);
         const cp = splitColon(t); if (cp) keepText(cp[1], txt);
       });
     });
-    // Introducers: "A: Y". Members: "Y: F" or "F (Y)".
     const colonPairs = rows.map((r) => ({ ...r, m: splitColon(r.n) })).filter((r) => r.m);
     const parenPairs = rows.map((r) => ({ ...r, m: splitParen(r.n) })).filter((r) => r.m);
-    // Members may drop a leading article the introducer keeps ("Hex Warrior (Hexblade)" under
-    // "Otherworldly Patron: The Hexblade"), so compare via normSub.
+    // XML autolevel features use introducer-member patterns (A: Y vs Y: F); normSub matches dropped leading articles and nested group filtering prevents false-positive subclass splits.
     const memberCount = (y) =>
       colonPairs.filter((r) => normSub(r.m[0]) === normSub(y)).length + parenPairs.filter((r) => normSub(r.m[1]) === normSub(y)).length;
     let cands = new Set(colonPairs.map((r) => r.m[1]).filter((y) => memberCount(y) > 0));
-    // Drop nested groups: every introducer of Y has a prefix that is itself a candidate
     cands = new Set([...cands].filter((y) => colonPairs.some((r) => r.m[1] === y && !cands.has(r.m[0]))));
 
     const known = new Set(CLASSES[clsName].subs.map(normSub));
@@ -7894,16 +7387,6 @@ function parseCompendiumXML(text) {
     if (owner && bodies.length) keepText(owner, bodies.join("\n\n"));
   });
 
-  doc.querySelectorAll("compendium > spell").forEach((sp) => {
-    const name = sp.querySelector(":scope > name")?.textContent?.trim();
-    if (!name) return;
-    const grab = (tag) => sp.querySelector(`:scope > ${tag}`)?.textContent?.trim() || "";
-    const level = +(sp.querySelector(":scope > level")?.textContent || 0);
-    const text = [...sp.querySelectorAll(":scope > text")].map((t) => t.textContent).join("\n").replace(/\n{3,}/g, "\n\n").trim();
-    out.spells.push({ name, level, school: grab("school"), classes: grab("classes"), time: grab("time"), range: grab("range"), components: grab("components"), duration: grab("duration"), ritual: /^y/i.test(grab("ritual")), text });
-  });
-  out.spells = foldStarredSpells(out.spells);
-
   doc.querySelectorAll("compendium > item").forEach((it) => {
     const name = it.querySelector(":scope > name")?.textContent?.trim();
     if (!name) return;
@@ -7928,10 +7411,9 @@ function parseCompendiumXML(text) {
   });
   return out;
 }
-/* scripts/bake-compendium.cjs drives the app's own parser to regenerate public/compendium.json */
+// scripts/bake-compendium.cjs uses parseCompendiumXML to regenerate public/compendium.json.
 if (typeof window !== "undefined") window.__parseCompendium = parseCompendiumXML;
 
-/* ============ HOMEBREW FORGE ============ */
 function HomebrewForge({ customs, onSave, onBack }) {
   const [tab, setTab] = useState("subclass");
   const [cls, setCls] = useState("Warlock");
@@ -7952,9 +7434,7 @@ function HomebrewForge({ customs, onSave, onBack }) {
         const res = parseCompendiumXML(reader.result);
         const existingSubs = new Set(Object.values(customs.subs).flat().map((x) => x.name));
         Object.keys(res.subs).forEach((c) => { res.subs[c] = res.subs[c].filter((x) => !existingSubs.has(x.name)); if (!res.subs[c].length) delete res.subs[c]; });
-        // duplicates are skipped — unless the incoming copy carries rules text the stored one lacks
         const oldFeats = new Map(customs.feats.map((f) => [f.name, f]));
-        res.feats = res.feats.filter((f) => !oldFeats.has(f.name) || (f.text && !oldFeats.get(f.name).text));
         const oldSpells = new Map((customs.spells || []).map((x) => [x.name, x]));
         res.spells = res.spells.filter((x) => !oldSpells.has(x.name) || (x.text && !oldSpells.get(x.name).text) || oldSpells.get(x.name).ritual === undefined);
         const oldItems = new Set((customs.items || []).map((x) => x.name));
@@ -7969,10 +7449,8 @@ function HomebrewForge({ customs, onSave, onBack }) {
   const doImport = () => {
     const subs = { ...customs.subs };
     Object.entries(parsed.subs).forEach(([c, arr]) => { subs[c] = [...(subs[c] || []), ...arr]; });
-    // same-name entries are replaced (text upgrades); everything else appends
     const inFeats = new Map(parsed.feats.map((f) => [f.name, f]));
     const feats = [...customs.feats.map((f) => inFeats.get(f.name) || f), ...parsed.feats.filter((f) => !customs.feats.some((o) => o.name === f.name))];
-    const inSpells = new Map(parsed.spells.map((x) => [x.name, x]));
     const spells = [...(customs.spells || []).map((s) => inSpells.get(s.name) || s), ...parsed.spells.filter((x) => !(customs.spells || []).some((o) => o.name === x.name))];
     onSave({ subs, feats, spells, items: [...(customs.items || []), ...parsed.items], featureTexts: { ...(customs.featureTexts || {}), ...parsed.featureTexts } });
     setParsed(null);
@@ -8165,55 +7643,6 @@ function HomebrewForge({ customs, onSave, onBack }) {
   );
 }
 
-/* ============ APP ============ */
-/* ============ ACCOUNT — one ledger, every device ============ */
-/* Lives in the tools drawer. The sync module (src/sync.js) arrives lazily
-   and only when sync-config.js names a server, so this renders nothing on
-   a purely local build. */
-function CloudAccount({ cloud, account, syncState, onAccount, toolRow, hint }) {
-  const [open, setOpen] = useState(false);
-  const [email, setEmail] = useState("");
-  const [pw, setPw] = useState("");
-  const [msg, setMsg] = useState("");
-  const [busy, setBusy] = useState(false);
-  if (!cloud) return null;
-  const go = (fn) => async (e) => {
-    e.preventDefault();
-    setBusy(true); setMsg("");
-    try { await fn(email, pw); onAccount(cloud.getAccount()?.email || null); setOpen(false); }
-    catch (err) { setMsg(err.message); }
-    finally { setBusy(false); }
-  };
-  if (account) return (
-    <div style={{ ...toolRow, cursor: "default" }}>
-      <span title={syncState === "live" ? "Synced live" : "Waiting for signal"}
-        style={{ width: 9, height: 9, borderRadius: "50%", flex: "0 0 auto", background: syncState === "live" ? "#7fb069" : T.dim, boxShadow: syncState === "live" ? "0 0 6px #7fb06988" : "none" }} />
-      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{account}</span>
-      <span style={{ ...hint, cursor: "pointer", textDecoration: "underline dotted" }}
-        onClick={() => { cloud.signOut(); onAccount(null); }}>sign out</span>
-    </div>
-  );
-  if (!open) return (
-    <button style={toolRow} onClick={() => setOpen(true)}>
-      <Icon name="share" size={15} /> Account sync <span style={hint}>live across devices</span>
-    </button>
-  );
-  const field = { width: "100%", boxSizing: "border-box", padding: "9px 12px", fontSize: 15, background: "#241a10", color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 6, outline: "none" };
-  const actBtn = (solid) => ({ flex: 1, padding: "9px 0", fontSize: 14, fontFamily: "inherit", borderRadius: 6, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1,
-    background: solid ? T.gold : "transparent", color: solid ? "#141210" : T.gold, border: `1px solid ${T.gold}` });
-  return (
-    <form onSubmit={go(cloud.signIn)} style={{ display: "grid", gap: 8, padding: "9px 12px" }}>
-      <input type="email" required autoFocus placeholder="email" value={email} onChange={(e) => setEmail(e.target.value)} style={field} />
-      <input type="password" required minLength={8} placeholder="password" value={pw} onChange={(e) => setPw(e.target.value)} style={field} />
-      <div style={{ display: "flex", gap: 8 }}>
-        <button type="submit" disabled={busy} style={actBtn(true)}>Sign in</button>
-        <button type="button" disabled={busy} onClick={go(cloud.register)} style={actBtn(false)}>Create account</button>
-      </div>
-      {msg && <div style={{ color: "#d76a76", fontSize: 12.5 }}>{msg}</div>}
-    </form>
-  );
-}
-
 export default function App() {
   const [chars, setChars] = useState(null);
   const [view, setView] = useState("roster");
@@ -8221,15 +7650,15 @@ export default function App() {
   const [leveling, setLeveling] = useState(false);
   const [customs, setCustoms] = useState(EMPTY_CUSTOM);
   const [ioMsg, setIoMsg] = useState("");
-  const [toolsOpen, setToolsOpen] = useState(false); // the quiet drawer: homebrew, backups, account
-  const [srcOff, setSrcOff] = useState(() => new Set()); // sourcebooks turned off
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [srcOff, setSrcOff] = useState(() => new Set());
   const [sourcesOpen, setSourcesOpen] = useState(false);
-  const [cloud, setCloud] = useState(null);     // the lazily-loaded sync module
-  const [account, setAccount] = useState(null); // signed-in email
+  const [cloud, setCloud] = useState(null);
+  const [account, setAccount] = useState(null);
   const [syncState, setSyncState] = useState("offline");
-  const stateRef = useRef({});                  // live state for the sync handlers
+  const stateRef = useRef({});
   stateRef.current = { chars, customs, srcOff };
-  const preload = useRef(null); // pushes made before the sync module lands, replayed on arrival
+  const preload = useRef(null);
   const applySrcOff = (next) => { stateRef.current.srcOff = next; __SRC_OFF = next; setSrcOff(next); saveSrcPrefs(next); cloud ? cloud.pushPrefs([...next]) : (preload.current = { ...preload.current, prefs: [...next] }); };
   const toggleSource = (name) => {
     const next = new Set(srcOff);
@@ -8244,20 +7673,16 @@ export default function App() {
       setSrcOff(srcPrefs);
       let effective = stored;
       if (base) {
-        // stored customs layer over the built-in compendium; the user's versions win
         effective = mergeCompendium(stored, base).customs;
         const slim = stripBase(stored, base);
-        // legacy stores carried a full imported copy of the base — shed it once
         const shrunk = (stored.spells || []).length !== slim.spells.length || (stored.items || []).length !== slim.items.length
           || (stored.feats || []).length !== slim.feats.length || Object.keys(stored.featureTexts || {}).length !== Object.keys(slim.featureTexts).length
           || Object.values(stored.subs || {}).flat().length !== Object.values(slim.subs).flat().length;
         if (shrunk) saveCustom(slim);
       }
-      // legacy stores (or imports parsed before the fold) may still carry starred twins
       effective = { ...effective, spells: foldStarredSpells(effective.spells || []) };
       setCustoms(effective);
 
-      // characters may reference spells by their old starred names — point them at the plain entry
       const names = new Set(effective.spells.map((sp) => sp.name));
       let starFixes = 0;
       const fixName = (n) => {
@@ -8285,7 +7710,6 @@ export default function App() {
       setChars(starFixes ? migrated : cs);
     })();
   }, []);
-  /* ---- account sync: module boots lazily once the vault is open ---- */
   const booted = chars !== null;
   useEffect(() => {
     if (!booted || !SYNC_URL) return;
@@ -8293,18 +7717,15 @@ export default function App() {
       const p = preload.current; preload.current = null;
       if (p) { (p.del || []).forEach(m.deleteChar); p.chars && m.pushChars(p.chars, p.prevChars); p.custom && m.pushCustom(p.custom); p.prefs && m.pushPrefs(p.prefs); }
       setCloud(m); setAccount(m.getAccount()?.email || null);
-    }).catch(() => addEventListener("online", load, { once: true })); // a failed chunk fetch retries when signal returns
+    }).catch(() => addEventListener("online", load, { once: true }));
     load();
   }, [booted]);
   useEffect(() => {
     if (!cloud || !account) return;
-    // handlers write stateRef in the same tick: a burst of frames between
-    // renders must each see the one before, or changes silently drop
     return cloud.start({
       getLocal: () => ({ chars: stateRef.current.chars || [], custom: stripBase(stateRef.current.customs, __BASE), prefs: [...stateRef.current.srcOff] }),
       chars: (arr) => { stateRef.current.chars = arr; setChars(arr); saveChars(arr); },
       custom: (stored, first) => {
-        // a first sign-in folds this device's own homebrew in and sends the union up
         const base = first ? unionCustoms(stored, stripBase(stateRef.current.customs, __BASE)) : stored;
         const eff = __BASE ? mergeCompendium(base, __BASE).customs : base;
         const folded = { ...eff, spells: foldStarredSpells(eff.spells || []) };
@@ -8313,7 +7734,7 @@ export default function App() {
         if (first) cloud.pushCustom(s);
       },
       prefs: (off) => { const s = new Set(off); stateRef.current.srcOff = s; __SRC_OFF = s; setSrcOff(s); saveSrcPrefs(s); },
-      photo: (id, p) => { // an oversized portrait was re-shrunk for the wire; the local copy follows
+      photo: (id, p) => {
         const next = (stateRef.current.chars || []).map((c) => (c.id === id ? { ...c, photo: p } : c));
         stateRef.current.chars = next; setChars(next); saveChars(next);
       },
@@ -8322,8 +7743,8 @@ export default function App() {
       signedOut: () => setAccount(null),
     });
   }, [cloud, account]);
-  useEffect(() => { // a remote hand can delete the soul under an open sheet
-    if (chars && activeId && !chars.some((c) => c.id === activeId)) { setActiveId(null); setLeveling(false); setView((v) => (v === "sheet" ? "roster" : v)); }
+  useEffect(() => { // Navigate back to the roster if a remote sync deletion removes the active character.
+    if (activeId && chars && !chars.some((c) => c.id === activeId)) { setActiveId(null); setView((v) => (v === "sheet" ? "roster" : v)); }
   }, [chars, activeId]);
 
   const persistCustom = (next) => { stateRef.current.customs = next; setCustoms(next); const s = stripBase(next, __BASE); saveCustom(s); cloud ? cloud.pushCustom(s) : (preload.current = { ...preload.current, custom: s }); };
@@ -8409,7 +7830,7 @@ export default function App() {
                       r.readAsText(f);
                     }} />
                 </label>
-                <CloudAccount cloud={cloud} account={account} syncState={syncState} onAccount={setAccount} toolRow={toolRow} hint={hint} />
+                <AccountPanel cloud={cloud} account={account} syncState={syncState} onAccount={setAccount} toolRow={toolRow} hint={hint} theme={T} />
                 {ioMsg && <div style={{ color: T.dim, fontSize: 13, padding: "4px 12px 8px" }}>{ioMsg}</div>}
               </div>
             );
@@ -8469,16 +7890,7 @@ export default function App() {
   );
 }
 
-/* ============ THE SHARED SHEET — a read-only window on one soul ============ */
-/* Rendered instead of the gated app when the URL carries a #share= fragment
-   (main.jsx makes that call). The character lives only in memory here: dice
-   and trackers work at the table, but a refresh restores the snapshot, and
-   the owner's ledger is a world away. Reusing <Sheet/> keeps this view
-   pixel-identical to the owner's — and every future sheet feature arrives
-   in shared links for free. */
 export function SharedView({ token, onExit }) {
-  // viewers are often ledger-keepers themselves — this door steps back into the
-  // app in place, no reload, their own vault untouched
   const ledgerDoor = onExit && (
     <span onClick={onExit} style={{ color: T.gold, cursor: "pointer", textDecoration: "underline dotted", whiteSpace: "nowrap" }}>
       Open your own ledger →
@@ -8490,10 +7902,8 @@ export function SharedView({ token, onExit }) {
     (async () => {
       try {
         const [payload, base] = await Promise.all([decodeShare(token), fetchBaseCompendium()]);
-        // the traveling homebrew slice layers over the base compendium, exactly as the owner's does
         const customs = base ? mergeCompendium(payload.x, base).customs : payload.x;
         if (!live) return;
-        // the tab and any bookmark name the soul, not just the app
         document.title = `${payload.c.name} · ${payload.c.classes.map((c) => `${c.name} ${c.level}`).join(" / ")} — The Adventurer's Ledger`;
         setState({ status: "ok", ch: payload.c, customs, when: payload.t });
       } catch {

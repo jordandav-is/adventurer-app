@@ -1,21 +1,38 @@
 name: Deploy Sync Worker
 
-# Redeploys worker/ on push — but only when a CLOUDFLARE_API_TOKEN repo
-# secret exists (Settings → Secrets → Actions). Without it this workflow
-# exits quietly and `npx wrangler deploy` from worker/ remains the way.
 on:
   push:
     branches: [main]
-    paths: ["worker/**"]
+    paths: ["worker/**", ".github/workflows/deploy-worker.yml"]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
-      - if: env.CLOUDFLARE_API_TOKEN != ''
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci
         working-directory: worker
-        run: npx wrangler@4 deploy
+      - run: npm test
+        working-directory: worker
+      - run: |
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "Missing required variable CLOUDFLARE_ACCOUNT_ID" >&2; exit 1; }
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      - run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "Missing required secret CLOUDFLARE_API_TOKEN" >&2; exit 1; }
+          npm run deploy
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}

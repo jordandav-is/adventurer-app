@@ -1,52 +1,73 @@
 # The Adventurer's Ledger
 
-5e SRD character forge — full multiclass rules, Mystic Arcanum, pact magic, live play tracking (HP / slots / rests), homebrew forge with FightClub5 XML import, export/import backups.
+5e SRD character sheet and ledger application supporting multiclassing, spellcasting, inventory, live play tracking (HP, spell slots, rests), homebrew forge with FightClub5 XML import, and JSON backup export/import. Browser storage uses IndexedDB with a localStorage fallback.
 
-## Run locally
-```
-npm install
+## Local development
+
+### Web application
+```sh
+npm ci
 npm run dev
 ```
 
-## Deploy (GitHub Pages)
-Every `git push` to `main` rebuilds and redeploys automatically via `.github/workflows/deploy.yml` (the workflow auto-enables Pages on first run — no Settings step needed). Site: https://jordandav-is.github.io/adventurer-app/
-
-Note: building Pages from a **private** repo requires a paid GitHub plan (Pro). If the deploy workflow fails with a Pages/plan error, either upgrade or make the repo public — the passphrase gate keeps the app itself locked either way.
+### Sync Worker (optional)
+```sh
+cd worker
+npm ci
+npm run dev
+```
 
 ## Access control
-The Pages URL is technically reachable by anyone (GitHub only offers truly private Pages on Enterprise Cloud), so the app is wrapped in a passphrase gate (`src/gate.jsx`): visitors see only a locked door until they enter the passphrase. Unlocking is remembered per device. Only a salted SHA-256 hash lives in the repo (`src/gate-config.js`) — instructions for changing the passphrase are in that file. Characters are stored in each device's own localStorage, so even someone past the gate sees only their own empty ledger, never your data.
 
-## Account sync (optional, free)
-Characters normally live only in each device's own storage. Account sync adds the missing bridge: register once (email + password, behind the passphrase gate), sign in on any device, and every character, homebrew entry, and sourcebook preference stays **live** across all of them — an HP scratch on the desktop shows on the phone the same second. Signed out (or with sync unconfigured), the app is exactly what it always was: fully local, no network calls, and the sync code isn't even in the bundle.
+The deployed web application is protected by a client-side passphrase gate (`src/gate.jsx`). It computes a PBKDF2-SHA256 hash (600,000 iterations) from the entered passphrase and checks it against public parameters in `src/gate-config.js`.
 
-The backend is a single Cloudflare Worker (`worker/`) with one Durable Object per account — everything on Cloudflare's **free plan** (SQLite-backed Durable Objects; idle connections hibernate and cost nothing). One-time setup:
+The gate is a client-side filter for static hosting, not cryptographic backend authorization. Local character data remains in the browser (IndexedDB with localStorage fallback), so unauthenticated visitors see only their own empty local state. During account registration, the raw passphrase is submitted over TLS and verified server-side using the committed gate parameters.
 
+## Account sync architecture
+
+Account sync is optional. When unconfigured or signed out, the application operates strictly locally with zero background network requests.
+
+When configured, sync runs on a Cloudflare Worker backed by SQLite Durable Objects:
+- **Identity singleton DO**: Maps normalized email addresses to random opaque account UUIDs and coordinates idempotent registration lifecycles.
+- **Account DO**: One Durable Object per random account UUID. Manages character data, live WebSocket connections, session token digests, password credentials, and single-use WebSocket connection tickets.
+- **Offline support and conflict resolution**: Local changes queue in an offline outbox and sync over WebSocket upon reconnecting. Conflicts resolve using server-authoritative last-write-wins (LWW, where stored records win when `incoming.ts <= stored.ts`) with permanent tombstones for deletions.
+
+## Authentication and credentials
+
+- **Email/password registration**: Account registration (`/register`) requires an email, password, the ledger gate passphrase, and a client-generated registration ID. The Worker validates input lengths, verifies the raw passphrase server-side against committed gate parameters (the public gate hash is never accepted as an authorization bearer), and idempotently provisions the account via the Identity singleton.
+- **Unverified login identifier and no recovery**: Email serves solely as an unverified login identifier to namespace accounts. There is deliberately no email verification, email delivery, or password reset mechanism. Forgotten passwords cannot be recovered.
+- **Password storage and verification**: Passwords cross TLS to the Worker and are stored exclusively on the Account DO as versioned PBKDF2-SHA256 hashes with random 16-byte salts and 600,000 iterations using WebCrypto. Passwords are never stored client-side. To prevent user enumeration and timing attacks, failed logins (unknown accounts or incorrect passwords) perform uniform KDF work and return a fixed delay and response. Correct credentials always succeed with no account lockout.
+- **Password change**: Signed-in users can update their password (`/password`) by providing their current password and a new password. The Worker atomically verifies the active session and current password, updates the hash record, revokes all existing sessions, tickets, and active WebSockets, and returns a fresh session token.
+- **Sessions and tickets**: Authentication tokens and tickets are stored as SHA-256 digests only. Sessions expire after 7 days (absolute) or 24 hours of inactivity, capped at 10 concurrent sessions per account. WebSocket connections use short-lived (60-second), single-use tickets (`/ws-ticket`), keeping authorization tokens out of WebSocket URLs.
+
+## Deployment and configuration
+
+### 1. Cloudflare API Token
+Create a Cloudflare API token with the permission:
+- `Account` → `Workers Scripts` → `Edit`
+
+### 2. GitHub Actions configuration
+Configure repository variables and secrets for GitHub Actions workflows (`.github/workflows/deploy.yml` and `.github/workflows/deploy-worker.yml`). Both workflows fail immediately if required configuration is missing.
+
+Set variables:
+```sh
+gh variable set SYNC_URL --body "https://ledger-sync.<your-subdomain>.workers.dev"
+gh variable set CLOUDFLARE_ACCOUNT_ID --body "<cloudflare-account-id>"
 ```
-cd worker && npx wrangler deploy
+
+Set secret (paste token at the prompt to avoid recording secrets in shell history):
+```sh
+gh secret set CLOUDFLARE_API_TOKEN
 ```
 
-Wrangler opens a browser to authorize your Cloudflare account, then prints the Worker URL (`https://ledger-sync.<your-subdomain>.workers.dev`). Paste it into `src/sync-config.js` and push — the account UI appears in the tools drawer (⋯) on the next deploy. Pushes that touch `worker/` also auto-redeploy the Worker if a `CLOUDFLARE_API_TOKEN` repo secret exists (see `.github/workflows/deploy-worker.yml`); otherwise just rerun the command above after editing the worker.
+### 3. Continuous deployment
+- **GitHub Pages**: Pushes to `main` install dependencies via `npm ci`, validate `SYNC_URL`, build with Node 24, and deploy `dist/` via `deploy.yml`. Site: https://jordandav-is.github.io/adventurer-app/
+- **Worker**: Pushes modifying `worker/**` install dependencies via `npm ci`, run tests, validate `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`, and deploy via `deploy-worker.yml` using `npm run deploy`.
 
-Worth knowing:
-- **Passwords never travel**: the device derives a key (PBKDF2, 600k rounds — the gate's own recipe) and the server stores only a salted hash of that. Registration also requires the app's gate passphrase, so strangers who find the URL can't create accounts.
-- **Offline play**: edits made without signal wait in a local outbox and ride up when the connection returns; conflicts resolve last-writer-wins per character.
-- **Signing in merges**: characters already on the device join the account rather than being replaced; signing out leaves the device's copy in place.
-- **Lost password**: there's no reset email at $0 — the keeper clears the account's credentials (data survives) with the `/reset` call documented at the top of `worker/worker.js`, and the player registers again with the same email.
-- Portraits over ~90KB are re-shrunk through the same 220px canvas as the upload path before they sync.
+## Share a sheet
 
-## Share a sheet with your DM
-Every character sheet has a share button (top right, next to the **?**). It seals a **read-only snapshot** of that character into a link — the character data itself rides in the URL fragment (compressed, base64url), so there's no server and nothing is uploaded anywhere. Any homebrew the character references (gear, spells, subclass, rules text) travels along inside the link.
+The share button (top right of a character sheet) encodes a read-only snapshot of the character and referenced homebrew into the URL hash fragment as compressed base64url data. The fragment is processed entirely client-side without reaching GitHub or the sync Worker, bypassing the passphrase gate for that single sheet. Dice rolling and rule lookups remain active while trackers and edits are locked. The share tray also generates a character card image containing portrait, stats, and badges.
 
-Whoever opens the link sees just that one character, pixel-identical to your sheet, **without needing the passphrase** — the fragment never even reaches GitHub's servers, and the gate stays shut on everything else. The shared page is truly read-only: every tracker is frozen (no HP, slots, rests, effects, or gear can change), though dice still roll and rules text still opens on a long-press, for use at the table. The link is frozen at the moment you shared it — share again after leveling up for a fresh one.
+## Install on iOS
 
-The share sheet also paints a **character card** (name, class sigil, level, HP, AC — and the portrait, which never rides in the link itself) and attaches it as an image when you share from the tray, so the recipient sees the character, not a favicon. The link's own unfurl preview is necessarily the same for every character — messengers build previews without running JavaScript and never see the `#fragment`, so a static host cannot vary it — which is why the app serves a branded banner there (`public/share-banner.jpg`, baked once; `og:` tags in `index.html` point at the deployed Pages URL) and puts the per-character pixels in the attached card instead.
-
-## Install on iPhone
-Open the Pages URL in **Safari** → Share → **Add to Home Screen**. Runs fullscreen, works offline. Characters live in the phone's localStorage — use **Export ledger** for backups before clearing Safari data.
-
-## Update from Claude Code
-The entire app is `src/App.jsx`. Edit, then:
-```
-git add -A && git commit -m "update" && git push
-```
-Pages redeploys in ~1 minute. Force-quit and reopen the app on the phone to pull the new build (network-first service worker fetches fresh assets automatically when online).
+Open the Pages URL in Safari, tap **Share**, and select **Add to Home Screen**. The app runs fullscreen and functions offline via its service worker. Data is stored in browser storage (IndexedDB with localStorage fallback); use **Export ledger** to create JSON backups before clearing browser data.
