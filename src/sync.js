@@ -240,6 +240,8 @@ async function prep(ch, i, base) {
   let body = ch;
   if (body.photo && body.photo.length > 90000) {
     const p = await shrinkPhoto(body.photo);
+    const cur = (H.getLocal().chars || []).find((x) => x.id === ch.id);
+    if (JSON.stringify(cur) !== JSON.stringify(ch)) return; // the soul moved while the portrait shrank — the newer state pushes itself
     if (p) { H.photo(ch.id, p); body = { ...body, photo: p }; }
     else { const { photo, ...rest } = body; body = rest; } // unreadable portrait stays local-only
   }
