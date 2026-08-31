@@ -1,5 +1,6 @@
 import test, { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import {
   createPasswordRecord,
   verifyPasswordRecord,
@@ -7,6 +8,7 @@ import {
   dummyPasswordWork,
   hashGatePassphrase,
   timingSafeEqualStr,
+  derivePbkdf2Sha256Hex,
   bytesToHex,
   hexToBytes,
 } from "./password.js";
@@ -27,6 +29,19 @@ describe("password module", () => {
 
     const invalid = await verifyPasswordRecord("wrong horse battery staple", record);
     assert.equal(invalid, false);
+  });
+
+  it("matches standard Node crypto pbkdf2Sync output across iteration counts", async () => {
+    const password = "standardPasswordTest";
+    const saltBytes = new Uint8Array([10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160]);
+
+    const nodeHash1k = crypto.pbkdf2Sync(password, saltBytes, 1000, 32, "sha256").toString("hex");
+    const nobleHash1k = await derivePbkdf2Sha256Hex(password, saltBytes, 1000);
+    assert.equal(nobleHash1k, nodeHash1k);
+
+    const nodeHash600k = crypto.pbkdf2Sync(password, saltBytes, 600000, 32, "sha256").toString("hex");
+    const nobleHash600k = await derivePbkdf2Sha256Hex(password, saltBytes, 600000);
+    assert.equal(nobleHash600k, nodeHash600k);
   });
 
   it("generates distinct salts and hashes for the same password", async () => {
@@ -90,6 +105,9 @@ describe("password module", () => {
     const salt = "edffce3ce9712cbd6f997900359f6dd9";
     const hash = await hashGatePassphrase("testpass", salt, 1000);
     assert.match(hash, /^[0-9a-f]{64}$/i);
+
+    const expected = crypto.pbkdf2Sync("testpass", salt, 1000, 32, "sha256").toString("hex");
+    assert.equal(hash, expected);
   });
 
   it("converts hex and bytes correctly", () => {

@@ -1,3 +1,6 @@
+import { pbkdf2Async } from "@noble/hashes/pbkdf2.js";
+import { sha256 } from "@noble/hashes/sha2.js";
+
 const DUMMY_SALT = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
 const HEX_32_RE = /^[0-9a-f]{32}$/i;
 const HEX_64_RE = /^[0-9a-f]{64}$/i;
@@ -35,24 +38,14 @@ export function timingSafeEqualStr(a, b) {
 
 export async function derivePbkdf2Sha256Hex(password, saltBytes, iterations = 600000) {
   const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(password),
-    "PBKDF2",
-    false,
-    ["deriveBits"]
-  );
-  const bits = await crypto.subtle.deriveBits(
-    {
-      name: "PBKDF2",
-      hash: "SHA-256",
-      salt: saltBytes,
-      iterations,
-    },
-    keyMaterial,
-    256
-  );
-  return bytesToHex(new Uint8Array(bits));
+  const pwdBytes = typeof password === "string" ? enc.encode(password) : password;
+  const salt = typeof saltBytes === "string" ? enc.encode(saltBytes) : saltBytes;
+  const derived = await pbkdf2Async(sha256, pwdBytes, salt, {
+    c: iterations,
+    dkLen: 32,
+    asyncTick: 10,
+  });
+  return bytesToHex(derived);
 }
 
 export function isValidPasswordRecord(record) {

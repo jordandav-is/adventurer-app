@@ -66,6 +66,12 @@ function randomHex(bytesCount = 32) {
     .join("");
 }
 
+async function getAuthWorkStub(env, key) {
+  const digest = await sha256Hex(key);
+  const bucket = parseInt(digest.slice(0, 4), 16) % 16;
+  return env.ACCOUNT.get(env.ACCOUNT.idFromName(`auth-work:${bucket}`));
+}
+
 export default {
   async fetch(req, env) {
     const origin = req.headers.get("origin");
@@ -146,11 +152,17 @@ export default {
       const gateHash = env.GATE_HASH || "faf79b899def21c5e3f3cdce3ac6813f2ac2c01c8b4f9c6cce222cf84ad4aed1";
       const gateIter = Number(env.GATE_ITERATIONS || 600000);
 
-      const computedGateHash = await hashGatePassphrase(passphrase, gateSalt, gateIter);
-      if (!timingSafeEqualStr(computedGateHash, gateHash)) {
+      const authWorkStub = await getAuthWorkStub(env, normEmail);
+      const gateRes = await authWorkStub.verifyGate({
+        passphrase,
+        gateSalt,
+        gateHash,
+        gateIter,
+      });
+
+      if (!gateRes.ok) {
         return err(403, "The gate does not yield.", origin);
       }
-
       const regDigest = await sha256Hex(registrationId);
       const prepRes = await identityStub.prepareRegistration({
         email: normEmail,
@@ -209,11 +221,11 @@ export default {
 
       const account = await identityStub.getAccountByEmail(normEmail);
       if (!account) {
-        await dummyPasswordWork(password);
+        const authWorkStub = await getAuthWorkStub(env, normEmail);
+        await authWorkStub.runDummyPassword(password);
         await new Promise((r) => setTimeout(r, 200));
         return err(401, "Invalid email or password.", origin);
       }
-
       const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromName(account.id));
       const res = await accountStub.loginPassword(password);
       if (!res.ok) {
@@ -250,11 +262,11 @@ export default {
 
       const account = await identityStub.getAccountById(accountId);
       if (!account) {
-        await dummyPasswordWork(currentPassword);
+        const authWorkStub = await getAuthWorkStub(env, accountId);
+        await authWorkStub.runDummyPassword(currentPassword);
         await new Promise((r) => setTimeout(r, 200));
         return err(401, "Unauthorized", origin);
       }
-
       const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromName(accountId));
       const setRes = await accountStub.changePassword({
         token,
@@ -468,6 +480,16 @@ export class Account extends DurableObject {
       CREATE TABLE IF NOT EXISTS auth_state (k TEXT PRIMARY KEY, v TEXT);
     `);
   }
+  async verifyGate({ passphrase, gateSalt, gateHash, gateIter }) {
+    const computed = await hashGatePassphrase(passphrase, gateSalt, gateIter);
+    return { ok: timingSafeEqualStr(computed, gateHash) };
+  }
+
+  async runDummyPassword(password) {
+    await dummyPasswordWork(password);
+    return { ok: true };
+  }
+
 
   purgeSessions() {
     const activeDigests = new Set(
