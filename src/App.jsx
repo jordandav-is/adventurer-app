@@ -7745,7 +7745,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           {shared ? (
             <div style={{ color: ch.notes ? T.ink : T.dim, fontSize: 14, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{ch.notes || "No notes recorded."}</div>
           ) : (
-            <textarea defaultValue={ch.notes || ""} onBlur={(e) => onNotes(e.target.value)} rows={7}
+            <textarea key={ch.notes || ""} defaultValue={ch.notes || ""} onBlur={(e) => onNotes(e.target.value)} rows={7}
               placeholder="Equipment, personality traits, ideals, bonds, flaws, debts owed to ravens…"
               style={{ width: "100%", boxSizing: "border-box", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 16, resize: "vertical", fontFamily: "inherit" }} />
           )}
@@ -8219,7 +8219,8 @@ export default function App() {
   const [syncState, setSyncState] = useState("offline");
   const stateRef = useRef({});                  // live state for the sync handlers
   stateRef.current = { chars, customs, srcOff };
-  const applySrcOff = (next) => { __SRC_OFF = next; setSrcOff(next); saveSrcPrefs(next); cloud?.pushPrefs([...next]); };
+  const preload = useRef(null); // pushes made before the sync module lands, replayed on arrival
+  const applySrcOff = (next) => { stateRef.current.srcOff = next; __SRC_OFF = next; setSrcOff(next); saveSrcPrefs(next); cloud ? cloud.pushPrefs([...next]) : (preload.current = { ...preload.current, prefs: [...next] }); };
   const toggleSource = (name) => {
     const next = new Set(srcOff);
     next.has(name) ? next.delete(name) : next.add(name);
@@ -8278,31 +8279,41 @@ export default function App() {
   const booted = chars !== null;
   useEffect(() => {
     if (!booted || !SYNC_URL) return;
-    import("./sync.js").then((m) => { setCloud(m); setAccount(m.getAccount()?.email || null); });
+    const load = () => import("./sync.js").then((m) => {
+      const p = preload.current; preload.current = null;
+      if (p) { (p.del || []).forEach(m.deleteChar); p.chars && m.pushChars(p.chars); p.custom && m.pushCustom(p.custom); p.prefs && m.pushPrefs(p.prefs); }
+      setCloud(m); setAccount(m.getAccount()?.email || null);
+    }).catch(() => addEventListener("online", load, { once: true })); // a failed chunk fetch retries when signal returns
+    load();
   }, [booted]);
   useEffect(() => {
     if (!cloud || !account) return;
+    // handlers write stateRef in the same tick: a burst of frames between
+    // renders must each see the one before, or changes silently drop
     return cloud.start({
       getLocal: () => ({ chars: stateRef.current.chars || [], custom: stripBase(stateRef.current.customs, __BASE), prefs: [...stateRef.current.srcOff] }),
-      chars: (arr) => { setChars(arr); saveChars(arr); },
+      chars: (arr) => { stateRef.current.chars = arr; setChars(arr); saveChars(arr); },
       custom: (stored) => {
         const eff = __BASE ? mergeCompendium(stored, __BASE).customs : stored;
         const folded = { ...eff, spells: foldStarredSpells(eff.spells || []) };
-        setCustoms(folded); saveCustom(stripBase(folded, __BASE));
+        stateRef.current.customs = folded; setCustoms(folded); saveCustom(stripBase(folded, __BASE));
       },
-      prefs: (off) => { const s = new Set(off); __SRC_OFF = s; setSrcOff(s); saveSrcPrefs(s); },
+      prefs: (off) => { const s = new Set(off); stateRef.current.srcOff = s; __SRC_OFF = s; setSrcOff(s); saveSrcPrefs(s); },
       photo: (id, p) => { // an oversized portrait was re-shrunk for the wire; the local copy follows
         const next = (stateRef.current.chars || []).map((c) => (c.id === id ? { ...c, photo: p } : c));
-        setChars(next); saveChars(next);
+        stateRef.current.chars = next; setChars(next); saveChars(next);
       },
       status: setSyncState,
       error: setIoMsg,
       signedOut: () => setAccount(null),
     });
   }, [cloud, account]);
+  useEffect(() => { // a remote hand can delete the soul under an open sheet
+    if (chars && activeId && !chars.some((c) => c.id === activeId)) { setActiveId(null); setLeveling(false); setView((v) => (v === "sheet" ? "roster" : v)); }
+  }, [chars, activeId]);
 
-  const persistCustom = (next) => { setCustoms(next); const s = stripBase(next, __BASE); saveCustom(s); cloud?.pushCustom(s); };
-  const persist = (next) => { setChars(next); saveChars(next); cloud?.pushChars(next); };
+  const persistCustom = (next) => { stateRef.current.customs = next; setCustoms(next); const s = stripBase(next, __BASE); saveCustom(s); cloud ? cloud.pushCustom(s) : (preload.current = { ...preload.current, custom: s }); };
+  const persist = (next) => { stateRef.current.chars = next; setChars(next); saveChars(next); cloud ? cloud.pushChars(next) : (preload.current = { ...preload.current, chars: next }); };
 
   if (chars === null) return (
     <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", color: T.dim, fontFamily: "Georgia, serif" }}>
@@ -8420,7 +8431,7 @@ export default function App() {
           onSpells={(sp) => persist(chars.map((c) => (c.id === active.id ? { ...c, spells: sp } : c)))}
           onNotes={(n) => persist(chars.map((c) => (c.id === active.id ? { ...c, notes: n } : c)))}
           onInvocations={(inv) => persist(chars.map((c) => (c.id === active.id ? { ...c, invocations: inv } : c)))} onLevelUp={() => setLeveling(true)}
-          onDelete={() => { cloud?.deleteChar(active.id); persist(chars.filter((c) => c.id !== active.id)); setView("roster"); }}
+          onDelete={() => { cloud ? cloud.deleteChar(active.id) : (preload.current = { ...preload.current, del: [...(preload.current?.del || []), active.id] }); persist(chars.filter((c) => c.id !== active.id)); setView("roster"); }}
           onPhoto={(p) => persist(chars.map((c) => (c.id === active.id ? { ...c, photo: p } : c)))}
           onSources={() => setSourcesOpen(true)} />
       )}

@@ -104,10 +104,13 @@ function kick() { if (!alive && getAccount()) { tries = 0; clearTimeout(timer); 
 function connect() {
   const a = getAccount();
   if (!a) return;
+  if (ws) { ws.onmessage = ws.onclose = ws.onerror = null; try { ws.close(); } catch { /* noop */ } alive = false; } // one wire at a time
   H.status("reaching");
   let dump = new Map(); // the connect dump collects here until "synced"
-  ws = new WebSocket(SYNC_URL.replace(/^http/, "ws") + `/ws?email=${encodeURIComponent(a.email)}&token=${encodeURIComponent(a.token)}`);
-  ws.onmessage = (ev) => {
+  const sock = new WebSocket(SYNC_URL.replace(/^http/, "ws") + `/ws?email=${encodeURIComponent(a.email)}&token=${encodeURIComponent(a.token)}`);
+  ws = sock;
+  sock.onmessage = (ev) => {
+    if (ws !== sock) return; // a newer wire has taken over
     if (ev.data === "pong") return;
     let m; try { m = JSON.parse(ev.data); } catch { return; }
     if (m.t === "ch") {
@@ -133,10 +136,11 @@ function connect() {
       alive = true; tries = 0;
       H.status("live");
       adopt(d);
-      for (const [k, e] of outbox) ws.send(wire(k, e)); // surviving queued changes ride up after the dump
+      for (const [k, e] of outbox) sock.send(wire(k, e)); // surviving queued changes ride up after the dump
     }
   };
-  ws.onclose = (ev) => {
+  sock.onclose = (ev) => {
+    if (ws !== sock) return; // superseded — its state is no longer ours to touch
     ws = null; alive = false;
     H.status("offline");
     if (ev.code === 4001) { // token revoked — and the outbox must not leak into the next account
@@ -145,7 +149,7 @@ function connect() {
     }
     timer = setTimeout(connect, Math.min(60000, 1000 * 2 ** tries++));
   };
-  ws.onerror = () => { try { ws?.close(); } catch { /* noop */ } };
+  sock.onerror = () => { try { sock.close(); } catch { /* noop */ } };
 }
 
 /* Fields the wire may omit (a trimmed chronicle, an unreadable portrait)
