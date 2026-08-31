@@ -36,3 +36,41 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      - run: |
+          set -euo pipefail
+          TAIL_LOG="${RUNNER_TEMP}/wrangler-tail.log"
+          : > "$TAIL_LOG"
+          timeout 20s npx wrangler tail --format pretty > "$TAIL_LOG" 2>&1 &
+          TAIL_PID=$!
+          cleanup() {
+            kill "$TAIL_PID" 2>/dev/null || true
+            wait "$TAIL_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          sleep 3
+
+          RESP_FILE="${RUNNER_TEMP}/login-probe-response.txt"
+          HTTP_STATUS=$(curl -s -o "$RESP_FILE" -w "%{http_code}" --max-time 10 \
+            -H "Origin: https://jordandav-is.github.io" \
+            -H "Content-Type: application/json" \
+            -d '{"email":"diagnostic-probe@example.com","password":"DiagnosticPassword123!"}' \
+            "${WORKER_URL%/}/login" || echo "000")
+
+          sleep 2
+          cleanup
+          trap - EXIT
+
+          if [ "$HTTP_STATUS" != "401" ]; then
+            echo "Probe failed with status $HTTP_STATUS" >&2
+            echo "Response body:" >&2
+            cat "$RESP_FILE" >&2
+            echo "Wrangler tail output:" >&2
+            cat "$TAIL_LOG" >&2
+            exit 1
+          fi
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          WORKER_URL: ${{ vars.SYNC_URL }}
