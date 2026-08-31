@@ -130,13 +130,14 @@ export class Account extends DurableObject {
     let m; try { m = JSON.parse(msg); } catch { return; }
     if ((m.t !== "put" && m.t !== "del") || !DATA_KEY.test(m.k || "")) return;
     if (m.t === "put" && (typeof m.v !== "string" || m.v.length > 1500000)) return void ws.send(JSON.stringify({ t: "err", n: m.n, m: "too large" }));
+    const ts = Math.min(Number(m.ts) || 0, Date.now()); // a fast device clock cannot stamp the future and outrank honest hands
     try {
-      m.t === "put" ? this.put(m.k, m.v, Number(m.ts) || 0) : this.del(m.k);
+      m.t === "put" ? this.put(m.k, m.v, ts) : this.del(m.k);
     } catch { // SQLITE_FULL — the free plan's 1GB per account, a distant shore
       return void ws.send(JSON.stringify({ t: "err", n: m.n, m: "storage full" }));
     }
     ws.send(JSON.stringify({ t: "ack", n: m.n }));
-    const out = JSON.stringify({ t: "ch", k: m.k, v: m.t === "put" ? m.v : null, ts: Number(m.ts) || 0 });
+    const out = JSON.stringify({ t: "ch", k: m.k, v: m.t === "put" ? m.v : null, ts });
     for (const sock of this.ctx.getWebSockets()) {
       if (sock !== ws && sock.readyState === WebSocket.OPEN) try { sock.send(out); } catch { /* mid-close */ }
     }
