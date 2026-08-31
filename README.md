@@ -16,6 +16,24 @@ Note: building Pages from a **private** repo requires a paid GitHub plan (Pro). 
 ## Access control
 The Pages URL is technically reachable by anyone (GitHub only offers truly private Pages on Enterprise Cloud), so the app is wrapped in a passphrase gate (`src/gate.jsx`): visitors see only a locked door until they enter the passphrase. Unlocking is remembered per device. Only a salted SHA-256 hash lives in the repo (`src/gate-config.js`) — instructions for changing the passphrase are in that file. Characters are stored in each device's own localStorage, so even someone past the gate sees only their own empty ledger, never your data.
 
+## Account sync (optional, free)
+Characters normally live only in each device's own storage. Account sync adds the missing bridge: register once (email + password, behind the passphrase gate), sign in on any device, and every character, homebrew entry, and sourcebook preference stays **live** across all of them — an HP scratch on the desktop shows on the phone the same second. Signed out (or with sync unconfigured), the app is exactly what it always was: fully local, no network calls, and the sync code isn't even in the bundle.
+
+The backend is a single Cloudflare Worker (`worker/`) with one Durable Object per account — everything on Cloudflare's **free plan** (SQLite-backed Durable Objects; idle connections hibernate and cost nothing). One-time setup:
+
+```
+cd worker && npx wrangler deploy
+```
+
+Wrangler opens a browser to authorize your Cloudflare account, then prints the Worker URL (`https://ledger-sync.<your-subdomain>.workers.dev`). Paste it into `src/sync-config.js` and push — the account UI appears in the tools drawer (⋯) on the next deploy. Pushes that touch `worker/` also auto-redeploy the Worker if a `CLOUDFLARE_API_TOKEN` repo secret exists (see `.github/workflows/deploy-worker.yml`); otherwise just rerun the command above after editing the worker.
+
+Worth knowing:
+- **Passwords never travel**: the device derives a key (PBKDF2, 600k rounds — the gate's own recipe) and the server stores only a salted hash of that. Registration also requires the app's gate passphrase, so strangers who find the URL can't create accounts.
+- **Offline play**: edits made without signal wait in a local outbox and ride up when the connection returns; conflicts resolve last-writer-wins per character.
+- **Signing in merges**: characters already on the device join the account rather than being replaced; signing out leaves the device's copy in place.
+- **Lost password**: there's no reset email at $0 — the keeper clears the account's credentials (data survives) with the `/reset` call documented at the top of `worker/worker.js`, and the player registers again with the same email.
+- Portraits over ~90KB are re-shrunk through the same 220px canvas as the upload path before they sync.
+
 ## Share a sheet with your DM
 Every character sheet has a share button (top right, next to the **?**). It seals a **read-only snapshot** of that character into a link — the character data itself rides in the URL fragment (compressed, base64url), so there's no server and nothing is uploaded anywhere. Any homebrew the character references (gear, spells, subclass, rules text) travels along inside the link.
 

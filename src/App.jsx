@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { SYNC_URL } from "./sync-config.js";
 
 /* ============ SRD 5.1 DATA (CC-BY-4.0) ============ */
 
@@ -3105,6 +3106,16 @@ function mergeLedger(payload, chars, customs) {
   const haveSpells = new Set(mergedCustoms.spells.map((s) => s.name));
   mergedCustoms.spells.push(...(pc.spells || []).filter((s) => s?.name && !haveSpells.has(s.name)));
   return { chars: [...chars, ...incoming], customs: mergedCustoms, added: incoming.length };
+}
+
+/* Union of two homebrew collections, base winning name clashes — the first
+   sign-in on a device that already forged its own homebrew folds both sides
+   together instead of letting either erase the other. */
+function unionCustoms(base, add) {
+  const by = (a = [], b = []) => { const have = new Set(a.map((x) => x?.name)); return [...a, ...b.filter((x) => x?.name && !have.has(x.name))]; };
+  const subs = {};
+  for (const cls of new Set([...Object.keys(base.subs || {}), ...Object.keys(add.subs || {})])) subs[cls] = by(base.subs?.[cls], add.subs?.[cls]);
+  return { subs, feats: by(base.feats, add.feats), spells: by(base.spells, add.spells), items: by(base.items, add.items), featureTexts: { ...add.featureTexts, ...base.featureTexts } };
 }
 
 const allSubs = (cls, customs) => CLASSES[cls].subs.concat((customs?.subs?.[cls] || []).map((s) => s.name).filter((n) => !CLASSES[cls].subs.includes(n)));
@@ -7744,7 +7755,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           {shared ? (
             <div style={{ color: ch.notes ? T.ink : T.dim, fontSize: 14, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{ch.notes || "No notes recorded."}</div>
           ) : (
-            <textarea defaultValue={ch.notes || ""} onBlur={(e) => onNotes(e.target.value)} rows={7}
+            <textarea key={ch.notes || ""} defaultValue={ch.notes || ""} onBlur={(e) => onNotes(e.target.value)} rows={7}
               placeholder="Equipment, personality traits, ideals, bonds, flaws, debts owed to ravens…"
               style={{ width: "100%", boxSizing: "border-box", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 16, resize: "vertical", fontFamily: "inherit" }} />
           )}
@@ -8155,6 +8166,54 @@ function HomebrewForge({ customs, onSave, onBack }) {
 }
 
 /* ============ APP ============ */
+/* ============ ACCOUNT — one ledger, every device ============ */
+/* Lives in the tools drawer. The sync module (src/sync.js) arrives lazily
+   and only when sync-config.js names a server, so this renders nothing on
+   a purely local build. */
+function CloudAccount({ cloud, account, syncState, onAccount, toolRow, hint }) {
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (!cloud) return null;
+  const go = (fn) => async (e) => {
+    e.preventDefault();
+    setBusy(true); setMsg("");
+    try { await fn(email, pw); onAccount(cloud.getAccount()?.email || null); setOpen(false); }
+    catch (err) { setMsg(err.message); }
+    finally { setBusy(false); }
+  };
+  if (account) return (
+    <div style={{ ...toolRow, cursor: "default" }}>
+      <span title={syncState === "live" ? "Synced live" : "Waiting for signal"}
+        style={{ width: 9, height: 9, borderRadius: "50%", flex: "0 0 auto", background: syncState === "live" ? "#7fb069" : T.dim, boxShadow: syncState === "live" ? "0 0 6px #7fb06988" : "none" }} />
+      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{account}</span>
+      <span style={{ ...hint, cursor: "pointer", textDecoration: "underline dotted" }}
+        onClick={() => { cloud.signOut(); onAccount(null); }}>sign out</span>
+    </div>
+  );
+  if (!open) return (
+    <button style={toolRow} onClick={() => setOpen(true)}>
+      <Icon name="share" size={15} /> Account sync <span style={hint}>live across devices</span>
+    </button>
+  );
+  const field = { width: "100%", boxSizing: "border-box", padding: "9px 12px", fontSize: 15, background: "#241a10", color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 6, outline: "none" };
+  const actBtn = (solid) => ({ flex: 1, padding: "9px 0", fontSize: 14, fontFamily: "inherit", borderRadius: 6, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1,
+    background: solid ? T.gold : "transparent", color: solid ? "#141210" : T.gold, border: `1px solid ${T.gold}` });
+  return (
+    <form onSubmit={go(cloud.signIn)} style={{ display: "grid", gap: 8, padding: "9px 12px" }}>
+      <input type="email" required autoFocus placeholder="email" value={email} onChange={(e) => setEmail(e.target.value)} style={field} />
+      <input type="password" required minLength={8} placeholder="password" value={pw} onChange={(e) => setPw(e.target.value)} style={field} />
+      <div style={{ display: "flex", gap: 8 }}>
+        <button type="submit" disabled={busy} style={actBtn(true)}>Sign in</button>
+        <button type="button" disabled={busy} onClick={go(cloud.register)} style={actBtn(false)}>Create account</button>
+      </div>
+      {msg && <div style={{ color: "#d76a76", fontSize: 12.5 }}>{msg}</div>}
+    </form>
+  );
+}
+
 export default function App() {
   const [chars, setChars] = useState(null);
   const [view, setView] = useState("roster");
@@ -8162,10 +8221,16 @@ export default function App() {
   const [leveling, setLeveling] = useState(false);
   const [customs, setCustoms] = useState(EMPTY_CUSTOM);
   const [ioMsg, setIoMsg] = useState("");
-  const [toolsOpen, setToolsOpen] = useState(false); // the quiet drawer: homebrew, export, import
+  const [toolsOpen, setToolsOpen] = useState(false); // the quiet drawer: homebrew, backups, account
   const [srcOff, setSrcOff] = useState(() => new Set()); // sourcebooks turned off
   const [sourcesOpen, setSourcesOpen] = useState(false);
-  const applySrcOff = (next) => { __SRC_OFF = next; setSrcOff(next); saveSrcPrefs(next); };
+  const [cloud, setCloud] = useState(null);     // the lazily-loaded sync module
+  const [account, setAccount] = useState(null); // signed-in email
+  const [syncState, setSyncState] = useState("offline");
+  const stateRef = useRef({});                  // live state for the sync handlers
+  stateRef.current = { chars, customs, srcOff };
+  const preload = useRef(null); // pushes made before the sync module lands, replayed on arrival
+  const applySrcOff = (next) => { stateRef.current.srcOff = next; __SRC_OFF = next; setSrcOff(next); saveSrcPrefs(next); cloud ? cloud.pushPrefs([...next]) : (preload.current = { ...preload.current, prefs: [...next] }); };
   const toggleSource = (name) => {
     const next = new Set(srcOff);
     next.has(name) ? next.delete(name) : next.add(name);
@@ -8220,8 +8285,53 @@ export default function App() {
       setChars(starFixes ? migrated : cs);
     })();
   }, []);
-  const persistCustom = (next) => { setCustoms(next); saveCustom(stripBase(next, __BASE)); };
-  const persist = (next) => { setChars(next); saveChars(next); };
+  /* ---- account sync: module boots lazily once the vault is open ---- */
+  const booted = chars !== null;
+  useEffect(() => {
+    if (!booted || !SYNC_URL) return;
+    const load = () => import("./sync.js").then((m) => {
+      const p = preload.current; preload.current = null;
+      if (p) { (p.del || []).forEach(m.deleteChar); p.chars && m.pushChars(p.chars, p.prevChars); p.custom && m.pushCustom(p.custom); p.prefs && m.pushPrefs(p.prefs); }
+      setCloud(m); setAccount(m.getAccount()?.email || null);
+    }).catch(() => addEventListener("online", load, { once: true })); // a failed chunk fetch retries when signal returns
+    load();
+  }, [booted]);
+  useEffect(() => {
+    if (!cloud || !account) return;
+    // handlers write stateRef in the same tick: a burst of frames between
+    // renders must each see the one before, or changes silently drop
+    return cloud.start({
+      getLocal: () => ({ chars: stateRef.current.chars || [], custom: stripBase(stateRef.current.customs, __BASE), prefs: [...stateRef.current.srcOff] }),
+      chars: (arr) => { stateRef.current.chars = arr; setChars(arr); saveChars(arr); },
+      custom: (stored, first) => {
+        // a first sign-in folds this device's own homebrew in and sends the union up
+        const base = first ? unionCustoms(stored, stripBase(stateRef.current.customs, __BASE)) : stored;
+        const eff = __BASE ? mergeCompendium(base, __BASE).customs : base;
+        const folded = { ...eff, spells: foldStarredSpells(eff.spells || []) };
+        stateRef.current.customs = folded; setCustoms(folded);
+        const s = stripBase(folded, __BASE); saveCustom(s);
+        if (first) cloud.pushCustom(s);
+      },
+      prefs: (off) => { const s = new Set(off); stateRef.current.srcOff = s; __SRC_OFF = s; setSrcOff(s); saveSrcPrefs(s); },
+      photo: (id, p) => { // an oversized portrait was re-shrunk for the wire; the local copy follows
+        const next = (stateRef.current.chars || []).map((c) => (c.id === id ? { ...c, photo: p } : c));
+        stateRef.current.chars = next; setChars(next); saveChars(next);
+      },
+      status: setSyncState,
+      error: setIoMsg,
+      signedOut: () => setAccount(null),
+    });
+  }, [cloud, account]);
+  useEffect(() => { // a remote hand can delete the soul under an open sheet
+    if (chars && activeId && !chars.some((c) => c.id === activeId)) { setActiveId(null); setLeveling(false); setView((v) => (v === "sheet" ? "roster" : v)); }
+  }, [chars, activeId]);
+
+  const persistCustom = (next) => { stateRef.current.customs = next; setCustoms(next); const s = stripBase(next, __BASE); saveCustom(s); cloud ? cloud.pushCustom(s) : (preload.current = { ...preload.current, custom: s }); };
+  const persist = (next) => {
+    const prev = stateRef.current.chars;
+    stateRef.current.chars = next; setChars(next); saveChars(next);
+    cloud ? cloud.pushChars(next, prev) : (preload.current = { ...preload.current, chars: next, prevChars: preload.current?.prevChars ?? prev });
+  };
 
   if (chars === null) return (
     <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", color: T.dim, fontFamily: "Georgia, serif" }}>
@@ -8259,7 +8369,7 @@ export default function App() {
               style={{ flex: "0 0 auto", width: 48, borderRadius: 14, border: `1px solid ${srcOff.size ? T.gold : T.edge}`, background: T.panel,
                 color: srcOff.size ? T.gold : T.dim, lineHeight: 1, cursor: "pointer", WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>
               <Icon name="gear" size={19} style={{ marginRight: 0 }} /></button>
-            <button aria-label="Ledger tools" title="Homebrew, export & import" onClick={() => setToolsOpen(!toolsOpen)}
+            <button aria-label="Ledger tools" title="Homebrew, backups & account" onClick={() => setToolsOpen(!toolsOpen)}
               style={{ flex: "0 0 auto", width: 48, borderRadius: 14, border: `1px solid ${toolsOpen ? T.gold : T.edge}`, background: T.panel,
                 color: toolsOpen ? T.gold : T.dim, fontSize: 22, lineHeight: 1, cursor: "pointer", WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>⋯</button>
           </div>
@@ -8299,6 +8409,7 @@ export default function App() {
                       r.readAsText(f);
                     }} />
                 </label>
+                <CloudAccount cloud={cloud} account={account} syncState={syncState} onAccount={setAccount} toolRow={toolRow} hint={hint} />
                 {ioMsg && <div style={{ color: T.dim, fontSize: 13, padding: "4px 12px 8px" }}>{ioMsg}</div>}
               </div>
             );
@@ -8338,7 +8449,7 @@ export default function App() {
           onSpells={(sp) => persist(chars.map((c) => (c.id === active.id ? { ...c, spells: sp } : c)))}
           onNotes={(n) => persist(chars.map((c) => (c.id === active.id ? { ...c, notes: n } : c)))}
           onInvocations={(inv) => persist(chars.map((c) => (c.id === active.id ? { ...c, invocations: inv } : c)))} onLevelUp={() => setLeveling(true)}
-          onDelete={() => { persist(chars.filter((c) => c.id !== active.id)); setView("roster"); }}
+          onDelete={() => { cloud ? cloud.deleteChar(active.id) : (preload.current = { ...preload.current, del: [...(preload.current?.del || []), active.id] }); persist(chars.filter((c) => c.id !== active.id)); setView("roster"); }}
           onPhoto={(p) => persist(chars.map((c) => (c.id === active.id ? { ...c, photo: p } : c)))}
           onSources={() => setSourcesOpen(true)} />
       )}

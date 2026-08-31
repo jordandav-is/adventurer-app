@@ -14,7 +14,8 @@ self.addEventListener("activate", (e) => {
 });
 
 self.addEventListener("fetch", (e) => {
-  if (e.request.method !== "GET") return;
+  // same-origin GETs only: sync/API traffic must never land in the offline cache
+  if (e.request.method !== "GET" || !e.request.url.startsWith(self.location.origin)) return;
   e.respondWith(
     fetch(e.request)
       .then((res) => {
