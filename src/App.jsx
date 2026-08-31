@@ -3108,6 +3108,16 @@ function mergeLedger(payload, chars, customs) {
   return { chars: [...chars, ...incoming], customs: mergedCustoms, added: incoming.length };
 }
 
+/* Union of two homebrew collections, base winning name clashes — the first
+   sign-in on a device that already forged its own homebrew folds both sides
+   together instead of letting either erase the other. */
+function unionCustoms(base, add) {
+  const by = (a = [], b = []) => { const have = new Set(a.map((x) => x?.name)); return [...a, ...b.filter((x) => x?.name && !have.has(x.name))]; };
+  const subs = {};
+  for (const cls of new Set([...Object.keys(base.subs || {}), ...Object.keys(add.subs || {})])) subs[cls] = by(base.subs?.[cls], add.subs?.[cls]);
+  return { subs, feats: by(base.feats, add.feats), spells: by(base.spells, add.spells), items: by(base.items, add.items), featureTexts: { ...add.featureTexts, ...base.featureTexts } };
+}
+
 const allSubs = (cls, customs) => CLASSES[cls].subs.concat((customs?.subs?.[cls] || []).map((s) => s.name).filter((n) => !CLASSES[cls].subs.includes(n)));
 const customSubFeats = (subclass, level, customs) => {
   for (const arr of Object.values(customs?.subs || {})) {
@@ -8211,7 +8221,7 @@ export default function App() {
   const [leveling, setLeveling] = useState(false);
   const [customs, setCustoms] = useState(EMPTY_CUSTOM);
   const [ioMsg, setIoMsg] = useState("");
-  const [toolsOpen, setToolsOpen] = useState(false); // the quiet drawer: homebrew, export, import
+  const [toolsOpen, setToolsOpen] = useState(false); // the quiet drawer: homebrew, backups, account
   const [srcOff, setSrcOff] = useState(() => new Set()); // sourcebooks turned off
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [cloud, setCloud] = useState(null);     // the lazily-loaded sync module
@@ -8281,7 +8291,7 @@ export default function App() {
     if (!booted || !SYNC_URL) return;
     const load = () => import("./sync.js").then((m) => {
       const p = preload.current; preload.current = null;
-      if (p) { (p.del || []).forEach(m.deleteChar); p.chars && m.pushChars(p.chars); p.custom && m.pushCustom(p.custom); p.prefs && m.pushPrefs(p.prefs); }
+      if (p) { (p.del || []).forEach(m.deleteChar); p.chars && m.pushChars(p.chars, p.prevChars); p.custom && m.pushCustom(p.custom); p.prefs && m.pushPrefs(p.prefs); }
       setCloud(m); setAccount(m.getAccount()?.email || null);
     }).catch(() => addEventListener("online", load, { once: true })); // a failed chunk fetch retries when signal returns
     load();
@@ -8293,10 +8303,14 @@ export default function App() {
     return cloud.start({
       getLocal: () => ({ chars: stateRef.current.chars || [], custom: stripBase(stateRef.current.customs, __BASE), prefs: [...stateRef.current.srcOff] }),
       chars: (arr) => { stateRef.current.chars = arr; setChars(arr); saveChars(arr); },
-      custom: (stored) => {
-        const eff = __BASE ? mergeCompendium(stored, __BASE).customs : stored;
+      custom: (stored, first) => {
+        // a first sign-in folds this device's own homebrew in and sends the union up
+        const base = first ? unionCustoms(stored, stripBase(stateRef.current.customs, __BASE)) : stored;
+        const eff = __BASE ? mergeCompendium(base, __BASE).customs : base;
         const folded = { ...eff, spells: foldStarredSpells(eff.spells || []) };
-        stateRef.current.customs = folded; setCustoms(folded); saveCustom(stripBase(folded, __BASE));
+        stateRef.current.customs = folded; setCustoms(folded);
+        const s = stripBase(folded, __BASE); saveCustom(s);
+        if (first) cloud.pushCustom(s);
       },
       prefs: (off) => { const s = new Set(off); stateRef.current.srcOff = s; __SRC_OFF = s; setSrcOff(s); saveSrcPrefs(s); },
       photo: (id, p) => { // an oversized portrait was re-shrunk for the wire; the local copy follows
@@ -8313,7 +8327,11 @@ export default function App() {
   }, [chars, activeId]);
 
   const persistCustom = (next) => { stateRef.current.customs = next; setCustoms(next); const s = stripBase(next, __BASE); saveCustom(s); cloud ? cloud.pushCustom(s) : (preload.current = { ...preload.current, custom: s }); };
-  const persist = (next) => { stateRef.current.chars = next; setChars(next); saveChars(next); cloud ? cloud.pushChars(next) : (preload.current = { ...preload.current, chars: next }); };
+  const persist = (next) => {
+    const prev = stateRef.current.chars;
+    stateRef.current.chars = next; setChars(next); saveChars(next);
+    cloud ? cloud.pushChars(next, prev) : (preload.current = { ...preload.current, chars: next, prevChars: preload.current?.prevChars ?? prev });
+  };
 
   if (chars === null) return (
     <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", color: T.dim, fontFamily: "Georgia, serif" }}>
@@ -8351,7 +8369,7 @@ export default function App() {
               style={{ flex: "0 0 auto", width: 48, borderRadius: 14, border: `1px solid ${srcOff.size ? T.gold : T.edge}`, background: T.panel,
                 color: srcOff.size ? T.gold : T.dim, lineHeight: 1, cursor: "pointer", WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>
               <Icon name="gear" size={19} style={{ marginRight: 0 }} /></button>
-            <button aria-label="Ledger tools" title="Homebrew, export & import" onClick={() => setToolsOpen(!toolsOpen)}
+            <button aria-label="Ledger tools" title="Homebrew, backups & account" onClick={() => setToolsOpen(!toolsOpen)}
               style={{ flex: "0 0 auto", width: 48, borderRadius: 14, border: `1px solid ${toolsOpen ? T.gold : T.edge}`, background: T.panel,
                 color: toolsOpen ? T.gold : T.dim, fontSize: 22, lineHeight: 1, cursor: "pointer", WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}>⋯</button>
           </div>

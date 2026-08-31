@@ -63,7 +63,7 @@ export function signOut() {
 /* ============ THE LIVE WIRE ============ */
 let ws = null, tries = 0, timer = null, ping = null, alive = false;
 let known = null;       // key → value the server is known to hold (null until the first dump)
-let outbox = new Map(); // key → {v: string|null, n} — unacked local changes, persisted
+let outbox = new Map(); // key → {v: string|null, n, ts} — unacked local changes with the device clock, persisted
 let seq = 0;
 let H = null;           // App's handlers
 
@@ -190,11 +190,12 @@ function adopt(d) {
     try {
       const { c } = JSON.parse(e.v);
       const at = arr.findIndex((x) => x.id === c.id);
-      at >= 0 ? (arr[at] = graft(c, arr[at])) : arr.push(c);
+      const whole = graft(c, byId.get(c.id) || (at >= 0 ? arr[at] : null)); // the wire copy may be trimmed; the local one is whole
+      at >= 0 ? (arr[at] = whole) : arr.push(whole);
     } catch { /* skip corrupt */ }
   }
   if (JSON.stringify(arr) !== JSON.stringify(local.chars)) H.chars(arr);
-  if (!outbox.has("m/custom") && d.get("m/custom")?.v) { try { H.custom(JSON.parse(d.get("m/custom").v)); } catch { /* noop */ } }
+  if (!outbox.has("m/custom") && d.get("m/custom")?.v) { try { H.custom(JSON.parse(d.get("m/custom").v), first); } catch { /* noop */ } }
   if (!outbox.has("m/prefs") && d.get("m/prefs")?.v) { try { H.prefs(JSON.parse(d.get("m/prefs").v).off || []); } catch { /* noop */ } }
 }
 
@@ -214,10 +215,15 @@ function applyKey(k, v) {
   H.chars(arr);
 }
 
-/* ---- push: what changed locally rides up ---- */
-export function pushChars(next) {
+/* ---- push: what changed locally rides up ----
+   prev (the roster before this change) narrows the push to the characters
+   that actually moved — before the first dump `known` is empty, and without
+   the narrowing one offline edit would ship the whole roster with fresh
+   timestamps, trampling other devices' newer copies. */
+export function pushChars(next, prev) {
   if (!getAccount()) return;
-  next.forEach((ch, i) => prep(ch, i));
+  const base = prev && new Map(prev.map((c, i) => [c.id, JSON.stringify({ i, c })]));
+  next.forEach((ch, i) => prep(ch, i, base));
 }
 /* Deletion is deliberate, never inferred: only the sheet's own delete
    button removes a soul from the account, so a half-settled roster
@@ -228,8 +234,9 @@ export function deleteChar(id) {
 /* Legacy portraits predate the 220px shrink and can be megabytes — far past
    the wire budget. Re-encode through the same canvas as the upload path;
    the smaller portrait syncs now and is handed back for the local copy. */
-async function prep(ch, i) {
+async function prep(ch, i, base) {
   const k = "c/" + ch.id;
+  if (base && base.get(ch.id) === JSON.stringify({ i, c: ch })) return; // unmoved since the last roster
   let body = ch;
   if (body.photo && body.photo.length > 90000) {
     const p = await shrinkPhoto(body.photo);

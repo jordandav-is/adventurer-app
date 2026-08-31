@@ -43,7 +43,6 @@ export class Account extends DurableObject {
     // ts is the writing device's clock, stored and relayed untouched — clients
     // use it to settle staleness contests; the server never parses a value
     ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT, ts INTEGER DEFAULT 0)");
-    try { ctx.storage.sql.exec("ALTER TABLE kv ADD COLUMN ts INTEGER DEFAULT 0"); } catch { /* born with it */ }
     // the edge answers keepalives itself; the account never wakes for them
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
   }
@@ -67,12 +66,15 @@ export class Account extends DurableObject {
       return this.session();
     }
     if (url.pathname === "/login") {
-      // eight wrong guesses close the gate for a quarter hour
+      // eight wrong guesses close the gate for a quarter hour. Hash first:
+      // the counter's read-check-write must stay synchronous, or concurrent
+      // tries interleave through the await and slip past the limit
+      const a = JSON.parse(this.get("auth") || "null");
+      const hash = a && (await sha(String(b.key) + a.salt));
       const f = JSON.parse(this.get("fails") || '{"n":0,"t":0}');
       const recent = Date.now() - f.t < 900000;
       if (f.n >= 8 && recent) return err(429, "Too many tries — the gate rests. Return in a quarter hour.");
-      const a = JSON.parse(this.get("auth") || "null");
-      if (!a || (await sha(String(b.key) + a.salt)) !== a.hash) {
+      if (!a || hash !== a.hash) {
         this.put("fails", JSON.stringify({ n: (recent ? f.n : 0) + 1, t: Date.now() }));
         return err(401, "Email and password don't match.");
       }
@@ -84,9 +86,10 @@ export class Account extends DurableObject {
       return json(200, { ok: true });
     }
     if (url.pathname === "/reset") {
-      // admin-only: clears credentials and sessions, keeps the ledger
+      // admin-only: clears credentials, sessions, and the lockout; keeps the ledger
       if (!this.env.ADMIN_KEY || b.admin !== this.env.ADMIN_KEY) return err(403, "No.");
       this.del("auth");
+      this.del("fails");
       this.ctx.storage.sql.exec("DELETE FROM kv WHERE k LIKE 's/%'");
       for (const sock of this.ctx.getWebSockets()) try { sock.close(4001, "reset"); } catch { /* gone */ }
       return json(200, { ok: true });
