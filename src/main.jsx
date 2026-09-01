@@ -19,13 +19,9 @@ function Root() {
     document.title = "The Adventurer's Ledger";
     setToken(null);
   };
-  return token ? (
-    <SharedView key={token} token={token} onExit={exitShare} />
-  ) : (
-    <Gate>
-      <App />
-    </Gate>
-  );
+  if (token) return <SharedView key={token} token={token} onExit={exitShare} />;
+  const app = <App />;
+  return import.meta.env.DEV ? app : <Gate>{app}</Gate>;
 }
 
 createRoot(document.getElementById("root")).render(<Root />);
