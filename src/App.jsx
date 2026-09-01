@@ -1266,8 +1266,10 @@ const GLOBAL_CSS = `
     animation: horizonIn 2.6s ease-out both; }
   @media (min-width: 700px) { .horizon { height: clamp(200px, 32vh, 360px); } }
   @keyframes horizonIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 0.72; transform: none; } }
-  [data-lore] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-  .lore-lock, .lore-lock * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
+  @media (hover: none) and (pointer: coarse) {
+    [data-lore] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    .lore-lock, .lore-lock * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
+  }
 `;
 
 const ICON_PATHS = {
@@ -2652,7 +2654,7 @@ function infoFor(rawName, customs) {
   return null;
 }
 
-// iOS Safari text selection callouts during long-press holds are suppressed via lore-lock CSS and clearing window selection ranges.
+// Touch long-presses suppress iOS selection callouts; desktop holds and right-clicks open lore without disabling selection.
 let __showLore = null;
 function loreLock(on) {
   document.documentElement.classList.toggle("lore-lock", on);
@@ -2661,16 +2663,22 @@ function loreLock(on) {
 function lorePress(name) {
   return {
     "data-lore": "",
-    onContextMenu: (e) => { e.preventDefault(); e.stopPropagation(); __showLore && __showLore(name); },
+    onContextMenu: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const lockSelection = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+      __showLore && __showLore(name, lockSelection);
+    },
     onPointerDown: (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
       const el = e.currentTarget;
+      const lockSelection = e.pointerType === "touch";
       delete el.dataset.loreFired;
       const sx = e.clientX, sy = e.clientY;
-      loreLock(true);
+      if (lockSelection) loreLock(true);
       const t = setTimeout(() => {
         el.dataset.loreFired = "1";
-        loreLock(true);
-        if (__showLore) __showLore(name); else loreLock(false);
+        if (__showLore) __showLore(name, lockSelection); else loreLock(false);
       }, 480);
       const move = (ev) => { if (Math.hypot(ev.clientX - sx, ev.clientY - sy) > 12) end(); };
       const end = () => {
@@ -2689,7 +2697,7 @@ function lorePress(name) {
 function LoreSheet({ customs }) {
   const [item, setItem] = useState(null);
   const openedAt = useRef(0);
-  __showLore = (name) => { openedAt.current = Date.now(); loreLock(true); setItem(infoFor(name, customs) || { title: String(name), meta: "", body: null }); };
+  __showLore = (name, lockSelection = false) => { openedAt.current = Date.now(); loreLock(lockSelection); setItem(infoFor(name, customs) || { title: String(name), meta: "", body: null }); };
   if (!item) return null;
   const close = () => { setItem(null); loreLock(false); };
   const dismiss = () => { if (Date.now() - openedAt.current > 400) close(); };
