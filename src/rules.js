@@ -209,6 +209,7 @@ function featPickDone(def, v) {
   if (pk.spells?.cantrips && (v.cantrips || []).length !== pk.spells.cantrips) return false;
   if (pk.spells?.level1 && (v.spells || []).length !== pk.spells.level1) return false;
   if (pk.maneuvers?.n && (v.maneuvers || []).length !== pk.maneuvers.n) return false;
+  if (pk.weapons?.n && (v.weapons || []).length !== pk.weapons.n) return false;
   return true;
 }
 function spellCapacity(clsName, clsLevel, abilities) {
@@ -383,7 +384,13 @@ const subclassProfsAt = (clsName, subclass, level, customs) => {
   return (sub?.profs || []).filter((p) => p.at === level);
 };
 // Proficiencies granted by feats (Moderately Armored, Weapon Master) and by ancestry (Dwarven Combat Training), from the baked records.
-const featProfsOf = (ch, customs) => (ch.feats || []).map((n) => { const p = featRecord(n, customs)?.profs; return p ? { ...p, feature: n, source: n, at: 1 } : null; }).filter(Boolean);
+const featProfsOf = (ch, customs) => (ch.feats || []).map((n) => {
+  const p = featRecord(n, customs)?.profs;
+  if (!p) return null;
+  const chosen = featChoiceOf(ch, n).weapons || [];
+  const weapons = chosen.length ? { ...(p.weapons || {}), choose: undefined, named: [...(p.weapons?.named || []), ...chosen] } : p.weapons;
+  return { ...p, ...(weapons ? { weapons } : {}), feature: n, source: n, at: 1 };
+}).filter(Boolean);
 const raceProfsOf = (ch) => (RACES[ch.race]?.profs ? [{ ...RACES[ch.race].profs, feature: ch.race, source: ch.race, at: 1 }] : []);
 // Every proficiency grant beyond the class's own: subclass features, feats, ancestry.
 const bonusProfsOf = (ch, customs) => [...subclassProfsOf(ch, customs).map((p) => ({ ...p, source: p.subclass })), ...featProfsOf(ch, customs), ...raceProfsOf(ch)];
@@ -1196,14 +1203,16 @@ const allFeats = (customs) => {
       ...(!f.canonical && !f.bump?.length && fx?.bump ? { bump: fx.bump } : {}),
     });
   });
-  return [...map.values()].filter(isSourceEnabled).map((f) => ({ ...f, pick: featPickOf(f.name, f) }));
+  // A feat whose baked proficiencies include a weapon pick (Weapon Master: four weapons) collects that pick like any other.
+  const withProfPicks = (pick, f) => (f.profs?.weapons?.choose ? { ...(pick || {}), weapons: { n: f.profs.weapons.choose.n } } : pick);
+  return [...map.values()].filter(isSourceEnabled).map((f) => ({ ...f, pick: withProfPicks(featPickOf(f.name, f), f) }));
 };
 const featChoiceSummary = (ch, name) => {
   const c = featChoiceOf(ch, name);
   return [
     c.bump ? `+1 ${c.bump.toUpperCase()}` : null, c.choice,
     ...(c.skills || []), ...(c.expertise || []).map((x) => `★ ${x}`), ...(c.langs || []),
-    ...(c.cantrips || []), ...(c.spells || []), ...(c.maneuvers || []),
+    ...(c.cantrips || []), ...(c.spells || []), ...(c.maneuvers || []), ...(c.weapons || []),
   ].filter(Boolean).join(", ");
 };
 const loreName = (t) => String(t || "").replace(/\s*\(.*$/, "");
