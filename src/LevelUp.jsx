@@ -1,5 +1,5 @@
-import { ABILITIES, ALL_SKILLS, CANTRIPS_KNOWN, CHOICE_GROUPS, CLASSES, FAVORED_ENEMIES, FIGHTING_STYLES, INVOCATIONS, INVOCATION_DATA, LAND_TERRAINS, LANGS, MC_PREREQ, MC_PROFS, MC_SKILL_GRANT, METAMAGIC, PACT_BOONS, SPELLS_KNOWN, STYLE_DESC, baseSubName } from "./data.js";
-import { allFeats, allKnownCantrips, allSubFeats, allSubs, choiceCum, subclassProfsAt, choiceOptionsFor, featPickDone, featPickOf, fmtMod, groupMatches, hasStyle, isTechnique, maxSpellLevel, meetsPrereq, mod, profBonus, spellFitsClass, totalLevel } from "./rules.js";
+import { ABILITIES, ALL_SKILLS, CANTRIPS_KNOWN, CLASSES, FAVORED_ENEMIES, FIGHTING_STYLES, INVOCATIONS, INVOCATION_DATA, LAND_TERRAINS, LANGS, MC_PREREQ, MC_PROFS, MC_SKILL_GRANT, METAMAGIC, PACT_BOONS, SPELLS_KNOWN, STYLE_DESC, baseSubName } from "./data.js";
+import { allChoiceGroups, allFeats, allKnownCantrips, allSubFeats, allSubs, choiceCum, subclassProfsAt, choiceOptionsFor, featPickDone, featPickOf, fmtMod, groupMatches, hasStyle, isTechnique, maxSpellLevel, meetsPrereq, mod, profBonus, spellFitsClass, totalLevel } from "./rules.js";
 import { isSourceEnabled, srcSpells } from "./compendium.js";
 import { useEffect, useRef, useState } from "react";
 import { ClassTag, FeatChooser, FeatureLine, Icon, SpellPickGrid, SubclassDetail, T, btn, card, lorePress } from "./ui.jsx";
@@ -263,7 +263,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     ? (book.spells || []).filter((n) => spLevel(n) === 3) : [];
   const gainsSignature = signaturePool.length > 0;
 
-  const choiceGroupsDue = CHOICE_GROUPS.map((g) => {
+  const choiceGroupsDue = allChoiceGroups(customs).map((g) => {
     if (!pick || !groupMatches(g, pick, effSub)) return null;
     const options = choiceOptionsFor(g, customs);
     if (!options.length) return null;
