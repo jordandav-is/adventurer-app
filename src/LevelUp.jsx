@@ -1,5 +1,5 @@
 import { ABILITIES, ALL_SKILLS, CANTRIPS_KNOWN, CHOICE_GROUPS, CLASSES, FAVORED_ENEMIES, FIGHTING_STYLES, INVOCATIONS, INVOCATION_DATA, LAND_TERRAINS, LANGS, MC_PREREQ, MC_PROFS, MC_SKILL_GRANT, METAMAGIC, PACT_BOONS, SPELLS_KNOWN, STYLE_DESC, baseSubName } from "./data.js";
-import { allFeats, allKnownCantrips, allSubFeats, allSubs, choiceCum, choiceOptionsFor, featPickDone, featPickOf, fmtMod, groupMatches, hasStyle, isTechnique, maxSpellLevel, meetsPrereq, mod, profBonus, spellFitsClass, totalLevel } from "./rules.js";
+import { allFeats, allKnownCantrips, allSubFeats, allSubs, choiceCum, subclassProfsAt, choiceOptionsFor, featPickDone, featPickOf, fmtMod, groupMatches, hasStyle, isTechnique, maxSpellLevel, meetsPrereq, mod, profBonus, spellFitsClass, totalLevel } from "./rules.js";
 import { isSourceEnabled, srcSpells } from "./compendium.js";
 import { useEffect, useRef, useState } from "react";
 import { ClassTag, FeatChooser, FeatureLine, Icon, SpellPickGrid, SubclassDetail, T, btn, card, lorePress } from "./ui.jsx";
@@ -43,7 +43,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const [terrainPick2, setTerrainPick2] = useState(null);
   const [deftExp, setDeftExp] = useState(null);
   const [deftLangs, setDeftLangs] = useState([]);
-  const [glamourPick, setGlamourPick] = useState(null);
+  const [subSkillPicks, setSubSkillPicks] = useState({});
   const [masteryPicks, setMasteryPicks] = useState({});
   const [signaturePicks, setSignaturePicks] = useState([]);
   const [groupPicks, setGroupPicks] = useState({});
@@ -140,7 +140,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     if (favEnemyPick) logBits.push(`Favored Enemy: ${feLabel}${favLang2 ? ` (${favLang2})` : ""}`);
     if (terrainPick2) logBits.push(`Natural Explorer: ${terrainPick2}`);
     if (gainsDeft && deftExp) logBits.push(`Deft Explorer: ${deftExp} expertise${deftLangs.length ? `, ${deftLangs.join(", ")}` : ""}`);
-    if (gainsGlamour && glamourPick) logBits.push(`Otherworldly Glamour: ${glamourPick}`);
+    subProfsNow.forEach((p) => { const got = [...(p.skills || []), ...(p.skillChoice || []).flatMap((c, i) => subSkillPicks[`${p.feature}:${i}`] || [])]; if (got.length) logBits.push(`${p.feature}: ${got.join(", ")}`); });
     let choices = ch.choices;
     if (gainsMastery && (masteryPicks[1] || masteryPicks[2])) { choices = { ...choices, "Spell Mastery": [masteryPicks[1], masteryPicks[2]].filter(Boolean) }; logBits.push(`Spell Mastery: ${choices["Spell Mastery"].join(", ")}`); }
     if (gainsSignature && signaturePicks.length) { choices = { ...choices, "Signature Spell": signaturePicks }; logBits.push(`Signature Spells: ${signaturePicks.join(", ")}`); }
@@ -151,7 +151,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
       if (picksArr.length) logBits.push(`${d.g.key}: ${picksArr.join(", ")}`);
     }
     const grantAll = asiMode === "feat" && featPk?.allSkills ? ALL_SKILLS : [];
-    const skills = [...ch.skills, ...(mcSkill ? [mcSkill] : []), ...featSkills, ...grantAll, ...(glamourPick ? [glamourPick] : [])].filter((v, i, a) => a.indexOf(v) === i);
+    const skills = [...ch.skills, ...(mcSkill ? [mcSkill] : []), ...featSkills, ...grantAll, ...subFixedSkills, ...Object.values(subSkillPicks).flat()].filter((v, i, a) => a.indexOf(v) === i);
     const languages = [...(ch.languages || []), ...(asiMode === "feat" ? [...(featSel?.langs || []), ...(featPk?.grantLangs || [])] : []), ...deftLangs, ...(favLang2 ? [favLang2] : [])].filter((v, i, a) => a.indexOf(v) === i);
     const expertise = [...(ch.expertise || []), ...expPicks, ...(asiMode === "feat" ? featSel?.expertise || [] : []), ...(deftExp ? [deftExp] : [])].filter((v, i, a) => a.indexOf(v) === i);
     const featChoices = asiMode === "feat" && featPick
@@ -249,7 +249,11 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const gainsFavEnemy = pick === "Ranger" && [6, 14].includes(newClsLevel);
   const gainsNatTerrain = false;
   const gainsDeft = pick === "Ranger" && newClsLevel === 2;
-  const gainsGlamour = pick === "Ranger" && newClsLevel === 3 && baseSubName(newSub || entry?.subclass || "") === "Fey Wanderer";
+  // Skills a subclass feature grants at this level: fixed ones arrive on their own, picks need a choice.
+  const subProfsNow = subclassProfsAt(pick, newSub || entry?.subclass, newClsLevel, customs);
+  const subFixedSkills = subProfsNow.flatMap((p) => p.skills || []).filter((s) => !ch.skills.includes(s));
+  const subSkillChoices = subProfsNow.flatMap((p) => (p.skillChoice || []).map((c, i) => ({ key: `${p.feature}:${i}`, feature: p.feature, n: c.n, from: c.from.length ? c.from : ALL_SKILLS })));
+  const gainsSubSkills = subSkillChoices.length > 0;
 
   const spLevel = (n) => pool.find((sp) => sp.name === n)?.level;
   const masteryPools = pick === "Wizard" && newClsLevel === 18 && !ch.choices?.["Spell Mastery"]
@@ -273,7 +277,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
 
   const extrasNeeded = gainsASI || gainsSub || gainsMcSkill || gainsStyle || gainsExpertise || gainsMeta || gainsBoon ||
     invNeed > 0 || canSwapInv || gainsCantrips || gainsSpells || canSwapSpell || gainsArcanum ||
-    gainsBoAS || gainsTome || gainsSecrets || gainsDeft || gainsGlamour || gainsFavEnemy || gainsMastery || gainsSignature ||
+    gainsBoAS || gainsTome || gainsSecrets || gainsDeft || gainsSubSkills || gainsFavEnemy || gainsMastery || gainsSignature ||
     choiceGroupsDue.length > 0;
   const extrasDone =
     (!gainsASI || (asiMode === "feat" && featPickDone(allFeats(customs).find((f) => f.name === featPick), featSel)) || (asiMode === "asi" && asiPicks.length === 2)) &&
@@ -285,7 +289,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     (!gainsBoAS || boasPicks.length >= Math.min(2, boasPool.length + boasPicks.length)) &&
     (!gainsTome || tomePicks.length >= Math.min(3, tomePool.length)) &&
     secretsPicks.length >= secretsReq &&
-    (!gainsDeft || (deftExp && deftLangs.length === 2)) && (!gainsGlamour || glamourPick) &&
+    (!gainsDeft || (deftExp && deftLangs.length === 2)) && subSkillChoices.every((c) => (subSkillPicks[c.key] || []).length === c.n) &&
     (!gainsFavEnemy || (favEnemyPick && (favEnemyPick !== "Two humanoid races" || feHumanoids.trim()) && favLang2)) &&
     (!gainsMastery || ((masteryPools[1].length === 0 || masteryPicks[1]) && (masteryPools[2].length === 0 || masteryPicks[2]))) &&
     (!gainsSignature || signaturePicks.length >= Math.min(2, signaturePool.length)) &&
@@ -568,16 +572,22 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                 </div>
               </div>
             )}
-            {gainsGlamour && (
-              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
-                <div style={{ color: T.gold, marginBottom: 8 }}>Otherworldly Glamour — one skill proficiency</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {["Deception", "Performance", "Persuasion"].filter((sk) => !ch.skills.includes(sk)).map((sk) => (
-                    <button key={sk} style={{ ...btn(glamourPick === sk), padding: "5px 10px", fontSize: 13, minHeight: 0 }} onClick={() => setGlamourPick(sk)}>{sk}</button>
-                  ))}
+            {subSkillChoices.map((c) => {
+              const picked = subSkillPicks[c.key] || [];
+              const taken = [...ch.skills, ...(mcSkill ? [mcSkill] : []), ...subFixedSkills, ...Object.entries(subSkillPicks).filter(([k]) => k !== c.key).flatMap(([, v]) => v)];
+              return (
+                <div key={c.key} style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
+                  <div style={{ color: T.gold, marginBottom: 8 }}>{c.feature} — choose {c.n} skill{c.n > 1 ? "s" : ""} ({picked.length}/{c.n})</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {c.from.filter((sk) => !taken.includes(sk)).map((sk) => (
+                      <button key={sk} style={{ ...btn(picked.includes(sk)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
+                        onClick={() => setSubSkillPicks({ ...subSkillPicks, [c.key]: picked.includes(sk) ? picked.filter((x) => x !== sk) : picked.length < c.n ? [...picked, sk] : picked })}>{sk}</button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })}
+            {subFixedSkills.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginBottom: 12 }}>Your {pickData?.subName?.toLowerCase() || "subclass"} grants proficiency in {subFixedSkills.join(" and ")}.</div>}
             {gainsDeft && (
               <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
                 <div style={{ color: T.gold, marginBottom: 8 }}>Deft Explorer — expertise in one skill, and two languages</div>
