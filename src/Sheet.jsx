@@ -1,6 +1,6 @@
 import { ABILITIES, ABIL_NAMES, ALL_SKILLS, ANCESTRIES, ARCANUM_UNLOCK, ASI, CANTRIPS_KNOWN, CHOICE_KEYS, CLASSES, DMG_TYPES, INVOCATIONS, INVOCATION_DATA, ITEM_TYPES, PACT, PREP_ALL_CLASSES, PROF_TEXT, RACES, SKILL_ABIL, SPELL_ABILITY, SPELL_LVL_HINT, STYLE_DESC, baseSubName } from "./data.js";
 import { EFFECT_BY_KEY, EFFECT_LIB, SUMMON_LIB, allKnownCantrips, allSubFeats, ammoRowFor, applyEffectPatch, armorClass, b64uFromBytes, bladeRiderTier, bytesFromB64u, canEquip, characterChoiceGroups, classLevel, consumableEffectKey, crShow, creatureByName, describeCustomFx, effDefOf, effEnds, effMaxHp, effectsOf, equippedOf, featChoiceOf, featEffects, featHpBonus, featSpellsOf, findItem, fmtMod, fxMods, hasEffect, hasStyle, hasSub, healingDiceFor, instMaxHp, isArmorType, isBladeCantrip, isConcDef, isConcInst, isConsumableRow, isWeaponType, knownSpellNames, maxSpellLevel, minionApplyHp, minionAttackRolls, minionHp, minionSaves, minionSkills, minionsOf, mod, pipeBytes, profBonus, raceGrantedSpells, round2, schoolName, searchRank, shareCustomsFor, sourceOf, speedOf, spellCapacity, spellFitsClass, spellSlots, spiritAc, spiritDefFromSpell, spiritHp, strikeProfile, subSpellData, summonDefFor, summonFormsFor, summonerSpellAtk, totalLevel, useRecipe, useTrackersFor, usesAmmo } from "./rules.js";
-import { EMPTY_CUSTOM, SRD_SRC, __BESTIARY, creatureSrcOf, spellSrcOf, srcSpells, uid } from "./compendium.js";
+import { EMPTY_CUSTOM, SRD_SRC, __BESTIARY, __SOURCES, creatureSrcOf, isSourceEnabled, sourceCodesOf, sourceLabelOf, spellSrcOf, srcSpells, uid } from "./compendium.js";
 import React, { useEffect, useState } from "react";
 import { CLASS_THEMES, ClassTag, ICON_PATHS, Icon, LazyList, Portrait, SpellPickGrid, T, __showLore, btn, card, cornerBtn, lorePress, usePhotoUpload } from "./ui.jsx";
 import { DiceTray, RollTray, roll, rollFeatures, rollNotes } from "./dice.jsx";
@@ -337,7 +337,7 @@ function InvocationManager({ ch, onInvocations, readOnly }) {
   const knownCantrips = ch.spells?.Warlock?.cantrips || [];
   const hasEB = knownCantrips.some((n) => /eldritch blast/i.test(n));
   const reqMet = (req) => !req || (req === "eldritch blast cantrip" ? hasEB : ch.pactBoon === req);
-  const options = INVOCATION_DATA.filter(([n, lvl]) => !mine.includes(n) && wl.level >= lvl);
+  const options = INVOCATION_DATA.filter(([n, lvl, req, src, sources]) => !mine.includes(n) && wl.level >= lvl && isSourceEnabled({ src, sources }));
   return (
     <div style={{ ...card, padding: 16, marginTop: 14 }}>
       <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 4 }}>Eldritch Invocations</div>
@@ -1379,13 +1379,28 @@ function SourcebookSheet({ customs, off, onToggle, onEnableAll, onClose }) {
     return () => { document.body.style.overflow = prev; };
   }, []);
   const inv = new Map();
-  const bump = (name, kind) => { const e = inv.get(name) || { spells: 0, creatures: 0 }; e[kind]++; inv.set(name, e); };
-  (customs?.spells || []).forEach((sp) => bump(spellSrcOf(sp), "spells"));
-  __BESTIARY.forEach((b) => bump(creatureSrcOf(b), "creatures"));
-  const first = ["Player's Handbook", SRD_SRC];
-  const rows = [...inv.entries()].sort((a, b) => {
-    const ia = first.indexOf(a[0]), ib = first.indexOf(b[0]);
-    return (ia < 0 ? 9 : ia) - (ib < 0 ? 9 : ib) || a[0].localeCompare(b[0]);
+  const bump = (code, kind) => {
+    if (!code) return;
+    const e = inv.get(code) || { spells: 0, creatures: 0, items: 0, feats: 0 };
+    e[kind] = (e[kind] || 0) + 1;
+    inv.set(code, e);
+  };
+  (customs?.spells || []).forEach((sp) => sourceCodesOf(sp).forEach((c) => bump(c, "spells")));
+  (customs?.feats || []).forEach((f) => sourceCodesOf(f).forEach((c) => bump(c, "feats")));
+  (customs?.items || []).forEach((it) => sourceCodesOf(it).forEach((c) => bump(c, "items")));
+  __BESTIARY.forEach((b) => sourceCodesOf(b).forEach((c) => bump(c, "creatures")));
+  const sources = __SOURCES.length
+    ? __SOURCES.filter((s) => inv.has(s.code))
+    : [...inv.keys()].map((code) => ({ code, name: code, published: "2014-01-01" }));
+  const rows = sources.map((s) => ({
+    code: s.code,
+    name: s.name,
+    counts: inv.get(s.code) || {},
+  })).sort((a, b) => {
+    const isSRD_A = a.code === "SRD" || a.code === "PHB";
+    const isSRD_B = b.code === "SRD" || b.code === "PHB";
+    if (isSRD_A !== isSRD_B) return isSRD_A ? -1 : 1;
+    return a.name.localeCompare(b.name);
   });
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center", animation: "sheetVeil 200ms ease" }} onClick={onClose}>
@@ -1406,15 +1421,21 @@ function SourcebookSheet({ customs, off, onToggle, onEnableAll, onClose }) {
         </div>
         <div className="sheet-body" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "10px 20px calc(20px + env(safe-area-inset-bottom))" }}>
           <div style={{ display: "grid", gap: 6 }}>
-            {rows.map(([name, n]) => {
-              const on = !off.has(name);
+            {rows.map((row) => {
+              const on = !off.has(row.code);
+              const n = row.counts;
               return (
-                <div key={name} data-src-row={name} onClick={() => onToggle(name)}
+                <div key={row.code} data-src-row={row.code} onClick={() => onToggle(row.code)}
                   style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 44, boxSizing: "border-box", padding: "8px 12px", borderRadius: 10, cursor: "pointer", background: T.panel2, border: `1px solid ${on ? T.edge : "#8e3b4688"}`, opacity: on ? 1 : 0.6, WebkitTapHighlightColor: "transparent" }}>
                   <span style={{ fontSize: 17, fontFamily: "Georgia, serif", color: on ? T.gold : T.dim }}>{on ? "◆" : "◇"}</span>
-                  <span style={{ flex: 1, color: T.ink, fontWeight: 700, fontSize: 13.5, textDecoration: on ? "none" : "line-through" }}>{name}</span>
+                  <span style={{ flex: 1, color: T.ink, fontWeight: 700, fontSize: 13.5, textDecoration: on ? "none" : "line-through" }}>{row.name}</span>
                   <span style={{ color: T.dim, fontSize: 11.5, textAlign: "right" }}>
-                    {[n.spells && `${n.spells} spell${n.spells > 1 ? "s" : ""}`, n.creatures && `${n.creatures} creature${n.creatures > 1 ? "s" : ""}`].filter(Boolean).join(" · ")}
+                    {[
+                      n.spells ? `${n.spells} spell${n.spells > 1 ? "s" : ""}` : "",
+                      n.creatures ? `${n.creatures} creature${n.creatures > 1 ? "s" : ""}` : "",
+                      n.items ? `${n.items} item${n.items > 1 ? "s" : ""}` : "",
+                      n.feats ? `${n.feats} feat${n.feats > 1 ? "s" : ""}` : "",
+                    ].filter(Boolean).join(" · ")}
                   </span>
                 </div>
               );

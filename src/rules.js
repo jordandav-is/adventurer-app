@@ -1,5 +1,5 @@
 import { ABILITIES, ABILITY_INFO, ABIL_NAMES, BACKGROUNDS, BOON_INFO, CASTING_CLASSES, CHOICE_GROUPS, CLASSES, CLASS_GEAR_PROFS, CORE_FEATURE_INFO, DMG_TYPES, DMG_WORD_CODE, FEATS, FEATURE_TEXT, FEAT_INDEX, FEAT_MECHANICS, FEAT_PICKS, GRANTED_SUB_CLASSES, GRANT_CANTRIPS, HALF1_SLOTS, HALF_SLOTS, HEALING_TIERS, INVOCATION_DATA, INVOCATION_INFO, ITEM_TYPES, LAND_TERRAINS, LANG_INFO, MANEUVERS, MC_GEAR_PROFS, MC_PREREQ, MC_SLOTS, METAMAGIC_INFO, PACT, POTION_EFFECT_ALIAS, RACES, RANGER_PREPARED, SCHOOL_NAMES, SIZE_RANK, SKILL_ABIL, SKILL_INFO, SOURCE_ABBR, SPELLS_KNOWN, SPELL_ABILITY, SRD_FOOT, STYLE_DESC, SUB_FEATS, SUB_LORE, SUB_SPELLS, TEXT_2024, WEAPON_PROPS, baseSubName, normSub, subFeatsFor } from "./data.js";
-import { EMPTY_CUSTOM, __BASE, __BESTIARY, __SRC_OFF, creatureSrcOf, srcSpells, stripBase } from "./compendium.js";
+import { EMPTY_CUSTOM, __BASE, __BESTIARY, __SRC_OFF, creatureSrcOf, isSourceEnabled, sourceLabelOf, srcSpells, stripBase } from "./compendium.js";
 const mod = (s) => Math.floor((s - 10) / 2);
 const fmtMod = (m) => (m >= 0 ? `+${m}` : `${m}`);
 const profBonus = (lvl) => Math.ceil(lvl / 4) + 1;
@@ -37,24 +37,33 @@ function subSpellData(subclass, clsName, customs) {
     ? { type: "granted", label: `${grantedLabel} — ${base} (always prepared)`, spells }
     : { type: "expanded", label: `Expanded spell list — ${base} (added to your ${clsName} options)`, spells };
 }
-const meetsPrereq = (cls, ab) => MC_PREREQ[cls].some((req) => Object.entries(req).every(([k, v]) => ab[k] >= v));
+const meetsPrereq = (cls, ab) => (MC_PREREQ[cls] || [{ int: 13 }]).some((req) => Object.entries(req).every(([k, v]) => ab[k] >= v));
 function featureBody(rawName, cls, customs) {
   const name = String(rawName || "").trim();
   const strip = baseSubName(name);
   const ft = customs?.featureTexts || {};
-  if (TEXT_2024.has(strip)) return FEATURE_TEXT[strip] || FEATURE_TEXT[name] || ft[name] || ft[strip];
+  if (cls === "Ranger" && TEXT_2024.has(strip)) return FEATURE_TEXT[strip] || FEATURE_TEXT[name] || ft[name] || ft[strip];
   return ft[name] || ft[strip]
     || (cls && (FEATURE_TEXT[`${cls}:${name}`] || FEATURE_TEXT[`${cls}:${strip}`]))
     || FEATURE_TEXT[name] || FEATURE_TEXT[strip]
     || CORE_FEATURE_INFO[strip]
     || (/\bfeature\b$/i.test(strip) ? "Granted by your subclass at this level — read its entry for the details." : null);
 }
-const featChoiceOf = (ch, name) => (ch?.featChoices || {})[name] || {};
+const featChoiceOf = (ch, name) => {
+  const choices = ch?.featChoices || {};
+  if (choices[name]) return choices[name];
+  const targetNorm = String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const hit = Object.entries(choices).find(([k]) => String(k).toLowerCase().replace(/[^a-z0-9]/g, "") === targetNorm);
+  return hit ? hit[1] : {};
+};
 function featEffects(ch, customs) {
   const out = { hpPerLevel: 0, speed: 0, init: null, saves: [], mediumDexCap: 2, styles: [], sources: [] };
-  const defs = customs ? new Map(allFeats(customs).map((f) => [f.name, f])) : FEAT_INDEX;
+  const feats = allFeats(customs || EMPTY_CUSTOM);
   (ch?.feats || []).forEach((n) => {
-    const f = FEAT_MECHANICS[n];
+    const normN = String(n || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const def = feats.find((f) => String(f.name || "").toLowerCase().replace(/[^a-z0-9]/g, "") === normN);
+    const fxKey = Object.keys(FEAT_MECHANICS).find((k) => String(k).toLowerCase().replace(/[^a-z0-9]/g, "") === normN);
+    const f = def?.fx || (!def?.canonical && fxKey ? FEAT_MECHANICS[fxKey] : null);
     if (!f) return;
     if (f.hpPerLevel) { out.hpPerLevel += f.hpPerLevel; out.sources.push(n); }
     if (f.speed) { out.speed += f.speed; out.sources.push(n); }
@@ -63,7 +72,7 @@ function featEffects(ch, customs) {
     if (f.save) out.saves.push({ abil: f.save, from: n });
     if (f.saveFromBump) { const b = featChoiceOf(ch, n).bump; if (b) out.saves.push({ abil: b, from: n }); }
     if (f.init) {
-      const flat = (defs.get(n)?.text || "").match(/\+\s*(\d+)\s*bonus to initiative/i);
+      const flat = (def?.text || "").match(/\+\s*(\d+)\s*bonus to initiative/i);
       out.init = { label: n, value: flat ? +flat[1] : profBonus(totalLevel(ch)) };
     }
   });
@@ -84,7 +93,12 @@ function featBlockedBy(def, { abilities, level, caster }) {
   }
   return null;
 }
-const featPickOf = (name, def) => FEAT_PICKS[name] || def?.pick || null;
+const featPickOf = (name, def) => {
+  if (def?.pick) return def.pick;
+  const normN = String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const pkKey = Object.keys(FEAT_PICKS).find((k) => String(k).toLowerCase().replace(/[^a-z0-9]/g, "") === normN);
+  return pkKey ? FEAT_PICKS[pkKey] : null;
+};
 function featGrantedSpells(name, level = 20, def) {
   const g = featPickOf(name, def)?.spells?.grant;
   if (!g) return [];
@@ -129,6 +143,8 @@ function spellCapacity(clsName, clsLevel, abilities) {
       return { n: Math.max(1, m + clsLevel), label: "spells prepared (ability mod + level; full class list available)" };
     case "Paladin":
       return { n: clsLevel < 2 ? 0 : Math.max(1, m + Math.floor(clsLevel / 2)), label: "spells prepared (Cha mod + half level)" };
+    case "Artificer":
+      return { n: Math.max(1, m + Math.floor(clsLevel / 2)), label: "spells prepared (Int mod + half level)" };
     case "Wizard":
       return { n: 6 + 2 * (clsLevel - 1), label: `spellbook spells (prepare Int mod + level = ${Math.max(1, m + clsLevel)}/day)` };
     default: return { n: 0, label: "" };
@@ -189,7 +205,26 @@ const isTechnique = (sp) => !(sp.classes || "").split(",").some((e) => {
 const choiceCum = (g, level) => Object.entries(g.counts).reduce((s, [l, n]) => s + (level >= +l ? n : 0), 0);
 const groupMatches = (g, clsName, subclass) => g.cls === clsName && (!g.sub || (subclass && subTokens(subclass).includes(normSub(g.sub))));
 function choiceOptionsFor(g, customs) {
-  if (g.source.list) return g.source.list.map((n) => ({ name: n }));
+  if (g.key === "Maneuvers") {
+    return Object.keys(MANEUVERS).map((name) => ({ name })).sort((a, b) => a.name.localeCompare(b.name));
+  }
+  if (g.key === "Arcane Shot Options") {
+    const list = __BASE?.runtime?.arcaneShots || [];
+    if (list.length) return list.filter(isSourceEnabled).map((s) => ({ name: s.name })).sort((a, b) => a.name.localeCompare(b.name));
+  }
+  if (g.key === "Runes") {
+    const list = __BASE?.runtime?.runes || [];
+    if (list.length) return list.filter(isSourceEnabled).map((r) => ({ name: r.name })).sort((a, b) => a.name.localeCompare(b.name));
+  }
+  if (g.key === "Elemental Disciplines") {
+    const list = __BASE?.runtime?.elementalDisciplines || [];
+    if (list.length) return list.filter(isSourceEnabled).map((d) => ({ name: d.name, minLvl: d.minLevel || 0 })).sort((a, b) => (a.minLvl || 0) - (b.minLvl || 0) || a.name.localeCompare(b.name));
+  }
+  if (g.key === "Infusions") {
+    const list = __BASE?.runtime?.infusions || [];
+    if (list.length) return list.filter(isSourceEnabled).map((i) => ({ name: i.name, minLvl: i.minLevel || 0 })).sort((a, b) => (a.minLvl || 0) - (b.minLvl || 0) || a.name.localeCompare(b.name));
+  }
+  if (g.source.list && g.source.list.length) return g.source.list.map((n) => ({ name: n }));
   if (g.source.spellTag) {
     return srcSpells(customs?.spells || []).filter((sp) => isTechnique(sp) && spellFitsClass(sp, g.cls, g.sub))
       .map((sp) => ({ name: sp.name, minLvl: +((sp.text || "").match(/Prerequisite:\s*(\d+)\w*\s*level/i)?.[1] || 0) }))
@@ -231,14 +266,18 @@ function allKnownCantrips(ch) {
     ...raceGrantedSpells(ch).filter((sp) => GRANT_CANTRIPS.has(sp)),
   ];
 }
-function sourceOf(text) {
-  const m = (text || "").match(/Source:\s*([^\n]+)/);
+function sourceOf(value) {
+  if (value && typeof value === "object") {
+    const label = sourceLabelOf(value);
+    return `${label}${value.page ? ` p.${value.page}` : ""}`;
+  }
+  const m = (value || "").match(/Source:\s*([^\n]+)/);
   if (!m) return null;
   const first = m[1].split(/[;·]/)[0].trim();
   for (const [long, abbr] of SOURCE_ABBR) if (first.includes(long)) { const p = first.match(/p\.?\s*(\d+)/); return abbr + (p ? ` p.${p[1]}` : ""); }
   return first.length > 28 ? first.slice(0, 28) + "…" : first;
 }
-const findItem = (name, customs) => (customs?.items || []).find((x) => x.name === name);
+const findItem = (name, customs) => (customs?.items || []).find((x) => x.name === name && isSourceEnabled(x));
 const isArmorType = (t) => ["LA", "MA", "HA"].includes(t);
 const isWeaponType = (t) => ["M", "R"].includes(t);
 const equippedOf = (ch) => (ch.inventory || []).filter((r) => r.equipped);
@@ -299,7 +338,10 @@ function armorClass(ch, customs, fx = fxMods(ch)) {
 }
 const classLevel = (ch, name) => ch.classes.find((c) => c.name === name)?.level || 0;
 const hasSub = (ch, name) => ch.classes.some((c) => c.subclass && subTokens(c.subclass).includes(normSub(name)));
-const hasFeat = (ch, name) => (ch.feats || []).includes(name);
+const hasFeat = (ch, name) => {
+  const targetNorm = String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  return (ch?.feats || []).some((f) => String(f || "").toLowerCase().replace(/[^a-z0-9]/g, "") === targetNorm);
+};
 const effectsOf = (ch) => (Array.isArray(ch.effects) ? ch.effects : []);
 const knownSpellNames = (ch, customs) => {
   const out = new Set();
@@ -588,17 +630,18 @@ const minionsOf = (ch) => (Array.isArray(ch.minions) ? ch.minions : []);
 const crShow = (cr) => (cr === 0.125 ? "⅛" : cr === 0.25 ? "¼" : cr === 0.5 ? "½" : String(cr));
 const creatureByName = (n) => {
   const q = String(n || "").trim().toLowerCase();
-  return (q && __BESTIARY.find((c) => c.name.toLowerCase() === q)) || null;
+  return (q && __BESTIARY.find((c) => c.name.toLowerCase() === q && isSourceEnabled(c))) || null;
 };
 function summonFormsFor(def) {
   if (__BESTIARY.length) {
     let hits = null;
     if (def.pickNames) hits = def.pickNames.map(creatureByName).filter(Boolean);
     else if (def.pick) hits = __BESTIARY.filter((c) =>
-      (!def.pick.types || def.pick.types.some((t) => c.type.startsWith(t)))
+      isSourceEnabled(c)
+      && (!def.pick.types || def.pick.types.some((t) => c.type.startsWith(t)))
       && (def.pick.maxCr == null || c.cr <= def.pick.maxCr)
       && (def.pick.maxSize == null || SIZE_RANK[c.size] <= SIZE_RANK[def.pick.maxSize]));
-    if (hits && __SRC_OFF.size) hits = hits.filter((c) => !__SRC_OFF.has(creatureSrcOf(c)));
+    if (hits) hits = hits.filter(isSourceEnabled);
     if (hits && hits.length) return hits
       .map((c) => ({ name: c.name, hp: c.hp, ac: c.ac, cr: c.cr, stat: true }))
       .sort((a, b) => ((a.cr ?? 99) - (b.cr ?? 99)) || a.name.localeCompare(b.name));
@@ -824,7 +867,7 @@ const creatureInfo = (b) => ({
   title: b.name,
   meta: [[b.size, b.type].filter(Boolean).join(" "), b.align].filter(Boolean).join(", "),
   block: b,
-  foot: b.src ? `Source: ${b.src}` : "5e SRD bestiary",
+  foot: `Source: ${sourceOf(b)}`,
 });
 function infoFor(rawName, customs) {
   const name = String(rawName || "").trim();
@@ -834,38 +877,70 @@ function infoFor(rawName, customs) {
     if (b) return creatureInfo(b);
   }
   const strip = baseSubName(name);
-  const sp = (customs?.spells || []).find((s) => s.name === name || s.name === strip);
+  const sp = (customs?.spells || []).find((s) => (s.name === name || s.name === strip) && isSourceEnabled(s));
   if (sp) return {
     title: sp.name,
     meta: [sp.level === 0 ? "Cantrip" : `Level ${sp.level}`, schoolName(sp.school), sp.time && `Cast: ${sp.time}`, sp.range && `Range: ${sp.range}`, sp.components && `Components: ${sp.components}`, sp.duration && `Duration: ${sp.duration}`].filter(Boolean).join(" · "),
-    body: sp.text || null, foot: [sourceOf(sp.text), sp.classes ? `Classes: ${sp.classes}` : null].filter(Boolean).join(" · ") || null,
+    body: sp.text || null, foot: [sourceOf(sp), sp.classes ? `Classes: ${sp.classes}` : null].filter(Boolean).join(" · ") || null,
   };
-  const item = (customs?.items || []).find((x) => x.name === name || x.name === strip);
+  const item = (customs?.items || []).find((x) => (x.name === name || x.name === strip) && isSourceEnabled(x));
   if (item) {
     const props = (item.property || "").split(",").map((p) => WEAPON_PROPS[p.trim()] || p.trim()).filter(Boolean).join(", ");
     return {
       title: item.name,
       meta: [ITEM_TYPES[item.type] || item.type, item.ac ? `AC ${item.type === "S" ? "+" : ""}${item.ac}` : "", item.dmg1 ? `${item.dmg1}${item.dmg2 ? ` (${item.dmg2} versatile)` : ""} ${DMG_TYPES[item.dmgType] || item.dmgType || ""}` : "", props, item.range ? `Range ${item.range}` : "", item.strReq ? `Str ${item.strReq} required` : "", item.stealthDis ? "Stealth disadvantage" : "", item.weight ? `${item.weight} lb` : "", item.value ? `${item.value} gp` : ""].filter(Boolean).join(" · "),
-      body: item.text || null, foot: sourceOf(item.text),
+      body: item.text || null, foot: sourceOf(item),
     };
   }
-  const beast = creatureByName(name) || creatureByName(strip);
-  if (beast) return creatureInfo(beast);
   const inv = INVOCATION_DATA.find(([n]) => n === name || n === strip);
-  if (inv) return { title: inv[0], meta: ["Eldritch Invocation", inv[1] > 0 ? `requires warlock ${inv[1]}` : "", inv[2] ? `requires ${inv[2]}` : ""].filter(Boolean).join(" · "), body: INVOCATION_INFO[inv[0]] || null };
-  if (METAMAGIC_INFO[name]) return { title: name, meta: "Metamagic", body: METAMAGIC_INFO[name] };
-  if (MANEUVERS[strip]) return { title: strip, meta: "Battle Master maneuver", body: MANEUVERS[strip] + "\n\nManeuvers ride on superiority dice — a Battle Master's own, or the single d6 the Martial Adept feat grants (regained on a short or long rest)." };
-  if (BOON_INFO[name]) return { title: name, meta: "Pact Boon", body: BOON_INFO[name] };
+  if (inv) return { title: inv[0], meta: ["Eldritch Invocation", inv[1] > 0 ? `requires warlock ${inv[1]}` : "", inv[2] ? `requires ${inv[2]}` : ""].filter(Boolean).join(" · "), body: INVOCATION_INFO[inv[0]] || null, foot: sourceOf({ src: inv[3], sources: inv[4] }) || "Player's Handbook (2014)" };
+  const mmObj = (__BASE?.runtime?.metamagic || []).find((m) => m.name === name || m.name === strip);
+  if (METAMAGIC_INFO[name]) return { title: name, meta: "Metamagic", body: METAMAGIC_INFO[name], foot: sourceOf(mmObj) || "Player's Handbook (2014) p.101" };
+  const mvObj = (__BASE?.runtime?.maneuvers || {})[strip] || (__BASE?.runtime?.maneuvers || {})[name];
+  if (MANEUVERS[strip]) return { title: strip, meta: "Battle Master maneuver", body: MANEUVERS[strip] + "\n\nManeuvers ride on superiority dice — a Battle Master's own, or the single d6 the Martial Adept feat grants (regained on a short or long rest).", foot: sourceOf(mvObj) || "Player's Handbook (2014) p.73" };
+  const infusion = (__BASE?.runtime?.infusions || []).find((x) => x.name === name || x.name === strip);
+  if (infusion) return { title: infusion.name, meta: ["Artificer Infusion", infusion.minLevel ? `requires level ${infusion.minLevel}` : ""].filter(Boolean).join(" · "), body: infusion.desc || null, foot: sourceOf(infusion) };
+  const arcaneShot = (__BASE?.runtime?.arcaneShots || []).find((x) => x.name === name || x.name === strip);
+  if (arcaneShot) return { title: arcaneShot.name, meta: "Arcane Shot", body: arcaneShot.desc || null, foot: sourceOf(arcaneShot) };
+  const rune = (__BASE?.runtime?.runes || []).find((x) => x.name === name || x.name === strip);
+  if (rune) return { title: rune.name, meta: "Rune Knight Rune", body: rune.desc || null, foot: sourceOf(rune) };
+  const elemDisc = (__BASE?.runtime?.elementalDisciplines || []).find((x) => x.name === name || x.name === strip);
+  if (elemDisc) return { title: elemDisc.name, meta: ["Elemental Discipline", elemDisc.minLevel ? `requires monk ${elemDisc.minLevel}` : ""].filter(Boolean).join(" · "), body: elemDisc.desc || null, foot: sourceOf(elemDisc) };
+  const boonObj = (__BASE?.runtime?.pactBoons || []).find((b) => b.name === name || b.name === strip);
+  if (BOON_INFO[name]) return { title: name, meta: "Pact Boon", body: BOON_INFO[name], foot: sourceOf(boonObj) || "Player's Handbook (2014) p.107" };
   const fs = strip.replace(/^Fighting Style:\s*/, "");
-  if (STYLE_DESC[fs] && fs === strip) return { title: `Fighting Style: ${fs}`, meta: "Fighting Style", body: STYLE_DESC[fs] };
-  if (LANG_INFO[name]) return { title: name, meta: "Language", body: LANG_INFO[name] };
-  if (ABILITY_INFO[name]) return { title: name, meta: "Ability score", body: ABILITY_INFO[name] };
-  if (SKILL_ABIL[name]) return { title: name, meta: `Skill · ${ABIL_NAMES[SKILL_ABIL[name]]}`, body: SKILL_INFO[name] };
-  const feat = allFeats(customs || EMPTY_CUSTOM).find((f) => f.name === name || f.name === strip);
-  if (feat) return { title: feat.name, meta: ["Feat", feat.prereq && `Prerequisite: ${feat.prereq}`].filter(Boolean).join(" · "), body: feat.text || feat.desc || null };
+  if (STYLE_DESC[fs] || STYLE_DESC[strip]) return { title: `Fighting Style: ${fs}`, meta: "Fighting Style", body: STYLE_DESC[fs] || STYLE_DESC[strip], foot: (STYLE_DESC[fs]?.includes("Tasha") || fs === "Blind Fighting" || fs === "Interception" || fs === "Superior Technique" || fs === "Thrown Weapon Fighting" || fs === "Unarmed Fighting" || fs === "Blessed Warrior" || fs === "Druidic Warrior" ? "Tasha's Cauldron of Everything p.41" : "Player's Handbook (2014) p.72") };
+  if (LANG_INFO[name]) return { title: name, meta: "Language", body: LANG_INFO[name], foot: "Player's Handbook (2014) p.123" };
+  if (ABILITY_INFO[name]) return { title: name, meta: "Ability score", body: ABILITY_INFO[name], foot: "Player's Handbook (2014) p.173" };
+  if (SKILL_ABIL[name]) return { title: name, meta: `Skill · ${ABIL_NAMES[SKILL_ABIL[name]]}`, body: SKILL_INFO[name], foot: "Player's Handbook (2014) p.174" };
+  const cleanNorm = String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const stripNorm = String(strip || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const feat = allFeats(customs || EMPTY_CUSTOM).find((f) => {
+    const fn = String(f.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    return fn === cleanNorm || fn === stripNorm || cleanNorm.startsWith(fn);
+  });
+  if (feat) return { title: feat.name, meta: ["Feat", feat.prereq && `Prerequisite: ${feat.prereq}`].filter(Boolean).join(" · "), body: feat.text || feat.desc || null, foot: sourceOf(feat) };
+  const rt = (__BASE?.runtime?.raceTraits || {})[name] || (__BASE?.runtime?.raceTraits || {})[strip];
+  if (rt) return { title: rt.name, meta: rt.race ? `Racial trait · ${rt.race}` : "Racial trait", body: rt.desc, foot: sourceOf(rt) };
+  const optF = (__BASE?.runtime?.optionalFeatureMap || {})[name] || (__BASE?.runtime?.optionalFeatureMap || {})[strip];
+  if (optF) return { title: optF.name, meta: "Optional Feature", body: optF.desc, foot: sourceOf(optF) };
+  const raceData = RACES[name] || RACES[strip];
+  if (raceData) {
+    const rParts = [];
+    if (raceData.flavor) rParts.push(raceData.flavor);
+    if (raceData.traits?.length) rParts.push("Racial Traits:\n" + raceData.traits.map((t) => `• ${t}`).join("\n"));
+    if (rParts.length || raceData.text) {
+      return {
+        title: name,
+        meta: ["Race", raceData.speed ? `${raceData.speed} ft speed` : null].filter(Boolean).join(" · "),
+        body: rParts.join("\n\n") || raceData.text || null,
+        foot: sourceOf(raceData) || "Player's Handbook (2014)",
+      };
+    }
+  }
   for (const [cls, arr] of Object.entries(customs?.subs || {})) {
-    const s = arr.find((x) => x.name === name || x.name === strip);
-    if (s) return { title: s.name, meta: `${cls} subclass`, body: Object.entries(s.feats).map(([l, fx]) => `Level ${l}: ${fx.join(", ")}`).join("\n"), foot: "Long-press any feature name for its own entry." };
+    const s = arr.find((x) => (x.name === name || x.name === strip) && isSourceEnabled(x));
+    if (s) return { title: s.name, meta: `${cls} subclass`, body: Object.entries(s.feats).map(([l, fx]) => `Level ${l}: ${fx.join(", ")}`).join("\n"), foot: sourceOf(s) || "Long-press any feature name for its own entry." };
   }
   if (SUB_LORE[strip]) {
     const sl = SUB_LORE[strip];
@@ -875,32 +950,51 @@ function infoFor(rawName, customs) {
     Object.entries(sl.features).sort((a, b) => a[0] - b[0]).forEach(([l, fx]) => fx.forEach((f) => lines.push(`Level ${l} — ${f.n}. ${f.t}`)));
     return { title: strip, meta: `${CLASSES[sl.cls].subName} · ${sl.cls}`, body: lines.join("\n"), foot: SRD_FOOT };
   }
-  if (SUB_FEATS[strip]) return { title: strip, meta: "Subclass", body: Object.entries(SUB_FEATS[strip]).map(([l, fx]) => `Level ${l}: ${fx.join(", ")}`).join("\n") };
+  if (SUB_FEATS[strip]) return { title: strip, meta: "Subclass", body: Object.entries(SUB_FEATS[strip]).map(([l, fx]) => `Level ${l}: ${fx.join(", ")}`).join("\n"), foot: SRD_FOOT };
   const bgd = BACKGROUNDS[name] || BACKGROUNDS[strip];
   if (bgd) {
     const bgTitle = BACKGROUNDS[name] ? name : strip;
     const ftx = (customs?.featureTexts || {})[bgTitle];
+    const bgParts = [];
+    if (bgd.flavor) bgParts.push(bgd.flavor);
+    if (bgd.feature && bgd.featureText) {
+      bgParts.push(`Feature: ${bgd.feature}\n${bgd.featureText}`);
+    } else if (bgd.text) {
+      bgParts.push(bgd.text);
+    }
     return {
       title: bgTitle,
       meta: ["Background", `Skills: ${bgd.skills.join(" & ")}`, bgd.langs ? `${bgd.langs} extra language${bgd.langs > 1 ? "s" : ""}` : null, bgd.tools ? `Tools: ${bgd.tools}` : null].filter(Boolean).join(" · "),
-      body: ftx || `${bgd.flavor}\n${bgd.feature}. ${bgd.featureText}`,
-      foot: ftx ? sourceOf(ftx) : null,
+      body: ftx || bgParts.join("\n\n"),
+      foot: ftx ? sourceOf(ftx) : sourceOf(bgd) || "Player's Handbook (2014) p.125",
     };
   }
+  const fSrc = (__BASE?.runtime?.featureSources || {})[name] || (__BASE?.runtime?.featureSources || {})[strip];
   const ft = customs?.featureTexts || {};
   let key = ft[name] ? name : ft[strip] ? strip : Object.keys(ft).find((k) => baseSubName(k) === strip || k.startsWith(strip + " ("));
   if (!key) { const cp = name.match(/^([^:]+):/); if (cp && ft[cp[1].trim()]) key = cp[1].trim(); }
   if (!key) key = Object.keys(ft).filter((k) => k.length > 3 && strip.startsWith(k + " ")).sort((a, b) => b.length - a.length)[0];
-  if (key) return { title: strip, meta: "Feature", body: ft[key], foot: sourceOf(ft[key]) };
-  if (FEATURE_TEXT[name] || FEATURE_TEXT[strip]) return { title: strip, meta: "Feature", body: FEATURE_TEXT[name] || FEATURE_TEXT[strip], foot: SRD_FOOT };
-  if (CORE_FEATURE_INFO[strip]) return { title: strip, meta: "Feature", body: CORE_FEATURE_INFO[strip] };
+  if (key) return { title: strip, meta: "Feature", body: ft[key], foot: sourceOf(fSrc) || sourceOf(ft[key]) || SRD_FOOT };
+  if (FEATURE_TEXT[name] || FEATURE_TEXT[strip]) return { title: strip, meta: "Feature", body: FEATURE_TEXT[name] || FEATURE_TEXT[strip], foot: sourceOf(fSrc) || SRD_FOOT };
+  if (CORE_FEATURE_INFO[strip]) return { title: strip, meta: "Feature", body: CORE_FEATURE_INFO[strip], foot: sourceOf(fSrc) || "Player's Handbook (2014)" };
   const eff = EFFECT_LIB.find((x) => x.name === name || x.name === strip);
-  if (eff) return { title: eff.name, meta: [eff.kind === "Condition" ? "Condition" : `${eff.kind} · trackable effect`, eff.conc && "Concentration", eff.dur].filter(Boolean).join(" · "), body: [eff.brief, eff.desc].filter(Boolean).join("\n") };
+  if (eff) return { title: eff.name, meta: [eff.kind === "Condition" ? "Condition" : `${eff.kind} · trackable effect`, eff.conc && "Concentration", eff.dur].filter(Boolean).join(" · "), body: [eff.brief, eff.desc].filter(Boolean).join("\n"), foot: "Player's Handbook (2014) p.290" };
   const bgFeat = Object.entries(BACKGROUNDS).find(([, b]) => b.feature === name || b.feature === strip);
-  if (bgFeat) return { title: bgFeat[1].feature, meta: `Background feature · ${bgFeat[0]}`, body: bgFeat[1].featureText };
+  if (bgFeat) return { title: bgFeat[1].feature, meta: `Background feature · ${bgFeat[0]}`, body: bgFeat[1].featureText, foot: sourceOf(bgFeat[1]) || "Player's Handbook (2014)" };
+  const beast = creatureByName(name) || creatureByName(strip);
+  if (beast) return creatureInfo(beast);
   return null;
 }
-const allSubs = (cls, customs) => CLASSES[cls].subs.concat((customs?.subs?.[cls] || []).map((s) => s.name).filter((n) => !CLASSES[cls].subs.includes(n)));
+const allSubs = (cls, customs) => {
+  const imported = customs?.subs?.[cls] || [];
+  const activeImported = imported.filter(isSourceEnabled);
+  const activeNames = new Set(activeImported.map((sub) => sub.name));
+  const staticNames = (CLASSES[cls]?.subs || []).filter((name) => {
+    const record = imported.find((sub) => sub.name === name);
+    return !record || isSourceEnabled(record);
+  });
+  return staticNames.concat(activeImported.map((sub) => sub.name).filter((name) => !activeNames.has(name) || !staticNames.includes(name)));
+};
 const customSubFeats = (subclass, level, customs) => {
   for (const arr of Object.values(customs?.subs || {})) {
     const hit = arr.find((s) => s.name === subclass || s.name === baseSubName(subclass));
@@ -913,16 +1007,17 @@ const allSubFeats = (subclass, level, customs) =>
     ? subFeatsFor(subclass, level)
     : subFeatsFor(subclass, level).concat(customSubFeats(subclass, level, customs));
 const allFeats = (customs) => {
-  const map = new Map(FEATS.map((f) => [f.name, f]));
-  (customs?.feats || []).forEach((f) => {
+  const imported = customs?.feats || [];
+  const map = new Map((imported.some((f) => f.canonical) ? [] : FEATS).map((f) => [f.name, f]));
+  imported.forEach((f) => {
     const base = map.get(f.name);
     const fx = FEAT_MECHANICS[f.name];
     map.set(f.name, {
       cat: base?.cat || "Imported", ...f,
-      ...(!f.bump?.length && fx?.bump ? { bump: fx.bump } : {}),
+      ...(!f.canonical && !f.bump?.length && fx?.bump ? { bump: fx.bump } : {}),
     });
   });
-  return [...map.values()].map((f) => ({ ...f, pick: featPickOf(f.name, f) }));
+  return [...map.values()].filter(isSourceEnabled).map((f) => ({ ...f, pick: featPickOf(f.name, f) }));
 };
 const b64uFromBytes = (bytes) => {
   let bin = "";

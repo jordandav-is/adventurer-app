@@ -1,6 +1,6 @@
 import { ABILITIES, ALL_SKILLS, CANTRIPS_KNOWN, CHOICE_GROUPS, CLASSES, FAVORED_ENEMIES, FIGHTING_STYLES, INVOCATIONS, INVOCATION_DATA, LAND_TERRAINS, LANGS, MC_PREREQ, MC_PROFS, MC_SKILL_GRANT, METAMAGIC, PACT_BOONS, SPELLS_KNOWN, STYLE_DESC, baseSubName } from "./data.js";
 import { allFeats, allKnownCantrips, allSubFeats, allSubs, choiceCum, choiceOptionsFor, featPickDone, featPickOf, fmtMod, groupMatches, hasStyle, isTechnique, maxSpellLevel, meetsPrereq, mod, profBonus, spellFitsClass, totalLevel } from "./rules.js";
-import { srcSpells } from "./compendium.js";
+import { isSourceEnabled, srcSpells } from "./compendium.js";
 import { useEffect, useRef, useState } from "react";
 import { ClassTag, FeatChooser, FeatureLine, Icon, SpellPickGrid, SubclassDetail, T, btn, card, lorePress } from "./ui.jsx";
 import { DiceTray, roll } from "./dice.jsx";
@@ -60,7 +60,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
 
   const classOrder = [
     ...[...ch.classes].sort((a, b) => b.level - a.level).map((c) => c.name),
-    ...Object.keys(CLASSES).filter((n) => !ch.classes.some((c) => c.name === n)),
+    ...Object.keys(CLASSES).filter((n) => isSourceEnabled(CLASSES[n]) && !ch.classes.some((c) => c.name === n)),
   ];
   const options = classOrder.map((name) => {
     const isNew = !existing.includes(name);
@@ -69,7 +69,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
       if (!currentOk) { ok = false; why = "Current class prerequisites unmet — cannot multiclass"; }
       else if (!meetsPrereq(name, ch.abilities)) {
         ok = false;
-        why = "Requires " + MC_PREREQ[name].map((r) => Object.entries(r).map(([k, v]) => `${k.toUpperCase()} ${v}`).join(" & ")).join(" or ");
+        why = "Requires " + (MC_PREREQ[name] || [{ int: 13 }]).map((r) => Object.entries(r).map(([k, v]) => `${k.toUpperCase()} ${v}`).join(" & ")).join(" or ");
       }
     }
     return { name, isNew, ok, why };
@@ -176,7 +176,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
 
   const styleClass = pick === "Fighter" || (entry?.subclass === "Champion" && newClsLevel === 10) ? "Fighter" : pick;
   const gainsStyle = feats.some((f) => /Fighting Style/.test(f)) && FIGHTING_STYLES[styleClass];
-  const styleOptions = gainsStyle ? FIGHTING_STYLES[styleClass].filter((f) => !hasStyle(ch, f)) : [];
+  const styleOptions = gainsStyle ? (FIGHTING_STYLES[styleClass] || []).filter((f) => !hasStyle(ch, f)) : [];
   const gainsTerrain = gainsSub && newSub === "Circle of the Land";
   const gainsExpertise = feats.some((f) => f.startsWith("Expertise"));
   const expPool = ch.skills.filter((sk) => !(ch.expertise || []).includes(sk));
@@ -199,7 +199,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const boonHeld = boonPick || ch.pactBoon;
   const invReqMet = (req) => !req || (req === "eldritch blast cantrip" ? hasEB : boonHeld === req);
   const invTaken = [...curInv.filter((n) => n !== invSwapOut), ...invPicks, ...(invSwapIn ? [invSwapIn] : [])];
-  const invOptions = INVOCATION_DATA.filter(([n, lvl]) => newClsLevel >= lvl && !invTaken.includes(n));
+  const invOptions = INVOCATION_DATA.filter(([n, lvl, req, src, sources]) => newClsLevel >= lvl && !invTaken.includes(n) && isSourceEnabled({ src, sources }));
 
   const sortSp = (a, b) => a.level - b.level || a.name.localeCompare(b.name);
   const cantripTarget = CANTRIPS_KNOWN[pick] ? CANTRIPS_KNOWN[pick](newClsLevel) : 0;

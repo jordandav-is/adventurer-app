@@ -1,6 +1,6 @@
 import { ABILITIES, ABIL_MAX, ABIL_MIN, ABIL_NAMES, ALIGNMENTS, ALL_SKILLS, ANCESTRIES, BACKGROUNDS, CANTRIPS_KNOWN, CLASSES, FAVORED_ENEMIES, FEAT_MECHANICS, FIGHTING_STYLES, GEAR_LISTS, ITEM_TYPES, LANGS, PB_COST, RACES, RACE_LANGS, STARTING_GEAR, START_GOLD, STD_ARRAY, STYLE_DESC } from "./data.js";
 import { allFeats, allSubs, featGrantedSpells, featPickDone, featPickOf, findItem, fmtMod, formatStandardRaceBonus, getDefaultRacialSlots, getRacialBonusPool, isArmorType, isWeaponType, mod, searchRank, spellCapacity, spellFitsClass } from "./rules.js";
-import { srcSpells, uid } from "./compendium.js";
+import { isSourceEnabled, srcSpells, uid } from "./compendium.js";
 import { useEffect, useState } from "react";
 import { ClassDetail, ClassTag, FeatChooser, Icon, LazyList, Portrait, SubclassDetail, T, btn, card, lorePress, usePhotoUpload } from "./ui.jsx";
 import { DiceTray, roll } from "./dice.jsx";
@@ -491,7 +491,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
 
       {step === 1 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 10 }}>
-          {Object.entries(RACES).filter(([, d]) => !d.group).map(([r, d]) => (
+          {Object.entries(RACES).filter(([, d]) => !d.group && isSourceEnabled(d)).map(([r, d]) => (
             <div key={r} onClick={() => {
               setRace(r); setRaceAbilPicks([]); setCustomAsiSlots([]); setRaceSkills([]); setHeCantrip(""); setAncestry(null);
               setRaceFeat(null); setLineageTrait(null);
@@ -514,9 +514,9 @@ function CreateWizard({ onDone, onCancel, customs }) {
           <div onClick={() => setShowExpanded(!showExpanded)}
             style={{ gridColumn: "1 / -1", ...card, padding: "12px 14px", cursor: "pointer", borderColor: raceData.group ? T.gold : T.edge }}>
             <span style={{ fontFamily: "Georgia, serif", fontSize: 16, color: T.gold }}>{showExpanded ? "▾" : "▸"} Expanded Races</span>
-            <span style={{ color: T.dim, fontSize: 12 }}> · Tabaxi, Aasimar, Goliath, Genasi, and the rest of the wider world ({Object.values(RACES).filter((d) => d.group).length})</span>
+            <span style={{ color: T.dim, fontSize: 12 }}> · Tabaxi, Aasimar, Goliath, Genasi, and the rest of the wider world ({Object.values(RACES).filter((d) => d.group && isSourceEnabled(d)).length})</span>
           </div>
-          {showExpanded && Object.entries(RACES).filter(([, d]) => d.group).map(([r, d]) => (
+          {showExpanded && Object.entries(RACES).filter(([, d]) => d.group && isSourceEnabled(d)).map(([r, d]) => (
             <div key={r} onClick={() => {
               setRace(r); setRaceAbilPicks([]); setCustomAsiSlots([]); setRaceSkills([]); setHeCantrip(""); setAncestry(null);
               setRaceFeat(null); setLineageTrait(null);
@@ -569,7 +569,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
           <div style={{ ...card, padding: 14 }}>
             <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>Background <span style={{ color: T.dim, fontSize: 11 }}>· long-press one to read its feature in full</span></div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8, marginBottom: 10 }}>
-              {[...Object.keys(BACKGROUNDS), "Custom"].map((b) => {
+              {[...Object.keys(BACKGROUNDS).filter((b) => isSourceEnabled(BACKGROUNDS[b])), "Custom"].map((b) => {
                 const d = BACKGROUNDS[b];
                 const pickBg = () => {
                   setBg(b); setBgSkills([]);
@@ -670,7 +670,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
       {step === 3 && (
         <div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10, marginBottom: 16 }}>
-            {Object.entries(CLASSES).map(([c, d]) => (
+            {Object.entries(CLASSES).filter(([, d]) => isSourceEnabled(d)).map(([c, d]) => (
               <div key={c} onClick={() => { setCls(c); setSkills([]); setSubclass(null); setStyle(null); setRogueExp([]); setFavEnemy(null); setNatTerrain(null); setSpellPicks({ cantrips: [], spells: [] }); setGearMode(null); setGearPicks({}); setPurchases([]); setGold(null); setGoldRoll(null); }}
                 style={{ ...card, padding: 12, cursor: "pointer", borderColor: cls === c ? T.gold : T.edge, background: cls === c ? T.panel2 : T.panel }}>
                 <div style={{ fontFamily: "Georgia, serif", fontSize: 16 }}><ClassTag name={c} size={15} /></div>
@@ -921,7 +921,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
                       <input value={shopQ} onChange={(e) => setShopQ(e.target.value)} placeholder="Browse the outfitter's stock…"
                         style={{ width: "100%", boxSizing: "border-box", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 16 }} />
                       <LazyList resetKey={shopQ} style={{ maxHeight: 260, marginTop: 6, border: `1px solid ${T.edge}`, borderRadius: 8 }}
-                        items={(customs?.items || []).filter((x) => x.type !== "$" && x.name.toLowerCase().includes(shopQ.toLowerCase()))
+                        items={(customs?.items || []).filter((x) => x.type !== "$" && isSourceEnabled(x) && x.name.toLowerCase().includes(shopQ.toLowerCase()))
                           .sort((a, b) => searchRank(a.name, shopQ) - searchRank(b.name, shopQ) || a.name.localeCompare(b.name))}
                         empty={<div style={{ color: T.dim, fontSize: 13, padding: 8 }}>Nothing matches.</div>}
                         render={(it) => {

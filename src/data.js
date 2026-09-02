@@ -3,18 +3,18 @@
 const ABILITIES = ["str", "dex", "con", "int", "wis", "cha"];
 const ABIL_NAMES = { str: "Strength", dex: "Dexterity", con: "Constitution", int: "Intelligence", wis: "Wisdom", cha: "Charisma" };
 const RACES = {
-  "Hill Dwarf": { bonus: { con: 2, wis: 1 }, speed: 25, traits: ["Darkvision 60 ft", "Dwarven Resilience (adv. vs poison)", "Dwarven Toughness (+1 HP/level)", "Stonecunning"] },
-  "High Elf": { bonus: { dex: 2, int: 1 }, speed: 30, traits: ["Darkvision 60 ft", "Fey Ancestry", "Trance", "Keen Senses (Perception)", "One wizard cantrip"] },
-  "Lightfoot Halfling": { bonus: { dex: 2, cha: 1 }, speed: 25, traits: ["Halfling Luck (reroll 1s)", "Brave", "Halfling Nimbleness", "Naturally Stealthy"] },
-  "Human": { bonus: { str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1 }, speed: 30, traits: ["+1 to all ability scores"] },
-  "Dragonborn": { bonus: { str: 2, cha: 1 }, speed: 30, traits: ["Draconic Ancestry", "Breath Weapon", "Damage Resistance (ancestry type)"] },
-  "Rock Gnome": { bonus: { int: 2, con: 1 }, speed: 25, traits: ["Darkvision 60 ft", "Gnome Cunning (adv. on Int/Wis/Cha saves vs magic)", "Artificer's Lore", "Tinker"] },
-  "Half-Elf": { bonus: { cha: 2 }, choose: 2, chooseNot: ["cha"], skills: 2, speed: 30, traits: ["Darkvision 60 ft", "Fey Ancestry", "Two extra skills", "+1 to two abilities of your choice"] },
-  "Half-Orc": { bonus: { str: 2, con: 1 }, speed: 30, traits: ["Darkvision 60 ft", "Relentless Endurance", "Savage Attacks", "Menacing (Intimidation)"] },
-  "Tiefling": { bonus: { cha: 2, int: 1 }, speed: 30, traits: ["Darkvision 60 ft", "Hellish Resistance (fire)", "Infernal Legacy (thaumaturgy)"] },
-  "Variant Human": { bonus: {}, choose: 2, chooseAmt: 1, skills: 1, feat: true, speed: 30, optional: true,
+  "Hill Dwarf": { bonus: { con: 2, wis: 1 }, speed: 25, src: "PHB", sources: ["PHB"], traits: ["Darkvision 60 ft", "Dwarven Resilience (adv. vs poison)", "Dwarven Toughness (+1 HP/level)", "Stonecunning"] },
+  "High Elf": { bonus: { dex: 2, int: 1 }, speed: 30, src: "PHB", sources: ["PHB"], traits: ["Darkvision 60 ft", "Fey Ancestry", "Trance", "Keen Senses (Perception)", "One wizard cantrip"] },
+  "Lightfoot Halfling": { bonus: { dex: 2, cha: 1 }, speed: 25, src: "PHB", sources: ["PHB"], traits: ["Halfling Luck (reroll 1s)", "Brave", "Halfling Nimbleness", "Naturally Stealthy"] },
+  "Human": { bonus: { str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1 }, speed: 30, src: "PHB", sources: ["PHB"], traits: ["+1 to all ability scores"] },
+  "Dragonborn": { bonus: { str: 2, cha: 1 }, speed: 30, src: "PHB", sources: ["PHB"], traits: ["Draconic Ancestry", "Breath Weapon", "Damage Resistance (ancestry type)"] },
+  "Rock Gnome": { bonus: { int: 2, con: 1 }, speed: 25, src: "PHB", sources: ["PHB"], traits: ["Darkvision 60 ft", "Gnome Cunning (adv. on Int/Wis/Cha saves vs magic)", "Artificer's Lore", "Tinker"] },
+  "Half-Elf": { bonus: { cha: 2 }, choose: 2, chooseNot: ["cha"], skills: 2, speed: 30, src: "PHB", sources: ["PHB"], traits: ["Darkvision 60 ft", "Fey Ancestry", "Two extra skills", "+1 to two abilities of your choice"] },
+  "Half-Orc": { bonus: { str: 2, con: 1 }, speed: 30, src: "PHB", sources: ["PHB"], traits: ["Darkvision 60 ft", "Relentless Endurance", "Savage Attacks", "Menacing (Intimidation)"] },
+  "Tiefling": { bonus: { cha: 2, int: 1 }, speed: 30, src: "PHB", sources: ["PHB"], traits: ["Darkvision 60 ft", "Hellish Resistance (fire)", "Infernal Legacy (thaumaturgy)"] },
+  "Variant Human": { bonus: {}, choose: 2, chooseAmt: 1, skills: 1, feat: true, speed: 30, optional: true, src: "PHB", sources: ["PHB"],
     traits: ["+1 to two different ability scores", "One extra skill proficiency", "One feat of your choice at 1st level"] },
-  "Custom Lineage": { bonus: {}, choose: 1, chooseAmt: 2, feat: true, lineageTrait: true, speed: 30, optional: true,
+  "Custom Lineage": { bonus: {}, choose: 1, chooseAmt: 2, feat: true, lineageTrait: true, speed: 30, optional: true, src: "TCE", sources: ["TCE"],
     traits: ["+2 to one ability score of your choice", "Darkvision 60 ft or one extra skill", "One feat of your choice at 1st level", "Size Small or Medium (your choice)"] },
 
   "Aasimar (Protector)": { bonus: { cha: 2, wis: 1 }, speed: 30, group: "expanded", grantSpells: { 1: ["Light"] },
@@ -149,6 +149,7 @@ const FIGHTING_STYLES = {
 };
 const STYLE_DESC = { Archery: "+2 ranged attack rolls", Defense: "+1 AC in armor", Dueling: "+2 dmg one-handed melee", "Great Weapon Fighting": "reroll 1-2 on two-handed dmg", Protection: "reaction: impose disadv. on attack vs ally (shield)", "Two-Weapon Fighting": "add ability mod to off-hand dmg" };
 const PROF_TEXT = {
+  Artificer: "Light & medium armor, shields, simple weapons, thieves' tools, tinker's tools, one type of artisan's tools",
   Barbarian: "Light & medium armor, shields, simple & martial weapons",
   Bard: "Light armor, simple weapons, hand crossbows, longswords, rapiers, shortswords, three instruments",
   Cleric: "Light & medium armor, shields, simple weapons",
@@ -162,7 +163,7 @@ const PROF_TEXT = {
   Warlock: "Light armor, simple weapons",
   Wizard: "Daggers, darts, slings, quarterstaffs, light crossbows",
 };
-const START_GOLD = { Barbarian: [2, 10], Bard: [5, 10], Cleric: [5, 10], Druid: [2, 10], Fighter: [5, 10], Monk: [5, 1], Paladin: [5, 10], Ranger: [5, 10], Rogue: [4, 10], Sorcerer: [3, 10], Warlock: [4, 10], Wizard: [4, 10] };
+const START_GOLD = { Artificer: [5, 10], Barbarian: [2, 10], Bard: [5, 10], Cleric: [5, 10], Druid: [2, 10], Fighter: [5, 10], Monk: [5, 1], Paladin: [5, 10], Ranger: [5, 10], Rogue: [4, 10], Sorcerer: [3, 10], Warlock: [4, 10], Wizard: [4, 10] };
 const GEAR_LISTS = {
   simpleMelee: ["Club", "Dagger", "Greatclub", "Handaxe", "Javelin", "Light Hammer", "Mace", "Quarterstaff", "Sickle", "Spear"],
   simpleRanged: ["Light Crossbow", "Dart", "Shortbow", "Sling"],
@@ -176,6 +177,14 @@ const GEAR_LISTS = {
 GEAR_LISTS.simple = [...GEAR_LISTS.simpleMelee, ...GEAR_LISTS.simpleRanged];
 GEAR_LISTS.martial = [...GEAR_LISTS.martialMelee, ...GEAR_LISTS.martialRanged];
 const STARTING_GEAR = {
+  Artificer: {
+    fixed: [["Thieves' Tools", 1], ["Dungeoneer's Pack", 1]],
+    slots: [
+      { name: "Weapon", options: [{ label: "Two simple weapons", pick: "simple", n: 2 }] },
+      { name: "Armor", options: [{ label: "Studded Leather Armor", items: [["Studded Leather Armor", 1]] }, { label: "Scale Mail", items: [["Scale Mail", 1]] }] },
+      { name: "Ranged", options: [{ label: "Light Crossbow & 20 bolts", items: [["Light Crossbow", 1], ["Crossbow Bolts", 20]] }] },
+    ],
+  },
   Barbarian: {
     fixed: [["Explorer's Pack", 1], ["Javelin", 4]],
     slots: [
@@ -321,11 +330,13 @@ const INVOCATION_DATA = [
   ["Voice of the Chain Master", 0, "Pact of the Chain"], ["Whispers of the Grave", 9, ""], ["Witch Sight", 15, ""],
 ];
 const MC_PREREQ = {
+  Artificer: [{ int: 13 }],
   Barbarian: [{ str: 13 }], Bard: [{ cha: 13 }], Cleric: [{ wis: 13 }], Druid: [{ wis: 13 }],
   Fighter: [{ str: 13 }, { dex: 13 }], Monk: [{ dex: 13, wis: 13 }], Paladin: [{ str: 13, cha: 13 }],
   Ranger: [{ wis: 13 }], Rogue: [{ dex: 13 }], Sorcerer: [{ cha: 13 }], Warlock: [{ cha: 13 }], Wizard: [{ int: 13 }],
 };
 const MC_PROFS = {
+  Artificer: "Light & medium armor, shields, thieves' tools, tinker's tools",
   Barbarian: "Shields, simple & martial weapons", Bard: "Light armor, one skill, one instrument",
   Cleric: "Light & medium armor, shields", Druid: "Light & medium armor, shields (nonmetal)",
   Fighter: "Light & medium armor, shields, simple & martial weapons", Monk: "Simple weapons, shortswords",
@@ -799,7 +810,7 @@ const FEATS = [
     text: "Ability Score Increase. Increase your Constitution by 1, to a maximum of 20.\nHeroic Rally. As a Bonus Action, you can expend one of your Hit Point Dice and roll it, regaining Hit Points equal to the roll plus your Constitution modifier (minimum 1 Hit Point)." },
   { name: "Elemental Adept", cat: "General", desc: "Your spells of one damage type ignore resistance and never roll a 1 for damage", prereq: "Level 4+, Spellcasting or Pact Magic feature", lvl: 4, caster: true, bump: ["int", "wis", "cha"],
     text: "Ability Score Increase. Increase your Intelligence, Wisdom, or Charisma by 1, to a maximum of 20.\nEnergy Mastery. Choose one damage type: Acid, Cold, Fire, Lightning, or Thunder. Spells you cast ignore Resistance to that damage type. In addition, when you roll damage for a spell and the roll is a 1, you treat it as a 2.\nYou can take this feat more than once, choosing a different damage type each time." },
-  { name: "Fey-Touched", cat: "General", desc: "Misty Step plus one 1st-level Divination or Enchantment spell, free once a day", prereq: "Level 4+", lvl: 4, bump: ["int", "wis", "cha"],
+  { name: "Fey Touched", cat: "General", desc: "Misty Step plus one 1st-level Divination or Enchantment spell, free once a day", prereq: "Level 4+", lvl: 4, bump: ["int", "wis", "cha"],
     text: "Ability Score Increase. Increase your Intelligence, Wisdom, or Charisma by 1, to a maximum of 20.\nFey Magic. Choose one 1st-level spell from the Divination or Enchantment school. You always have that spell and the Misty Step spell prepared. You can cast each of them once without a spell slot, regaining that use on a Long Rest, and can also cast them using spell slots you have. Your spellcasting ability for them is the ability you increased with this feat.\n(Add both spells from the Grimoire so the sheet tracks them.)" },
   { name: "Grappler", cat: "General", desc: "Advantage on attacks against creatures you grapple, and grapple as part of the Attack action", prereq: "Level 4+, Strength or Dexterity 13+", lvl: 4, minAny: { str: 13, dex: 13 }, bump: ["str", "dex"],
     text: "Ability Score Increase. Increase your Strength or Dexterity by 1, to a maximum of 20.\nGrapple Attack. You have Advantage on attack rolls against a creature you have Grappled.\nFast Wrestle. You can use the Unarmed Strike (Grapple) option in place of one of the attacks granted by the Attack action.\nPunch and Grab. When you hit a creature with an Unarmed Strike, you can use both the Damage and the Grapple option, but only once per turn." },
@@ -823,8 +834,8 @@ const FEATS = [
     text: "Ability Score Increase. Increase your Strength or Dexterity by 1, to a maximum of 20.\nDexterous Wearer. While wearing Medium armor, you can add 3, rather than 2, to your Armor Class if you have a Dexterity of 16 or higher, and wearing Medium armor doesn't impose Disadvantage on your Dexterity (Stealth) checks.\n(The sheet raises the Dex cap on your AC automatically.)" },
   { name: "Moderately Armored", cat: "General", desc: "Proficiency with medium armor and shields", prereq: "Level 4+, proficiency with light armor", lvl: 4, bump: ["str", "dex"],
     text: "Ability Score Increase. Increase your Strength or Dexterity by 1, to a maximum of 20.\nArmor Training. You gain training with Medium armor and Shields." },
-  { name: "Mounted Combatant", cat: "General", desc: "Advantage against unmounted foes, and redirect attacks aimed at your mount", prereq: "Level 4+", lvl: 4, bump: ["str", "dex", "wis"],
-    text: "Ability Score Increase. Increase your Strength, Dexterity, or Wisdom by 1, to a maximum of 20.\nMounted Strike. While mounted, you have Advantage on attack rolls against any unmounted creature within 5 feet of your mount that is smaller than the mount.\nLeap Aside. If your mount is subjected to an effect that allows it to make a Dexterity saving throw for half damage, it instead takes no damage on a success and half on a failure — provided it isn't Incapacitated.\nVeer. While mounted, you can force an attack that hits your mount to hit you instead." },
+  { name: "Shadow Touched", cat: "General", desc: "Invisibility plus one 1st-level Illusion or Necromancy spell, free once a day", prereq: "Level 4+", lvl: 4, bump: ["int", "wis", "cha"],
+    text: "Ability Score Increase. Increase your Intelligence, Wisdom, or Charisma by 1, to a maximum of 20.\nShadow Magic. Choose one 1st-level spell from the Illusion or Necromancy school. You always have that spell and the Invisibility spell prepared. You can cast each of them once without a spell slot, regaining that use on a Long Rest, and can also cast them using spell slots you have. Your spellcasting ability for them is the ability you increased with this feat.\n(Add both spells from the Grimoire so the sheet tracks them.)" },
   { name: "Observant", cat: "General", desc: "Search as a bonus action; proficiency in Insight, Investigation, or Perception", prereq: "Level 4+", lvl: 4, bump: ["int", "wis"], pick: { skills: { n: 1, from: ["Insight", "Investigation", "Perception"] } },
     text: "Ability Score Increase. Increase your Intelligence or Wisdom by 1, to a maximum of 20.\nSkill Proficiency. You gain proficiency in one of the following skills of your choice: Insight, Investigation, or Perception.\nQuick Search. You can take the Search action as a Bonus Action." },
   { name: "Piercer", cat: "General", desc: "Reroll one piercing damage die per turn; crits add an extra die", prereq: "Level 4+", lvl: 4, bump: ["str", "dex"],
@@ -932,8 +943,17 @@ const FEAT_PICKS = {
   "Magic Initiate": { choice: { label: "Spell list", options: ["Cleric", "Druid", "Wizard"] }, spells: { cantrips: 2, level1: 1, class: "$choice" } },
   "Ritual Caster": { choice: { label: "Ritual book's list", options: ["Cleric", "Druid", "Wizard"] }, spells: { level1: 2, ritual: true, class: "$choice" } },
   "Elemental Adept": { choice: { label: "Damage type", options: ["Acid", "Cold", "Fire", "Lightning", "Thunder"] } },
+  "Fey Touched": { spells: { level1: 1, schools: ["D", "EN"], grant: ["Misty Step"] } },
   "Fey-Touched": { spells: { level1: 1, schools: ["D", "EN"], grant: ["Misty Step"] } },
+  "Shadow Touched": { spells: { level1: 1, schools: ["I", "N"], grant: ["Invisibility"] } },
   "Shadow-Touched": { spells: { level1: 1, schools: ["I", "N"], grant: ["Invisibility"] } },
+  "Fey Teleportation": { spells: { grant: ["Misty Step"] } },
+  "Wood Elf Magic": { spells: { cantrips: 1, grant: ["Longstrider", "Pass without Trace"] } },
+  "Drow High Magic": { spells: { grant: ["Detect Magic", "Levitate", "Dispel Magic"] } },
+  "Svirfneblin Magic": { spells: { grant: ["Nondetection", "Blindness/Deafness", "Blur", "Disguise Self"] } },
+  "Artificer Initiate": { spells: { cantrips: 1, level1: 1, class: "Artificer" } },
+  "Fighting Initiate": { choice: { label: "Fighting Style", options: ["Archery", "Blind Fighting", "Defense", "Dueling", "Great Weapon Fighting", "Interception", "Protection", "Superior Technique", "Thrown Weapon Fighting", "Two-Weapon Fighting", "Unarmed Fighting"] } },
+  "Metamagic Adept": { choice: { label: "Metamagic", options: ["Careful Spell", "Distant Spell", "Empowered Spell", "Extended Spell", "Heightened Spell", "Quickened Spell", "Seeking Spell", "Subtle Spell", "Transmuted Spell", "Twinned Spell"] } },
   "Telekinetic": { spells: { grant: ["Mage Hand"] } },
   "Telepathic": { spells: { grant: ["Detect Thoughts"] } },
   "Skilled": { skills: { n: 3 } },
@@ -970,6 +990,7 @@ const FEAT_PICKS = {
 };
 const INVOCATIONS = (l) => (l >= 18 ? 8 : l >= 15 ? 7 : l >= 12 ? 6 : l >= 9 ? 5 : l >= 7 ? 4 : l >= 5 ? 3 : l >= 2 ? 2 : 0);
 const CANTRIPS_KNOWN = {
+  Artificer: (l) => (l >= 14 ? 4 : l >= 10 ? 3 : 2),
   Bard: (l) => (l >= 10 ? 4 : l >= 4 ? 3 : 2), Cleric: (l) => (l >= 10 ? 5 : l >= 4 ? 4 : 3),
   Druid: (l) => (l >= 10 ? 4 : l >= 4 ? 3 : 2), Sorcerer: (l) => (l >= 10 ? 6 : l >= 4 ? 5 : 4),
   Warlock: (l) => (l >= 10 ? 4 : l >= 4 ? 3 : 2), Wizard: (l) => (l >= 10 ? 5 : l >= 4 ? 4 : 3),
@@ -980,7 +1001,7 @@ const SPELLS_KNOWN = {
   Warlock: [2,3,4,5,6,7,8,9,10,10,11,11,12,12,13,13,14,14,15,15],
 };
 const RANGER_PREPARED = [2,3,4,5,6,6,7,7,9,9,10,10,11,11,12,12,14,14,15,15];
-const SPELL_ABILITY = { Bard: "cha", Cleric: "wis", Druid: "wis", Paladin: "cha", Ranger: "wis", Sorcerer: "cha", Warlock: "cha", Wizard: "int" };
+const SPELL_ABILITY = { Artificer: "int", Bard: "cha", Cleric: "wis", Druid: "wis", Paladin: "cha", Ranger: "wis", Sorcerer: "cha", Warlock: "cha", Wizard: "int" };
 const MC_SLOTS = [
   [2],[3],[4,2],[4,3],[4,3,2],[4,3,3],[4,3,3,1],[4,3,3,2],[4,3,3,3,1],[4,3,3,3,2],
   [4,3,3,3,2,1],[4,3,3,3,2,1],[4,3,3,3,2,1,1],[4,3,3,3,2,1,1],[4,3,3,3,2,1,1,1],[4,3,3,3,2,1,1,1],
@@ -998,11 +1019,12 @@ const PACT = (l) => (l >= 17 ? { n: 4, lvl: 5 } : l >= 11 ? { n: 3, lvl: 5 } : l
 const CASTING_CLASSES = new Set(["Bard", "Cleric", "Druid", "Paladin", "Ranger", "Sorcerer", "Warlock", "Wizard", "Artificer"]);
 const KENSEI_WEAPONS = ["Battleaxe", "Club", "Dagger", "Flail", "Glaive", "Greataxe", "Greatclub", "Greatsword", "Halberd", "Handaxe", "Javelin", "Light Hammer", "Longbow", "Longsword", "Mace", "Maul", "Morningstar", "Pike", "Quarterstaff", "Rapier", "Scimitar", "Shortbow", "Shortsword", "Sickle", "Spear", "Trident", "War Pick", "Warhammer", "Whip"];
 const CHOICE_GROUPS = [
-  { key: "Maneuvers", cls: "Fighter", sub: "Battle Master", source: { spellTag: true }, counts: { 3: 3, 7: 2, 10: 2, 15: 2 } },
-  { key: "Arcane Shot Options", cls: "Fighter", sub: "Arcane Archer", source: { spellTag: true }, counts: { 3: 2, 7: 1, 10: 1, 15: 1, 18: 1 } },
+  { key: "Infusions", cls: "Artificer", source: { infusionTag: true }, counts: { 2: 4, 6: 2, 10: 2, 14: 2, 18: 2 } },
+  { key: "Maneuvers", cls: "Fighter", sub: "Battle Master", source: { list: [] }, counts: { 3: 3, 7: 2, 10: 2, 15: 2 } },
+  { key: "Arcane Shot Options", cls: "Fighter", sub: "Arcane Archer", source: { list: [] }, counts: { 3: 2, 7: 1, 10: 1, 15: 1, 18: 1 } },
   { key: "Trick Shots", cls: "Fighter", sub: "Gunslinger", source: { spellTag: true }, counts: { 3: 2, 7: 1, 10: 1, 15: 1, 18: 1 } },
   { key: "Runes", cls: "Fighter", sub: "Rune Knight", source: { featurePrefix: "Rune" }, counts: { 3: 2, 7: 1, 10: 1, 15: 1 } },
-  { key: "Elemental Disciplines", cls: "Monk", sub: "Way of the Four Elements", source: { spellTag: true }, counts: { 3: 1, 6: 1, 11: 1, 17: 1 }, grant: { 3: ["Elemental Attunement"] } },
+  { key: "Elemental Disciplines", cls: "Monk", sub: "Way of the Four Elements", source: { list: [] }, counts: { 3: 1, 6: 1, 11: 1, 17: 1 }, grant: { 3: ["Elemental Attunement"] } },
   { key: "Kensei Weapons", cls: "Monk", sub: "Way of the Kensei", source: { list: KENSEI_WEAPONS }, counts: { 3: 2, 6: 1, 11: 1, 17: 1 } },
   { key: "Totem Spirit", cls: "Barbarian", sub: "Path of the Totem Warrior", source: { featurePrefix: "Totem Spirit" }, counts: { 3: 1 } },
   { key: "Aspect of the Beast", cls: "Barbarian", sub: "Path of the Totem Warrior", source: { featurePrefix: "Aspect of the Beast" }, counts: { 6: 1 } },
@@ -1024,6 +1046,7 @@ const SOURCE_ABBR = [
   ["Acquisitions Incorporated", "AI"], ["Curse of Strahd", "CoS"], ["Princes of the Apocalypse", "PotA"], ["Unearthed Arcana", "UA"], ["Wayfinder's Guide", "WGtE"],
 ];
 const CLASS_GEAR_PROFS = {
+  Artificer: { armor: ["LA", "MA", "S"], weapons: { simple: true } },
   Barbarian: { armor: ["LA", "MA", "S"], weapons: { martial: true } },
   Bard: { armor: ["LA"], weapons: { simple: true, named: ["Hand Crossbow", "Longsword", "Rapier", "Shortsword"] } },
   Cleric: { armor: ["LA", "MA", "S"], weapons: { simple: true } },
@@ -1038,6 +1061,7 @@ const CLASS_GEAR_PROFS = {
   Wizard: { armor: [], weapons: { named: ["Dagger", "Dart", "Sling", "Quarterstaff", "Light Crossbow"] } },
 };
 const MC_GEAR_PROFS = {
+  Artificer: { armor: ["LA", "MA", "S"], weapons: {} },
   Barbarian: { armor: ["S"], weapons: { martial: true } },
   Bard: { armor: ["LA"], weapons: {} },
   Cleric: { armor: ["LA", "MA", "S"], weapons: {} },
@@ -1163,5 +1187,5 @@ const PB_COST = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
 const ABIL_MIN = 1, ABIL_MAX = 30;
 const SCHOOL_NAMES = { A: "Abjuration", C: "Conjuration", D: "Divination", EN: "Enchantment", EV: "Evocation", I: "Illusion", N: "Necromancy", T: "Transmutation" };
 const ARCANUM_UNLOCK = { 6: 11, 7: 13, 8: 15, 9: 17 };
-const PREP_ALL_CLASSES = ["Cleric", "Druid", "Paladin", "Ranger"];
+const PREP_ALL_CLASSES = ["Artificer", "Cleric", "Druid", "Paladin", "Ranger"];
 export { ABILITIES, ABIL_NAMES, RACES, LANGS, RACE_LANGS, ANCESTRIES, ALL_SKILLS, BACKGROUNDS, ALIGNMENTS, FIGHTING_STYLES, STYLE_DESC, PROF_TEXT, START_GOLD, GEAR_LISTS, STARTING_GEAR, LAND_TERRAINS, SUB_SPELLS, baseSubName, normSub, GRANTED_SUB_CLASSES, SPELL_LVL_HINT, SKILL_ABIL, METAMAGIC, PACT_BOONS, FAVORED_ENEMIES, INVOCATION_DATA, MC_PREREQ, MC_PROFS, MC_SKILL_GRANT, ASI, CLASSES, SUB_FEATS, subFeatsFor, SRD_FOOT, CLASS_BLURB, FEATURE_TEXT, SUB_LORE, TEXT_2024, FEATS, FEAT_INDEX, FEAT_CATS, FEAT_MECHANICS, MANEUVERS, FEAT_PICKS, INVOCATIONS, CANTRIPS_KNOWN, SPELLS_KNOWN, RANGER_PREPARED, SPELL_ABILITY, MC_SLOTS, HALF_SLOTS, HALF1_SLOTS, PACT, CASTING_CLASSES, CHOICE_GROUPS, CHOICE_KEYS, GRANT_CANTRIPS, ITEM_TYPES, DMG_TYPES, WEAPON_PROPS, SOURCE_ABBR, CLASS_GEAR_PROFS, MC_GEAR_PROFS, SIZE_RANK, DMG_WORD_CODE, HEALING_TIERS, POTION_EFFECT_ALIAS, LANG_INFO, SKILL_INFO, INVOCATION_INFO, METAMAGIC_INFO, BOON_INFO, ABILITY_INFO, CORE_FEATURE_INFO, STD_ARRAY, PB_COST, ABIL_MIN, ABIL_MAX, SCHOOL_NAMES, ARCANUM_UNLOCK, PREP_ALL_CLASSES };

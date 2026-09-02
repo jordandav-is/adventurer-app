@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "bake": "python3 scripts/bake-canonical-5e.py ../5etools-src",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"

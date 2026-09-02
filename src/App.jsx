@@ -33,7 +33,8 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
-      const [cs, stored, base, srcPrefs] = await Promise.all([loadChars(), loadCustom(), fetchBaseCompendium(), loadSrcPrefs()]);
+      const base = await fetchBaseCompendium();
+      const [cs, stored, srcPrefs] = await Promise.all([loadChars(), loadCustom(), loadSrcPrefs()]);
       setSourceExclusions(srcPrefs);
       setSrcOff(srcPrefs);
       let effective = stored;
