@@ -1,5 +1,5 @@
 import { ABILITIES, ABIL_NAMES, ALL_SKILLS, ANCESTRIES, ARCANUM_UNLOCK, ASI, CANTRIPS_KNOWN, CHOICE_KEYS, CLASSES, DMG_TYPES, INVOCATIONS, INVOCATION_DATA, ITEM_TYPES, PACT, PREP_ALL_CLASSES, PROF_TEXT, RACES, SKILL_ABIL, SPELL_ABILITY, SPELL_LVL_HINT, STYLE_DESC, baseSubName } from "./data.js";
-import { EFFECT_BY_KEY, EFFECT_LIB, SUMMON_LIB, allKnownCantrips, allSubFeats, ammoRowFor, applyEffectPatch, armorClass, b64uFromBytes, bladeRiderTier, bytesFromB64u, canEquip, characterChoiceGroups, classLevel, consumableEffectKey, crShow, creatureByName, describeCustomFx, effDefOf, effEnds, effMaxHp, effectsOf, equippedOf, featChoiceOf, featChoiceSummary, featEffects, featureBuckets, featHpBonus, featSpellsOf, findItem, fmtMod, fxMods, hasEffect, hasStyle, hasSub, healingDiceFor, instMaxHp, isArmorType, isBladeCantrip, isConcDef, isConcInst, isConsumableRow, isWeaponType, knownSpellNames, maxSpellLevel, minionApplyHp, minionAttackRolls, minionHp, minionSaves, minionSkills, minionsOf, mod, pipeBytes, profBonus, raceGrantedSpells, round2, schoolName, searchRank, shareCustomsFor, sourceOf, speedOf, spellCapacity, spellFitsClass, spellSlots, spiritAc, spiritDefFromSpell, spiritHp, strikeProfile, subSpellData, summonDefFor, summonFormsFor, summonerSpellAtk, totalLevel, useRecipe, useTrackersFor, usesAmmo } from "./rules.js";
+import { EFFECT_BY_KEY, EFFECT_LIB, SUMMON_LIB, allKnownCantrips, allSubFeats, ammoRowFor, applyEffectPatch, armorClass, b64uFromBytes, bladeRiderTier, bytesFromB64u, canEquip, characterChoiceGroups, classLevel, consumableEffectKey, crShow, creatureByName, describeCustomFx, effDefOf, effEnds, effMaxHp, effectsOf, equippedOf, featChoiceOf, featChoiceSummary, featEffects, featureBuckets, featHpBonus, featSpellsOf, findItem, fmtMod, fxMods, hasEffect, hasStyle, hasSub, healingDiceFor, instMaxHp, invocationFor, invocationSpellsOf, isArmorType, isBladeCantrip, isConcDef, isConcInst, isConsumableRow, isWeaponType, knownSpellNames, maxSpellLevel, minionApplyHp, minionAttackRolls, minionHp, minionSaves, minionSkills, minionsOf, mod, pipeBytes, profBonus, raceGrantedSpells, round2, schoolName, searchRank, shareCustomsFor, sourceOf, speedOf, spellCapacity, spellFitsClass, spellSlots, spiritAc, spiritDefFromSpell, spiritHp, strikeProfile, subSpellData, summonDefFor, summonFormsFor, summonerSpellAtk, totalLevel, useRecipe, useTrackersFor, usesAmmo } from "./rules.js";
 import { EMPTY_CUSTOM, SRD_SRC, __BESTIARY, __SOURCES, creatureSrcOf, isSourceEnabled, sourceCodesOf, sourceLabelOf, spellSrcOf, srcSpells, uid } from "./compendium.js";
 import React, { useEffect, useState } from "react";
 import { CLASS_THEMES, ClassTag, ICON_PATHS, Icon, LazyList, Portrait, SpellPickGrid, T, __showLore, btn, card, cornerBtn, lorePress, usePhotoUpload } from "./ui.jsx";
@@ -478,6 +478,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
     const lvl = spLvl(n);
     if (lvl === 0) return true;
     if (featSpellNames.has(n)) return true;
+    if (invocationFor(ch, n)?.atWill) return true;
     if (pool.find((s) => s.name === n)?.ritual) return true;
     if (Object.entries(book.Warlock?.arcanum || {}).some(([l, an]) => an === n && !(ch.usedArcanum || []).includes(+l))) return true;
     for (let L = lvl; L <= slotsAll.length; L++) if ((slotsAll[L - 1] || 0) - Math.min(usedSlotsArr[L - 1] || 0, slotsAll[L - 1] || 0) > 0) return true;
@@ -516,6 +517,8 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
     addGroup(0, `${feat} · feat`, names.filter((n) => spLvl(n) === 0), "#8fbcbb");
     byLevel(names.filter((n) => spLvl(n) > 0)).forEach(([l, arr]) => addGroup(+l, `${feat} · feat`, arr, "#8fbcbb"));
   });
+  invocationSpellsOf(ch).forEach(({ invocation, spell, atWill }) =>
+    addGroup(spLvl(spell), `${invocation} · invocation · ${atWill ? "at will" : "once per long rest · pact slot"}`, [spell], "#b48ead"));
   if (hasTome) addGroup(0, "Book of Shadows · Tome · cast at will", ch.tomeCantrips || []);
   if (hasBoAS) byLevel(ch.boasRituals || []).forEach(([l, arr]) => addGroup(+l, "Book of Shadows · ritual only", arr));
   const lvlsHeld = [...groups.keys()].sort((a, b) => a - b);
@@ -1469,6 +1472,8 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
   const usedFeats = ch.usedFeatures || {};
   const boasOnly = sp ? (ch.boasRituals || []).includes(sp.name) && !knownSpellNames(ch, customs).has(sp.name) : false;
   const options = [];
+  const atWillInv = sp && invocationFor(ch, sp.name)?.atWill ? invocationFor(ch, sp.name) : null;
+  if (atWillInv) options.push({ id: "atwill", type: "atwill", lvl: sp.level, left: Infinity, label: `At will · ${atWillInv.invocation} — no slot` });
   if (sp && sp.level >= 1 && !boasOnly) {
     for (let L = sp.level; L <= slots.length; L++) if ((slots[L - 1] || 0) > 0)
       options.push({ id: `slot:${L}`, type: "slot", lvl: L, left: (slots[L - 1] || 0) - Math.min(usedSlots[L - 1] || 0, slots[L - 1] || 0), label: L === sp.level ? `Level ${L} slot` : `Upcast · level ${L}` });
@@ -1505,7 +1510,7 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
       const b = (ch.spells || {})[c.name];
       if (b && (["cantrips", "spells"].some((k) => (b[k] || []).includes(sp.name)) || Object.values(b.arcanum || {}).includes(sp.name))) return c.name;
     }
-    if ((ch.tomeCantrips || []).includes(sp.name) || (ch.boasRituals || []).includes(sp.name)) return "Warlock";
+    if ((ch.tomeCantrips || []).includes(sp.name) || (ch.boasRituals || []).includes(sp.name) || invocationFor(ch, sp.name)) return "Warlock";
     return ch.classes.find((c) => CLASSES[c.name].caster && spellFitsClass(sp, c.name, c.subclass))?.name || null;
   };
   const accent =
@@ -1525,6 +1530,7 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
       else if (chosen.type === "pact") { patch.usedPact = Math.min(pact.n, usedPact + 1); bits.push(`pact slot spent, ${pact.n - usedPact - 1} left`); }
       else if (chosen.type === "arcanum") { patch.usedArcanum = [...usedArc, chosen.lvl]; bits.push("arcanum spent until dawn"); }
       else if (chosen.type === "ritual") bits.push("cast as a ritual — no slot");
+      else if (chosen.type === "atwill") bits.push(`at will by ${atWillInv.invocation} — no slot`);
       else if (chosen.type === "tracker") {
         const amt = tracker.pool ? Math.max(1, Math.min(trackerLeft, parseInt(poolAmt, 10) || 1)) : 1;
         patch.usedFeatures = { ...usedFeats, [tracker.key]: Math.min(tracker.max, Math.min(usedFeats[tracker.key] || 0, tracker.max) + amt) };
@@ -2206,7 +2212,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   };
   const strikeClassOf = (sp) =>
     ch.classes.find((c) => { const b = (ch.spells || {})[c.name]; return b && ["cantrips", "spells"].some((k) => (b[k] || []).includes(sp.name)); })?.name
-    || ((ch.tomeCantrips || []).includes(sp.name) ? "Warlock" : null)
+    || ((ch.tomeCantrips || []).includes(sp.name) || invocationFor(ch, sp.name) ? "Warlock" : null)
     || ch.classes.find((c) => CLASSES[c.name].caster && spellFitsClass(sp, c.name, c.subclass))?.name
     || ch.classes.find((c) => CLASSES[c.name].caster)?.name || null;
   const bestMentalMod = () => Math.max(mod(ch.abilities.int), mod(ch.abilities.wis), mod(ch.abilities.cha));

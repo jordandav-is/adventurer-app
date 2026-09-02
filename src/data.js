@@ -1151,6 +1151,29 @@ const INVOCATION_INFO = {
   "Whispers of the Grave": "You can cast speak with dead at will, without expending a spell slot.",
   "Witch Sight": "You can see the true form of any shapechanger or creature concealed by illusion or transmutation magic within 30 feet.",
 };
+// Spells an invocation lets you cast — structured, so the Grimoire never has to parse the prose above.
+// atWill: no slot, no limit. Otherwise: once per long rest, paid with a pact slot (the sheet's feature tracker keeps the once).
+const INVOCATION_SPELLS = {
+  "Armor of Shadows": { spell: "Mage Armor", atWill: true },
+  "Ascendant Step": { spell: "Levitate", atWill: true },
+  "Beast Speech": { spell: "Speak with Animals", atWill: true },
+  "Bewitching Whispers": { spell: "Compulsion" },
+  "Chains of Carceri": { spell: "Hold Monster", atWill: true },
+  "Dreadful Word": { spell: "Confusion" },
+  "Eldritch Sight": { spell: "Detect Magic", atWill: true },
+  "Fiendish Vigor": { spell: "False Life", atWill: true },
+  "Mask of Many Faces": { spell: "Disguise Self", atWill: true },
+  "Master of Myriad Forms": { spell: "Alter Self", atWill: true },
+  "Minions of Chaos": { spell: "Conjure Elemental" },
+  "Mire the Mind": { spell: "Slow" },
+  "Misty Visions": { spell: "Silent Image", atWill: true },
+  "Otherworldly Leap": { spell: "Jump", atWill: true },
+  "Sculptor of Flesh": { spell: "Polymorph" },
+  "Sign of Ill Omen": { spell: "Bestow Curse" },
+  "Thief of Five Fates": { spell: "Bane" },
+  "Visions of Distant Realms": { spell: "Arcane Eye", atWill: true },
+  "Whispers of the Grave": { spell: "Speak with Dead", atWill: true },
+};
 const METAMAGIC_INFO = {
   "Careful Spell": "Spend 1 sorcery point: choose up to Charisma-modifier creatures who automatically succeed on their saving throw against your spell.",
   "Distant Spell": "Spend 1 sorcery point to double a spell's range, or give a touch spell a range of 30 feet.",
@@ -1188,4 +1211,4 @@ const ABIL_MIN = 1, ABIL_MAX = 30;
 const SCHOOL_NAMES = { A: "Abjuration", C: "Conjuration", D: "Divination", EN: "Enchantment", EV: "Evocation", I: "Illusion", N: "Necromancy", T: "Transmutation" };
 const ARCANUM_UNLOCK = { 6: 11, 7: 13, 8: 15, 9: 17 };
 const PREP_ALL_CLASSES = ["Artificer", "Cleric", "Druid", "Paladin", "Ranger"];
-export { ABILITIES, ABIL_NAMES, RACES, LANGS, RACE_LANGS, ANCESTRIES, ALL_SKILLS, BACKGROUNDS, ALIGNMENTS, FIGHTING_STYLES, STYLE_DESC, PROF_TEXT, START_GOLD, GEAR_LISTS, STARTING_GEAR, LAND_TERRAINS, SUB_SPELLS, baseSubName, normSub, GRANTED_SUB_CLASSES, SPELL_LVL_HINT, SKILL_ABIL, METAMAGIC, PACT_BOONS, FAVORED_ENEMIES, INVOCATION_DATA, MC_PREREQ, MC_PROFS, MC_SKILL_GRANT, ASI, CLASSES, SUB_FEATS, subFeatsFor, SRD_FOOT, CLASS_BLURB, FEATURE_TEXT, SUB_LORE, TEXT_2024, FEATS, FEAT_INDEX, FEAT_CATS, FEAT_MECHANICS, MANEUVERS, FEAT_PICKS, INVOCATIONS, CANTRIPS_KNOWN, SPELLS_KNOWN, RANGER_PREPARED, SPELL_ABILITY, MC_SLOTS, HALF_SLOTS, HALF1_SLOTS, PACT, CASTING_CLASSES, CHOICE_GROUPS, CHOICE_KEYS, GRANT_CANTRIPS, ITEM_TYPES, DMG_TYPES, WEAPON_PROPS, SOURCE_ABBR, CLASS_GEAR_PROFS, MC_GEAR_PROFS, SIZE_RANK, DMG_WORD_CODE, HEALING_TIERS, POTION_EFFECT_ALIAS, LANG_INFO, SKILL_INFO, INVOCATION_INFO, METAMAGIC_INFO, BOON_INFO, ABILITY_INFO, CORE_FEATURE_INFO, STD_ARRAY, PB_COST, ABIL_MIN, ABIL_MAX, SCHOOL_NAMES, ARCANUM_UNLOCK, PREP_ALL_CLASSES };
+export { ABILITIES, ABIL_NAMES, RACES, LANGS, RACE_LANGS, ANCESTRIES, ALL_SKILLS, BACKGROUNDS, ALIGNMENTS, FIGHTING_STYLES, STYLE_DESC, PROF_TEXT, START_GOLD, GEAR_LISTS, STARTING_GEAR, LAND_TERRAINS, SUB_SPELLS, baseSubName, normSub, GRANTED_SUB_CLASSES, SPELL_LVL_HINT, SKILL_ABIL, METAMAGIC, PACT_BOONS, FAVORED_ENEMIES, INVOCATION_DATA, MC_PREREQ, MC_PROFS, MC_SKILL_GRANT, ASI, CLASSES, SUB_FEATS, subFeatsFor, SRD_FOOT, CLASS_BLURB, FEATURE_TEXT, SUB_LORE, TEXT_2024, FEATS, FEAT_INDEX, FEAT_CATS, FEAT_MECHANICS, MANEUVERS, FEAT_PICKS, INVOCATIONS, CANTRIPS_KNOWN, SPELLS_KNOWN, RANGER_PREPARED, SPELL_ABILITY, MC_SLOTS, HALF_SLOTS, HALF1_SLOTS, PACT, CASTING_CLASSES, CHOICE_GROUPS, CHOICE_KEYS, GRANT_CANTRIPS, ITEM_TYPES, DMG_TYPES, WEAPON_PROPS, SOURCE_ABBR, CLASS_GEAR_PROFS, MC_GEAR_PROFS, SIZE_RANK, DMG_WORD_CODE, HEALING_TIERS, POTION_EFFECT_ALIAS, LANG_INFO, SKILL_INFO, INVOCATION_INFO, INVOCATION_SPELLS, METAMAGIC_INFO, BOON_INFO, ABILITY_INFO, CORE_FEATURE_INFO, STD_ARRAY, PB_COST, ABIL_MIN, ABIL_MAX, SCHOOL_NAMES, ARCANUM_UNLOCK, PREP_ALL_CLASSES };
