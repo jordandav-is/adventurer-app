@@ -583,6 +583,59 @@ def convert_feat(row: dict[str, Any]) -> dict[str, Any]:
         "text": f"{body}\n\n{source_tail(row)}".strip(), "canonical": True,
     }, row)
 
+WEAPON_NAMES: set[str] = set()
+PROF_RE = re.compile(r"gains? proficiency (?:with|in) ([^.]*)\.", re.I)
+ARMOR_WORDS = {"light armor": "LA", "medium armor": "MA", "heavy armor": "HA", "shields": "S"}
+COUNT_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4}
+
+
+def feature_profs(feature: dict[str, Any]) -> dict[str, Any] | None:
+    """Structured proficiencies a subclass feature grants, read from its fixed vocabulary:
+    'you gain proficiency with martial weapons and heavy armor' -> {armor: [HA], weapons: {martial: true}}.
+    Skills, tools, and saves are kept for display; a skill pick becomes skillChoice {n, from}."""
+    if not WEAPON_NAMES:
+        for row in load(DATA / "items-base.json").get("baseitem", []):
+            if row.get("weapon") and row.get("name"): WEAPON_NAMES.add(row["name"].lower())
+    text = " ".join(x if isinstance(x, str) else "" for x in feature.get("entries", []))
+    out: dict[str, Any] = {}
+    for clause in PROF_RE.findall(text):
+        low = clause.lower()
+        armor = [code for word, code in ARMOR_WORDS.items() if word in low]
+        if armor: out["armor"] = sorted(set(out.get("armor", []) + armor))
+        if "martial weapon" in low: out.setdefault("weapons", {})["martial"] = True
+        if "simple weapon" in low: out.setdefault("weapons", {})["simple"] = True
+        for item in re.findall(r"\{@item ([^|}]+)", clause):
+            name = item.strip()
+            if name.lower() in WEAPON_NAMES: out.setdefault("weapons", {}).setdefault("named", []).append(label(name))
+            elif "artisan's tools" in name.lower() or "gaming set" in name.lower(): out.setdefault("toolChoice", []).append(label(name))
+            else: out.setdefault("tools", []).append(label(name))
+        # Only the proficiency clause itself decides skills; a trailing "and you gain two cantrips…" is another benefit.
+        skill_part = re.split(r",? and you (?:gain|learn|choose)", clause, maxsplit=1)[0]
+        skills = [label(x.split("|")[0].strip()) for x in re.findall(r"\{@skill ([^}]+)\}", skill_part)]
+        low = skill_part.lower()
+        if skills:
+            if "your choice" in low or " or " in low:
+                n = next((v for w, v in COUNT_WORDS.items() if re.search(rf"\b{w}\b", low)), 1)
+                out.setdefault("skillChoice", []).append({"n": n, "from": skills})
+            else: out["skills"] = out.get("skills", []) + skills
+        elif "skills of your choice" in low:
+            n = next((v for w, v in COUNT_WORDS.items() if re.search(rf"\b{w}\b", low)), 1)
+            out.setdefault("skillChoice", []).append({"n": n, "from": []})
+    return out or None
+
+
+def nested_feature_refs(value: Any, key: str) -> list[str]:
+    """Feature references embedded in a feature's entries, in reading order (e.g. a domain's level-1 block
+    referencing its Bonus Proficiencies and Wrath of the Storm sub-features)."""
+    found: list[str] = []
+    if isinstance(value, dict):
+        if value.get(key): found.append(value[key] if isinstance(value[key], str) else value[key].get(key, ""))
+        for child in value.values(): found.extend(nested_feature_refs(child, key))
+    elif isinstance(value, list):
+        for child in value: found.extend(nested_feature_refs(child, key))
+    return [x for x in found if x]
+
+
 def class_feature_refs(row: dict[str, Any], field: str) -> list[str]:
     refs = []
     for ref in row.get(field, []):
@@ -610,12 +663,17 @@ def convert_classes() -> tuple[list[dict[str, Any]], dict[str, list[dict[str, An
     for row in selected_classes:
         refs = class_feature_refs(row, "classFeatures")
         levels: dict[str, list[str]] = defaultdict(list)
-        for ref in refs:
+        seen_refs: set[str] = set()
+        while refs:
+            ref = refs.pop(0)
+            if ref in seen_refs: continue
+            seen_refs.add(ref)
             bits = ref.split("|")
             if len(bits) < 4: continue
             name, class_name, source, level = bits[0], bits[1], bits[2] or row.get("source", "PHB"), int(bits[3])
             feature = class_feature_index.get((name, class_name, source, level))
             if not feature: continue
+            refs[0:0] = nested_feature_refs(feature.get("entries", []), "classFeature")
             text = render_text(feature.get("entries", []))
             levels[str(level)].append(name)
             rec = {**provenance(feature, "class-feature", class_name, str(level)), "name": name, "className": class_name, "level": level, "text": text}
@@ -658,21 +716,29 @@ def convert_classes() -> tuple[list[dict[str, Any]], dict[str, list[dict[str, An
     subs: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in selected_subclasses:
         feats: dict[str, list[str]] = defaultdict(list)
+        profs: list[dict[str, Any]] = []
         refs = class_feature_refs(row, "subclassFeatures")
-        for ref in refs:
+        seen_refs: set[str] = set()
+        while refs:
+            ref = refs.pop(0)
+            if ref in seen_refs: continue
+            seen_refs.add(ref)
             bits = ref.split("|")
             if len(bits) < 6: continue
             name, class_name, class_source, sub_short, source, level = bits[0], bits[1], bits[2] or row.get("classSource", "PHB"), bits[3], bits[4] or row.get("source", ""), int(bits[5])
             feature = subclass_feature_index.get((name, class_name, class_source, sub_short, source, level))
             if not feature: continue
+            refs[0:0] = nested_feature_refs(feature.get("entries", []), "subclassFeature")
             text = render_text(feature.get("entries", []))
             feats[str(level)].append(name)
+            granted = feature_profs(feature)
+            if granted: profs.append({"at": level, "feature": name, **granted})
             rec = {**provenance(feature, "subclass-feature", class_name, row["name"], str(level)), "name": name, "className": class_name, "subclass": row["name"], "level": level, "text": text}
             feature_records.append(rec)
             if text:
                 feature_texts[f"{class_name}:{row['name']}:{name}"] = text
                 feature_texts.setdefault(name, text)
-        subs[row["className"]].append(with_grants({**provenance(row, "subclass", row["className"]), "name": row["name"], "feats": dict(feats)}, row))
+        subs[row["className"]].append(with_grants({**provenance(row, "subclass", row["className"]), "name": row["name"], "feats": dict(feats), **({"profs": profs} if profs else {})}, row))
     for values in subs.values(): values.sort(key=lambda x: x["name"])
     feature_sources = {}
     for f in feature_records:
@@ -1095,7 +1161,7 @@ def convert_item(row: dict[str, Any], kind: str = "item") -> dict[str, Any]:
     value = row.get("value")
     attached = row.get("attachedSpells") or (row.get("inherits") or {}).get("attachedSpells")
     charges = row.get("charges", (row.get("inherits") or {}).get("charges"))
-    return with_grants({**provenance(row, kind), "name": row["name"], "type": row.get("type", row.get("rarity", "")), **({"charges": charges} if isinstance(charges, int) else {}), "weight": row.get("weight", 0), "value": (value / 100 if isinstance(value, (int, float)) else value or ""), "ac": row.get("ac", 0) if isinstance(row.get("ac", 0), (int, float)) else 0, "strReq": row.get("strength", 0), "stealthDis": bool(row.get("stealth")), "dmg1": row.get("dmg1", ""), "dmg2": row.get("dmg2", ""), "dmgType": row.get("dmgType", ""), "property": ",".join(row.get("property", [])), "range": row.get("range", ""), "text": f"{text}\n\n{source_tail(row)}".strip()}, row, attached)
+    return with_grants({**provenance(row, kind), "name": row["name"], "type": row.get("type", row.get("rarity", "")), **({"charges": charges} if isinstance(charges, int) else {}), "weight": row.get("weight", 0), "value": (value / 100 if isinstance(value, (int, float)) else value or ""), "ac": row.get("ac", 0) if isinstance(row.get("ac", 0), (int, float)) else 0, "strReq": row.get("strength", 0), "stealthDis": bool(row.get("stealth")), "dmg1": row.get("dmg1", ""), "dmg2": row.get("dmg2", ""), "dmgType": row.get("dmgType", ""), "property": ",".join([x if isinstance(x, str) else str(x.get("uid", "")).split("|")[0] for x in row.get("property", [])] + (["M"] if row.get("weaponCategory") == "martial" else [])), "range": row.get("range", ""), "text": f"{text}\n\n{source_tail(row)}".strip()}, row, attached)
 
 
 def cr_number(value: Any) -> float | int | None:
