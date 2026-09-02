@@ -2148,11 +2148,19 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   };
   const weaponDie = (it) => (shillTarget(it) ? "1d8" : it.dmg1 || "1d4");
   const weaponAbilLabel = (it, abil) => (shillTarget(it) ? `${ABIL_NAMES[abil]} (Shillelagh)` : ABIL_NAMES[abil]);
+  // Everything a weapon's damage roll shares with its attack roll: which ability, which properties, and the flat bonus.
+  const weaponDamage = (it) => {
+    const abil = weaponAbility(it);
+    const props = (it.property || "").split(",").map((x) => x.trim());
+    const dueling = hasStyle(ch, "Dueling") && it.type === "M" && !props.includes("2H") ? 2 : 0;
+    const extras = fxDmg(it.type === "R" ? "ranged" : "melee", abil, props);
+    const bonus = mod(ch.abilities[abil]) + dueling + extras.reduce((s, b) => s + b.value, 0);
+    return { abil, props, dueling, extras, bonus };
+  };
   const rollWeaponDamage = (it) => {
     const m = weaponDie(it).match(/(\d+)d(\d+)/);
     if (!m) return;
-    const extras = fxDmg(it.type === "R" ? "ranged" : "melee", abil, props);
-    const bonus = mod(ch.abilities[abil]) + dueling + extras.reduce((s, b) => s + b.value, 0);
+    const { abil, props, dueling, extras, bonus } = weaponDamage(it);
     const dmgNotes = rollNotes(ch, "dmg", abil);
     setDmgRoll({
       title: `${it.name} damage`,
@@ -2172,13 +2180,9 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     const cantrip = green ? "Green-Flame Blade" : "Booming Blade";
     const elem = green ? "fire" : "thunder";
     const tier = bladeRiderTier(lvl);
-    const abil = weaponAbility(it);
-    const props = (it.property || "").split(",").map((x) => x.trim());
+    const { abil, props, dueling, extras, bonus } = weaponDamage(it);
     const atkParts = [{ label: weaponAbilLabel(it, abil), value: mod(ch.abilities[abil]) }, { label: "proficiency", value: pb }, ...fxAtk("melee", abil, props)];
     const md = weaponDie(it).match(/(\d+)d(\d+)/);
-    const dueling = hasStyle(ch, "Dueling") && it.type === "M" && !props.includes("2H") ? 2 : 0;
-    const extras = fxDmg("melee", abil, props);
-    const bonus = mod(ch.abilities[abil]) + dueling + extras.reduce((s, b) => s + b.value, 0);
     const wpnDice = md ? Array.from({ length: +md[1] }, () => ({ sides: +md[2], value: roll(+md[2]) })) : [];
     const riderDice = Array.from({ length: tier }, () => ({ sides: 8, value: roll(8) }));
     const secondary = green
@@ -2440,11 +2444,9 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
         {equippedWeapons.length > 0 && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
             {equippedWeapons.map((it) => {
-              const abil = weaponAbility(it);
-              const props = (it.property || "").split(",").map((x) => x.trim());
+              const { abil, props, bonus: dmgBonus } = weaponDamage(it);
               const atkParts = [{ label: weaponAbilLabel(it, abil), value: mod(ch.abilities[abil]) }, { label: "proficiency", value: pb }, ...(it.type === "R" && feats.archery ? [{ label: "Archery", value: feats.archery }] : []), ...fxAtk(it.type === "R" ? "ranged" : "melee", abil, props)];
               const atkMod = atkParts.reduce((s, p) => s + p.value, 0);
-              const dmgBonus = mod(ch.abilities[abil]) + (hasStyle(ch, "Dueling") && it.type === "M" && !props.includes("2H") ? 2 : 0) + fxDmg(it.type === "R" ? "ranged" : "melee", abil, props).reduce((s, b) => s + b.value, 0);
               return (
                 <span key={it.name} style={{ display: "inline-flex", border: `1px solid ${T.edge}`, borderRadius: 10, overflow: "hidden" }}>
                   <button {...lorePress(it.name)} style={{ ...btn(false), border: "none", borderRadius: 0, padding: "8px 12px" }}
