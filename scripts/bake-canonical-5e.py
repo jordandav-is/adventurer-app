@@ -95,6 +95,17 @@ def source_fixture() -> dict[str, dict[str, Any]]:
 SOURCES = source_fixture()
 
 
+SMALL_WORDS = {"of", "the", "and", "or", "a", "an", "in", "on", "with"}
+KEY_LABELS = {"anyArtisansTool": "any artisan's tools", "anyMusicalInstrument": "any musical instrument", "anyGamingSet": "any gaming set", "anyStandard": "any standard language", "anyExotic": "any exotic language"}
+
+
+def label(value: str) -> str:
+    """Human label for a 5etools proficiency key: 'sleight of hand' -> 'Sleight of Hand', "navigator's tools" -> "Navigator's Tools", 'anyArtisansTool' -> "Any artisan's tools"."""
+    text = KEY_LABELS.get(value, re.sub(r"(?<=[a-z])(?=[A-Z])", " ", str(value))).replace("_", " ").strip()
+    words = text.split(" ")
+    return " ".join(w if (i and w.lower() in SMALL_WORDS) else (w[:1].upper() + w[1:]) for i, w in enumerate(words) if w)
+
+
 def allowed_source(source: str | None) -> bool:
     return bool(source and source in SOURCES and source != RANGER_SOURCE)
 
@@ -554,7 +565,7 @@ def convert_classes() -> tuple[list[dict[str, Any]], dict[str, list[dict[str, An
             "caster": {"full": "full", "1/2": "half", "artificer": "half1", "1/3": "third", "pact": "pact"}.get(row.get("casterProgression")),
             "subLvl": min(subclass_levels) if subclass_levels else 3,
             "subName": row.get("subclassTitle", "Subclass"),
-            "skills": [x.title() for x in skill_choice.get("from", [])],
+            "skills": [label(x) for x in skill_choice.get("from", [])],
             "nSkills": skill_choice.get("count", 0),
             "asi": asi,
             "features": dict(levels),
@@ -885,7 +896,7 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
         skills = row.get("skillProficiencies") or []
         skill_choose = next((x.get("choose") for x in skills if isinstance(x, dict) and x.get("choose")), None)
         any_skills = sum(v for x in skills if isinstance(x, dict) for k, v in x.items() if k == "any" and isinstance(v, int))
-        fixed_skills = [k.replace("sleight of hand", "Sleight of Hand").title() for x in skills if isinstance(x, dict) for k, v in x.items() if k not in {"choose", "any"} and v]
+        fixed_skills = [label(k.replace("sleight of hand", "Sleight of Hand")) for x in skills if isinstance(x, dict) for k, v in x.items() if k not in {"choose", "any"} and v]
         if any_skills and not skill_choose:
             skill_choose = {"count": any_skills, "from": []}
 
@@ -904,7 +915,7 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
             "sources": record["sources"],
             **({"group": "expanded"} if is_expanded else {}),
             **({"skills": skill_choose.get("count", 1)} if skill_choose else {}),
-            **({"skillsFrom": [x.title() for x in skill_choose["from"]]} if skill_choose and skill_choose.get("from") else {}),
+            **({"skillsFrom": [label(x) for x in skill_choose["from"]]} if skill_choose and skill_choose.get("from") else {}),
             **({"grantSkills": fixed_skills} if fixed_skills else {}),
         }
         if row["name"] in {"Variant Human", "Custom Lineage"}:
@@ -920,7 +931,7 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
                 continue
             for k, v in block.items():
                 if v is True and k not in {"choose", "other"}:
-                    fixed.append(k.title())
+                    fixed.append(label(k))
                 elif k in {"anyStandard", "any", "anyExotic"} and isinstance(v, int):
                     count += v
                 elif k == "choose" and isinstance(v, dict):
@@ -944,7 +955,7 @@ def convert_backgrounds() -> tuple[list[dict[str, Any]], dict[str, Any]]:
         text = render_text(row.get("entries", []))
         skills = []
         for block in row.get("skillProficiencies", []):
-            skills.extend(k.title() for k, v in block.items() if k != "choose" and v)
+            skills.extend(label(k) for k, v in block.items() if k != "choose" and v)
         language_rows = row.get("languageProficiencies") or []
         fixed_langs, language_count = [], 0
         for block in language_rows:
@@ -952,7 +963,7 @@ def convert_backgrounds() -> tuple[list[dict[str, Any]], dict[str, Any]]:
                 continue
             for k, v in block.items():
                 if v is True and k not in {"choose", "other"}:
-                    fixed_langs.append(k.title())
+                    fixed_langs.append(label(k))
                 elif k in {"anyStandard", "any", "anyExotic"} and isinstance(v, int):
                     language_count += v
                 elif k == "choose" and isinstance(v, dict):
@@ -965,7 +976,7 @@ def convert_backgrounds() -> tuple[list[dict[str, Any]], dict[str, Any]]:
                 continue
             for k, v in block.items():
                 if v is True and k not in {"choose"}:
-                    tool_bits.append(k.title())
+                    tool_bits.append(label(k))
                 elif k == "anyArtisansTool":
                     tool_bits.append("One type of artisan's tools" if v == 1 else f"{v} artisan's tools")
                 elif k == "anyMusicalInstrument":
@@ -973,7 +984,7 @@ def convert_backgrounds() -> tuple[list[dict[str, Any]], dict[str, Any]]:
                 elif k == "anyGamingSet":
                     tool_bits.append("One gaming set" if v == 1 else f"{v} gaming sets")
                 elif k == "choose" and isinstance(v, dict):
-                    tool_bits.append(f"Choose {v.get('count', 1)} from " + ", ".join(x.title() for x in v.get("from", [])))
+                    tool_bits.append(f"Choose {v.get('count', 1)} from " + ", ".join(label(x) for x in v.get("from", [])))
         feature = next((x for x in row.get("entries", []) if isinstance(x, dict) and str(x.get("name", "")).startswith("Feature:")), None)
         record = {**provenance(row, "background"), "name": row["name"], "text": text}
         records.append(record)
@@ -1063,7 +1074,7 @@ def convert_monster(row: dict[str, Any]) -> dict[str, Any] | None:
         "hd": str(hp.get("formula", "")).replace(" ", ""),
         "spd": ", ".join(speeds),
         "ab": {k: row.get(k) for k in ("str", "dex", "con", "int", "wis", "cha")},
-        "skills": ", ".join(f"{k.title()} {strip_tags(v)}" for k, v in skills.items() if k != "other"),
+        "skills": ", ".join(f"{label(k)} {strip_tags(v)}" for k, v in skills.items() if k != "other"),
         "sen": ", ".join([*(strip_tags(x) for x in senses), f"passive Perception {row['passive']}" if row.get("passive") is not None else ""]).strip(", "),
         "lang": ", ".join(strip_tags(x) for x in languages),
         "traits": traits or None,

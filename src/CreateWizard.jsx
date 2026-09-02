@@ -591,9 +591,19 @@ function CreateWizard({ onDone, onCancel, customs }) {
               })}
             </div>
             {bgData && (
-              <div style={{ color: T.dim, fontSize: 12, lineHeight: 1.6 }}>
-                <span style={{ color: T.ink }}>{bgData.flavor}</span> <span style={{ color: "#b48ead" }}>{bgData.feature}.</span> {bgData.featureText}
-                {bgData.tools && <div style={{ marginTop: 4 }}>Tool proficiencies — {bgData.tools} — ride along as a note; the sheet doesn't track tools.</div>}
+              <div style={{ color: T.dim, fontSize: 12.5, lineHeight: 1.6 }}>
+                {(() => {
+                  const paras = String(bgData.flavor || "").split(/\n+/).filter(Boolean);
+                  const feature = String(bgData.featureText || "").split(/\n+/).filter(Boolean);
+                  return <>
+                    {paras[0] && <p style={{ color: T.ink, margin: "0 0 8px" }}>{paras[0]}</p>}
+                    {feature.map((t, i) => (
+                      <p key={i} style={{ margin: "0 0 8px" }}>{i === 0 && <span style={{ color: "#b48ead", fontWeight: 700 }}>{bgData.feature}. </span>}{t}</p>
+                    ))}
+                    {paras.length > 1 && <div style={{ fontSize: 11.5 }}>Long-press the {bg} card to read the whole background.</div>}
+                  </>;
+                })()}
+                {bgData.tools && <div style={{ marginTop: 6, fontSize: 11.5 }}>Tool proficiencies — {bgData.tools} — ride along as a note; the sheet doesn't track tools.</div>}
               </div>
             )}
             {bg === "Custom" && (
