@@ -940,8 +940,8 @@ const MANEUVERS = {
 };
 const CASTER_LISTS = ["Bard", "Cleric", "Druid", "Sorcerer", "Warlock", "Wizard"];
 const FEAT_PICKS = {
-  "Magic Initiate": { choice: { label: "Spell list", options: ["Cleric", "Druid", "Wizard"] }, spells: { cantrips: 2, level1: 1, class: "$choice" } },
-  "Ritual Caster": { choice: { label: "Ritual book's list", options: ["Cleric", "Druid", "Wizard"] }, spells: { level1: 2, ritual: true, class: "$choice" } },
+  "Magic Initiate": { choice: { label: "Spell list", options: ["Bard", "Cleric", "Druid", "Sorcerer", "Warlock", "Wizard"] }, spells: { cantrips: 2, level1: 1, class: "$choice" } },
+  "Ritual Caster": { choice: { label: "Ritual book's list", options: ["Bard", "Cleric", "Druid", "Sorcerer", "Warlock", "Wizard"] }, spells: { level1: 2, ritual: true, class: "$choice" } },
   "Elemental Adept": { choice: { label: "Damage type", options: ["Acid", "Cold", "Fire", "Lightning", "Thunder"] } },
   "Fey Touched": { spells: { level1: 1, schools: ["D", "EN"] } },
   "Fey-Touched": { spells: { level1: 1, schools: ["D", "EN"] } },

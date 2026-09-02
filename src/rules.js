@@ -82,10 +82,12 @@ function featEffects(ch, customs) {
 }
 const hasStyle = (ch, name) => (ch?.styles || []).includes(name) || (ch?.feats || []).includes(`Fighting Style: ${name}`);
 const featHpBonus = (ch) => featEffects(ch).hpPerLevel * totalLevel(ch);
-function featBlockedBy(def, { abilities, level, caster }) {
+function featBlockedBy(def, { abilities, level, caster, armor, martial }) {
   if (!def) return null;
   if (def.lvl && level < def.lvl) return `needs character level ${def.lvl}`;
   if (def.caster && !caster) return "needs a spellcasting feature";
+  if (def.needs?.armor && armor && !armor.has(def.needs.armor)) return `needs proficiency with ${{ LA: "light", MA: "medium", HA: "heavy" }[def.needs.armor] || def.needs.armor} armor`;
+  if (def.needs?.weapon === "martial" && martial === false) return "needs proficiency with martial weapons";
   if (def.min && ABILITIES.some((a) => def.min[a] && (abilities?.[a] ?? 0) < def.min[a]))
     return "needs " + ABILITIES.filter((a) => def.min[a]).map((a) => `${a.toUpperCase()} ${def.min[a]}`).join(" & ");
   if (def.minAny) {
@@ -380,16 +382,26 @@ const subclassProfsAt = (clsName, subclass, level, customs) => {
   const sub = subclass && (customs?.subs?.[clsName] || []).find((s) => s.name === subclass || s.name === baseSubName(subclass));
   return (sub?.profs || []).filter((p) => p.at === level);
 };
+// Proficiencies granted by feats (Moderately Armored, Weapon Master) and by ancestry (Dwarven Combat Training), from the baked records.
+const featProfsOf = (ch, customs) => (ch.feats || []).map((n) => { const p = featRecord(n, customs)?.profs; return p ? { ...p, feature: n, source: n, at: 1 } : null; }).filter(Boolean);
+const raceProfsOf = (ch) => (RACES[ch.race]?.profs ? [{ ...RACES[ch.race].profs, feature: ch.race, source: ch.race, at: 1 }] : []);
+// Every proficiency grant beyond the class's own: subclass features, feats, ancestry.
+const bonusProfsOf = (ch, customs) => [...subclassProfsOf(ch, customs).map((p) => ({ ...p, source: p.subclass })), ...featProfsOf(ch, customs), ...raceProfsOf(ch)];
+// The armor codes and weapon categories a character is proficient with, for prerequisite checks.
+function gearProfsOf(ch, customs) {
+  const all = [...ch.classes.map((c, i) => (i === 0 ? CLASS_GEAR_PROFS[c.name] : MC_GEAR_PROFS[c.name])), ...bonusProfsOf(ch, customs)].filter(Boolean);
+  return { armor: new Set(all.flatMap((p) => p.armor || [])), martial: all.some((p) => p.weapons?.martial) };
+}
 const ARMOR_WORD = { LA: "light armor", MA: "medium armor", HA: "heavy armor", S: "shields" };
 const profSummary = (p) => [
   ...(p.armor || []).map((a) => ARMOR_WORD[a] || a),
-  p.weapons?.martial ? "martial weapons" : null, p.weapons?.simple ? "simple weapons" : null, ...(p.weapons?.named || []).map((n) => n.toLowerCase()),
+  p.weapons?.martial ? "martial weapons" : null, p.weapons?.simple ? "simple weapons" : null, ...(p.weapons?.named || []).map((n) => n.toLowerCase()), p.weapons?.choose ? `${p.weapons.choose.n} weapons of your choice` : null,
   ...(p.skills || []), ...(p.skillChoice || []).map((c) => `${c.n} skill${c.n > 1 ? "s" : ""} of your choice${c.from.length ? ` (${c.from.join(", ")})` : ""}`),
-  ...(p.tools || []).map((n) => n.toLowerCase()), ...(p.toolChoice || []).map((n) => `one type of ${n.toLowerCase()}`),
+  ...(p.tools || []).map((n) => n.toLowerCase()), ...(p.toolChoice || []).map((n) => (/^one of /i.test(n) ? n.toLowerCase() : `one type of ${n.toLowerCase()}`)),
 ].filter(Boolean).join(", ");
 function canEquip(item, ch, customs) {
   if (!item) return true;
-  const profs = [...ch.classes.map((c, i) => (i === 0 ? CLASS_GEAR_PROFS[c.name] : MC_GEAR_PROFS[c.name])), ...subclassProfsOf(ch, customs)].filter(Boolean);
+  const profs = [...ch.classes.map((c, i) => (i === 0 ? CLASS_GEAR_PROFS[c.name] : MC_GEAR_PROFS[c.name])), ...bonusProfsOf(ch, customs)].filter(Boolean);
   if (isArmorType(item.type) || item.type === "S") {
     const want = item.type === "S" ? "S" : item.type;
     return profs.some((p) => (p.armor || []).includes(want));
@@ -1254,7 +1266,7 @@ function featureBuckets(ch, customs) {
       buckets.push({ key: `sub:${c.name}`, label: cls.subName, title: c.subclass, cls: c.name, items: subItems });
     }
   });
-  buckets.push({ key: "feats", label: null, title: "Feats", items: (ch.feats || []).map((f) => item(f, { detail: featChoiceSummary(ch, f) || null })) });
+  buckets.push({ key: "feats", label: null, title: "Feats", items: (ch.feats || []).map((f) => { const p = featRecord(f, customs)?.profs; return item(f, { detail: [featChoiceSummary(ch, f), p ? `proficiency: ${profSummary(p)}` : null].filter(Boolean).join(" · ") || null }); }) });
   buckets.push({ key: "boons", label: null, title: "Boons & Grants", items: (ch.boons || []).map((b) => ({ id: b.id, name: b.name, detail: b.source || null, body: b.text || null })) });
   return buckets.filter((b) => b.items.length || b.key === "boons");
 }
@@ -1364,4 +1376,4 @@ const searchRank = (name, q) => {
 };
 const schoolName = (s) => SCHOOL_NAMES[(s || "").toUpperCase()] || s;
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-export { mod, fmtMod, profBonus, subSpellData, meetsPrereq, featureBody, featChoiceOf, featEffects, hasStyle, featHpBonus, featBlockedBy, featPickOf, featGrantedSpells, spellGrantsOf, grantsFor, grantAbilityFor, grantLabel, grantTrackerKey, grantTrackerFor, featPickDone, spellCapacity, maxSpellLevel, foldStarredSpells, spellFitsClass, spellSlots, totalLevel, isTechnique, choiceCum, groupMatches, choiceOptionsFor, allChoiceGroups, characterChoiceGroups, allKnownCantrips, sourceOf, findItem, isArmorType, isWeaponType, equippedOf, canEquip, attunementCap, isEquippable, itemActive, attunedRows, attuneBlocker, effectiveAbilities, gearMods, subclassProfsOf, subclassProfsAt, profSummary, armorClass, classLevel, hasSub, hasFeat, effectsOf, knownSpellNames, EFFECT_LIB, EFFECT_BY_KEY, hasEffect, effDefOf, isConcDef, isConcInst, effEnds, instMaxHp, describeCustomFx, applyEffectPatch, fxMods, effMaxHp, speedOf, useTrackersFor, minionsOf, crShow, creatureByName, summonFormsFor, SUMMON_LIB, summonDefFor, spiritHp, spiritAc, spiritDefFromSpell, minionAttackRolls, summonerSpellAtk, minionSaves, minionSkills, minionHp, minionApplyHp, isBladeCantrip, bladeRiderTier, strikeProfile, useRecipe, usesAmmo, ammoRowFor, isConsumableRow, healingDiceFor, consumableEffectKey, allSubs, allSubFeats, allFeats, b64uFromBytes, bytesFromB64u, pipeBytes, shareCustomsFor, getRacialBonusPool, getDefaultRacialSlots, formatStandardRaceBonus, searchRank, schoolName, round2, infoFor, featChoiceSummary, featureBuckets };
+export { mod, fmtMod, profBonus, subSpellData, meetsPrereq, featureBody, featChoiceOf, featEffects, hasStyle, featHpBonus, featBlockedBy, featPickOf, featGrantedSpells, spellGrantsOf, grantsFor, grantAbilityFor, grantLabel, grantTrackerKey, grantTrackerFor, featPickDone, spellCapacity, maxSpellLevel, foldStarredSpells, spellFitsClass, spellSlots, totalLevel, isTechnique, choiceCum, groupMatches, choiceOptionsFor, allChoiceGroups, characterChoiceGroups, allKnownCantrips, sourceOf, findItem, isArmorType, isWeaponType, equippedOf, canEquip, bonusProfsOf, gearProfsOf, attunementCap, isEquippable, itemActive, attunedRows, attuneBlocker, effectiveAbilities, gearMods, subclassProfsOf, subclassProfsAt, profSummary, armorClass, classLevel, hasSub, hasFeat, effectsOf, knownSpellNames, EFFECT_LIB, EFFECT_BY_KEY, hasEffect, effDefOf, isConcDef, isConcInst, effEnds, instMaxHp, describeCustomFx, applyEffectPatch, fxMods, effMaxHp, speedOf, useTrackersFor, minionsOf, crShow, creatureByName, summonFormsFor, SUMMON_LIB, summonDefFor, spiritHp, spiritAc, spiritDefFromSpell, minionAttackRolls, summonerSpellAtk, minionSaves, minionSkills, minionHp, minionApplyHp, isBladeCantrip, bladeRiderTier, strikeProfile, useRecipe, usesAmmo, ammoRowFor, isConsumableRow, healingDiceFor, consumableEffectKey, allSubs, allSubFeats, allFeats, b64uFromBytes, bytesFromB64u, pipeBytes, shareCustomsFor, getRacialBonusPool, getDefaultRacialSlots, formatStandardRaceBonus, searchRank, schoolName, round2, infoFor, featChoiceSummary, featureBuckets };
