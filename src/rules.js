@@ -878,7 +878,7 @@ const SUMMON_LIB = [
   SM("Feature", "Wild Shape", { ends: "manual", role: "Wild Shape", mine: (ch) => classLevel(ch, "Druid") >= 2, pick: { types: ["beast"], maxCr: 6 }, countHint: "CR caps by druid level: ¼ at 2nd (no fly/swim), ½ at 4th (no fly), 1 at 8th — Circle of the Moon goes higher. At 0 HP the form breaks and leftover damage carries to your true body", brief: "Track your beast form's own hit-point pool here while you wear it", forms: [
     ["Wolf", 11, 13], ["Panther", 13, 12], ["Giant Wolf Spider", 11, 13], ["Black Bear", 19, 11], ["Brown Bear", 34, 11], ["Dire Wolf", 37, 14], ["Giant Spider", 26, 14], ["Giant Eagle", 26, 13],
   ] }),
-  SM("Feature", "Primal Companion", { ends: "manual", role: "Companion", mine: (ch) => hasSub(ch, "Beast Master"), hpOf: (ch) => 5 + 5 * classLevel(ch, "Ranger"), countHint: "AC 13 + your Wis mod · HP 5 + 5 × your ranger level", brief: "The Beast Master's bonded primal beast — land, sea, or sky, scaling with your ranger level", forms: [
+  SM("Feature", "Primal Companion", { ends: "manual", role: "Companion", mine: (ch) => hasSub(ch, "Beast Master"), hpOf: (ch) => 5 + 5 * classLevel(ch, "Ranger"), acOf: (ch) => 13 + profBonus(totalLevel(ch)), countHint: "AC 13 + your proficiency bonus · HP 5 + 5 × your ranger level", brief: "The Beast Master's bonded primal beast — land, sea, or sky, scaling with your ranger level", forms: [
     ["Beast of the Land", 30, 13], ["Beast of the Sea", 30, 13], ["Beast of the Sky", 20, 13],
   ] }),
   SM("Feature", "Pact of the Chain", { ends: "manual", role: "Scout", mine: (ch) => ch.pactBoon === "Pact of the Chain", pickNames: ["Imp", "Quasit", "Pseudodragon", "Sprite"], brief: "Your special familiar — imp, quasit, pseudodragon, or sprite — and it can attack in your stead", forms: [
@@ -954,7 +954,8 @@ function minionAttackRolls(c) {
     }
     const scaled = /the spell's level/i.test(first);
     const useSpellAtk = /your spell attack/i.test(first);
-    if (hit || dice.length) out.push({ name: a.n.replace(/\s*\(.*$/, ""), atk: hit ? +hit[1] : null, dice, bonus, scaled, useSpellAtk });
+    const usePb = /your proficiency bonus/i.test(hitClause ? hitClause[1] : "");
+    if (hit || dice.length) out.push({ name: a.n.replace(/\s*\(.*$/, ""), atk: hit ? +hit[1] : null, dice, bonus, scaled, useSpellAtk, usePb });
   });
   return out;
 }
