@@ -1099,7 +1099,7 @@ function MinionsCard({ ch, customs, onUpdate, onSummon, onRoll, onDice, readOnly
         const skills = minionSkills(c);
         const slot = rolling.slot || null;
         const spellAtk = attacks.some((a) => a.useSpellAtk) ? summonerSpellAtk(ch, rolling.source, customs) : null;
-        const dmgBonus = (a) => a.bonus + (a.scaled && slot ? slot : 0);
+        const dmgBonus = (a) => a.bonus + (a.scaled && slot ? slot : 0) + (a.usePb ? profBonus(totalLevel(ch)) : 0);
         const closeThen = (fn) => { setRolling(null); fn(); };
         const pill = { ...btn(false), padding: "7px 12px", minHeight: 0, fontSize: 12.5, fontFamily: "inherit" };
         const secTitle = { color: T.dim, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 14 };
@@ -1179,7 +1179,7 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
   const defaultsFor = (d, f, slot) => ({
     name: f.name, count: "1",
     hp: String(d.hpOf ? d.hpOf(ch) : d.spirit ? spiritHp(d, f, slot) : f.hp),
-    ac: String(d.spirit ? spiritAc(d, f, slot) : (f.ac ?? "")),
+    ac: String(d.acOf ? d.acOf(ch) : d.spirit ? spiritAc(d, f, slot) : (f.ac ?? "")),
   });
   const [q, setQ] = useState("");
   const [pending, setPending] = useState(presetDef);
@@ -1214,7 +1214,7 @@ function AddMinionSheet({ ch, customs, preset, onUpdate, onClose }) {
   const pickForm = (f) => {
     setForm(f);
     const s = slotNow(pending);
-    setFields((prev) => ({ ...prev, name: f.name, hp: String(pending.hpOf ? pending.hpOf(ch) : pending.spirit ? spiritHp(pending, f, s) : f.hp), ac: String(pending.spirit ? spiritAc(pending, f, s) : (f.ac ?? "")) }));
+    setFields((prev) => ({ ...prev, name: f.name, hp: String(pending.hpOf ? pending.hpOf(ch) : pending.spirit ? spiritHp(pending, f, s) : f.hp), ac: String(pending.acOf ? pending.acOf(ch) : pending.spirit ? spiritAc(pending, f, s) : (f.ac ?? "")) }));
   };
   const bumpSlot = (v) => {
     setSlotLv(v);

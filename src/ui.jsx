@@ -152,6 +152,7 @@ function StatBlock({ c }) {
       {props.map(([l, v]) => <Prop key={l} label={l}>{v}</Prop>)}
       {(c.traits || []).length > 0 && <><Rule />{c.traits.map((e, i) => <Entry key={i} e={e} />)}</>}
       <Section title="Actions" list={c.acts} />
+      <Section title="Bonus Actions" list={c.bonus} />
       <Section title="Reactions" list={c.reacts} />
       <Section title="Legendary Actions" list={c.leg} />
     </div>

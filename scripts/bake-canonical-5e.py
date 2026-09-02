@@ -145,10 +145,7 @@ def strip_tags(value: Any) -> str:
             changed = True
             tag, body = match.group(1), match.group(2) or ""
             parts = [p.strip() for p in body.split("|")]
-            if not parts or not parts[0]:
-                return ""
-            if tag == "chance":
-                return f"{parts[0]} percent"
+            # Tags that carry no body ({@h}, {@hitYourSpellAttack}, a bare {@recharge}) still render.
             if tag == "recharge":
                 return f"(Recharge {parts[0]}–6)" if parts[0] else "(Recharge 6)"
             if tag == "h":
@@ -157,12 +154,16 @@ def strip_tags(value: Any) -> str:
                 return "Miss: "
             if tag == "hom":
                 return "Hit or Miss: "
-            if tag in {"atk", "atkr"}:
-                return {"m": "Melee Attack:", "r": "Ranged Attack:", "m,r": "Melee or Ranged Attack:", "mw": "Melee Weapon Attack:", "rw": "Ranged Weapon Attack:", "mw,rw": "Melee or Ranged Weapon Attack:", "ms": "Melee Spell Attack:", "rs": "Ranged Spell Attack:", "ms,rs": "Melee or Ranged Spell Attack:"}.get(parts[0], "Attack:")
             if tag == "hitYourSpellAttack":
                 return "your spell attack modifier"
             if tag == "dcYourSpellSave":
                 return "your spell save DC"
+            if not parts or not parts[0]:
+                return ""
+            if tag == "chance":
+                return f"{parts[0]} percent"
+            if tag in {"atk", "atkr"}:
+                return {"m": "Melee Attack:", "r": "Ranged Attack:", "m,r": "Melee or Ranged Attack:", "mw": "Melee Weapon Attack:", "rw": "Ranged Weapon Attack:", "mw,rw": "Melee or Ranged Weapon Attack:", "ms": "Melee Spell Attack:", "rs": "Ranged Spell Attack:", "ms,rs": "Melee or Ranged Spell Attack:"}.get(parts[0], "Attack:")
             if tag == "dc":
                 return f"DC {parts[0]}"
             if tag in {"hit", "d20"}:
@@ -196,6 +197,7 @@ def strip_tags(value: Any) -> str:
         text = next_text
         if not changed:
             break
+    text = re.sub(r"\bPB\b", "your proficiency bonus", text)
     return text.replace("summonSpellLevel", "the spell's level").replace("\u00ad", "")
 
 
@@ -1403,6 +1405,8 @@ def convert_monster(row: dict[str, Any]) -> dict[str, Any] | None:
         return None
     ac_rows = [x if isinstance(x, dict) else {"ac": x} for x in row.get("ac") or []]
     ac_values = [x.get("ac") for x in ac_rows if isinstance(x.get("ac"), (int, float))]
+    ac_special = next((str(x["special"]) for x in ac_rows if x.get("special")), "")
+    ac_special_base = re.match(r"\s*(\d+)", ac_special)
     hp = row.get("hp") or {}
     cr = cr_number(row.get("cr"))
     speed = row.get("speed") or {}
@@ -1431,7 +1435,8 @@ def convert_monster(row: dict[str, Any]) -> dict[str, Any] | None:
         "align": " ".join(dict.fromkeys(alignment)),
         "cr": cr,
         "xp": XP.get(cr),
-        "ac": max(ac_values) if ac_values else None,
+        "ac": max(ac_values) if ac_values else int(ac_special_base.group(1)) if ac_special_base else None,
+        "acS": strip_tags(ac_special) or None,
         "hp": hp.get("average", 1),
         "hpS": strip_tags(hp.get("special", "")) or None,
         "hd": str(hp.get("formula", "")).replace(" ", ""),
@@ -1442,6 +1447,7 @@ def convert_monster(row: dict[str, Any]) -> dict[str, Any] | None:
         "lang": ", ".join(strip_tags(x) for x in languages),
         "traits": traits or None,
         "acts": named_entries(row.get("action")) or None,
+        "bonus": named_entries(row.get("bonus")) or None,
         "reacts": named_entries(row.get("reaction")) or None,
         "leg": named_entries(row.get("legendary")) or None,
     }
