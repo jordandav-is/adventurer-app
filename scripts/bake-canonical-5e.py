@@ -1212,6 +1212,7 @@ def main() -> None:
             "optionalFeatureMap": opt_feature_map,
             "backgrounds": runtime_backgrounds,
             "featureSources": feature_sources,
+            **mechanics,
         },
         "skippedClasses": [],
     }
