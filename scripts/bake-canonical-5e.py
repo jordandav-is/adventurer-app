@@ -505,13 +505,83 @@ def ability_bumps(row: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+SPELL_CANON: dict[str, tuple[str, int]] = {}
+UNRESOLVED_SPELL_REFS: Counter = Counter()
+
+
+def spell_ref(raw: str) -> dict[str, Any]:
+    """'speak with animals', 'light#c', 'identify|xphb', 'mending|xphb#c' -> canonical name + level."""
+    text = str(raw)
+    cantrip = text.endswith("#c")
+    if cantrip: text = text[:-2]
+    cast_at = re.search(r"#(\d+)$", text)
+    if cast_at: text = text[: cast_at.start()]
+    key = text.split("|")[0].strip().lower()
+    hit = SPELL_CANON.get(key)
+    if not hit: UNRESOLVED_SPELL_REFS[key] += 1
+    return {"spell": hit[0] if hit else key.title(), "level": hit[1] if hit else (0 if cantrip else None), "castAt": int(cast_at.group(1)) if cast_at else None}
+
+
+def spell_grants(row: dict[str, Any], attached: Any = None) -> list[dict[str, Any]]:
+    """Flatten a 5etools `additionalSpells` block (or an item's `attachedSpells`) into grant records.
+
+    Each grant: spell, level, how (innate/known/prepared/expanded), cost, at (level gate, 0 = always),
+    plus uses/each/resource/ability when the cost is limited, or choose/count/all for pick-a-spell entries.
+    cost: will · slot · daily · rest · limited · charges · resource · ritual · item.
+    """
+    out: list[dict[str, Any]] = []
+    def clean(rec: dict[str, Any]) -> dict[str, Any]:
+        return {k: v for k, v in rec.items() if v is not None and v is not False}
+    def entries(how: str, at: Any, spell_level: Any, items: Any, cost: str, extra: dict[str, Any]) -> None:
+        for item in items or []:
+            base = {"how": how, "cost": cost, "at": at, **extra}
+            if isinstance(item, str):
+                out.append(clean({**spell_ref(item), **base}))
+            elif isinstance(item, dict) and item.get("choose") is not None:
+                out.append(clean({"choose": item["choose"], "count": item.get("count", 1), "level": spell_level, **base}))
+            elif isinstance(item, dict) and item.get("all") is not None:
+                out.append(clean({"all": item["all"], "level": spell_level, **base}))
+    def body(how: str, at: Any, spell_level: Any, value: Any, extra: dict[str, Any]) -> None:
+        if isinstance(value, list):
+            entries(how, at, spell_level, value, "will" if how == "innate" else "slot", extra); return
+        if not isinstance(value, dict): return
+        for mode, inner in value.items():
+            if mode == "_": body(how, at, spell_level, inner, extra)
+            elif mode in {"will", "ritual"}: entries(how, at, spell_level, inner, mode, extra)
+            elif mode == "other": entries(how, at, spell_level, inner, "item", extra)
+            elif mode in {"daily", "rest", "limited", "charges", "resource"}:
+                for uses, items in (inner or {}).items():
+                    each = isinstance(uses, str) and uses.endswith("e") and uses[:-1].isdigit()
+                    n = int(uses[:-1]) if each else (int(uses) if str(uses).isdigit() else uses)
+                    entries(how, at, spell_level, items, mode, {**extra, "uses": n, "each": each})
+    groups = row.get("additionalSpells") or []
+    if attached is not None:
+        groups = [{"innate": {"_": attached if isinstance(attached, list) else attached}, "ability": row.get("ability") if isinstance(attached, dict) else None}]
+        if isinstance(attached, dict) and attached.get("ability"): groups[0]["ability"] = attached["ability"]
+    for group in groups:
+        ability = group.get("ability")
+        extra = {"ability": ability if isinstance(ability, str) else (ability or {}).get("choose"), "resource": group.get("resourceName")}
+        for how in ("innate", "known", "prepared", "expanded"):
+            for gate, value in (group.get(how) or {}).items():
+                gate = str(gate)
+                if gate.startswith("s") and gate[1:].isdigit(): at, spell_level = 0, int(gate[1:])
+                else: at, spell_level = (0 if gate == "_" else int(gate)), None
+                body(how, at, spell_level, value, extra)
+    return out
+
+
+def with_grants(record: dict[str, Any], row: dict[str, Any], attached: Any = None) -> dict[str, Any]:
+    grants = spell_grants(row, attached)
+    return {**record, "grants": grants} if grants else record
+
+
 def convert_feat(row: dict[str, Any]) -> dict[str, Any]:
     body = render_text(row.get("entries", []))
-    return {
+    return with_grants({
         **provenance(row, "feat"), "name": row["name"], "cat": "Canonical",
         "desc": body.split("\n\n")[0] if "\n\n" in body else body, "prereq": prerequisite_text(row.get("prerequisite")), "bump": ability_bumps(row),
         "text": f"{body}\n\n{source_tail(row)}".strip(), "canonical": True,
-    }
+    }, row)
 
 def class_feature_refs(row: dict[str, Any], field: str) -> list[str]:
     refs = []
@@ -569,6 +639,7 @@ def convert_classes() -> tuple[list[dict[str, Any]], dict[str, list[dict[str, An
             "nSkills": skill_choice.get("count", 0),
             "asi": asi,
             "features": dict(levels),
+            **({"grants": spell_grants(row)} if spell_grants(row) else {}),
         })
     selected_subclasses = []
     grouped: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
@@ -601,7 +672,7 @@ def convert_classes() -> tuple[list[dict[str, Any]], dict[str, list[dict[str, An
             if text:
                 feature_texts[f"{class_name}:{row['name']}:{name}"] = text
                 feature_texts.setdefault(name, text)
-        subs[row["className"]].append({**provenance(row, "subclass", row["className"]), "name": row["name"], "feats": dict(feats)})
+        subs[row["className"]].append(with_grants({**provenance(row, "subclass", row["className"]), "name": row["name"], "feats": dict(feats)}, row))
     for values in subs.values(): values.sort(key=lambda x: x["name"])
     feature_sources = {}
     for f in feature_records:
@@ -669,14 +740,14 @@ def convert_mechanics_options() -> dict[str, Any]:
                         if "eldritch blast" in sp: other_req = "eldritch blast cantrip"
                         elif "hex" in sp: other_req = "hex/curse"
             req_text = pact or other_req
-            invocations.append({
+            invocations.append(with_grants({
                 "name": name,
                 "lvl": lvl,
                 "req": req_text,
                 "desc": text,
                 "src": src,
                 "sources": meta["sources"],
-            })
+            }, row))
             inv_info[name] = text
 
         if "MM" in fts:
@@ -688,13 +759,14 @@ def convert_mechanics_options() -> dict[str, Any]:
 
         if any("FS" in x for x in fts):
             style_desc[name] = text.split("\n")[0] if text else ""
-            if "FS:F" in fts or "FS" in fts: fighting_styles["Fighter"].append({"name": name, "src": src, "sources": meta["sources"]})
-            if "FS:P" in fts: fighting_styles["Paladin"].append({"name": name, "src": src, "sources": meta["sources"]})
-            if "FS:R" in fts: fighting_styles["Ranger"].append({"name": name, "src": src, "sources": meta["sources"]})
-            if "FS:B" in fts: fighting_styles["Bard"].append({"name": name, "src": src, "sources": meta["sources"]})
+            style = with_grants({"name": name, "src": src, "sources": meta["sources"]}, row)
+            if "FS:F" in fts or "FS" in fts: fighting_styles["Fighter"].append(style)
+            if "FS:P" in fts: fighting_styles["Paladin"].append(style)
+            if "FS:R" in fts: fighting_styles["Ranger"].append(style)
+            if "FS:B" in fts: fighting_styles["Bard"].append(style)
 
         if "PB" in fts:
-            pact_boons.append({"name": name, "desc": text, "src": src, "sources": meta["sources"]})
+            pact_boons.append(with_grants({"name": name, "desc": text, "src": src, "sources": meta["sources"]}, row))
             boon_info[name] = text
 
         if "AI" in fts:
@@ -850,6 +922,7 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
                 if choose: comb_ab["choose"] = choose
                 merged["ability"] = [comb_ab]
         merged["entries"] = (base.get("entries") or []) + (sub.get("entries") or [])
+        if sub.get("additionalSpells"): merged["additionalSpells"] = sub["additionalSpells"]
         if sub.get("speed"): merged["speed"] = sub["speed"]
         if sub.get("darkvision"): merged["darkvision"] = sub["darkvision"]
         if sub.get("skillProficiencies"):
@@ -918,6 +991,7 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
             **({"skillsFrom": [label(x) for x in skill_choose["from"]]} if skill_choose and skill_choose.get("from") else {}),
             **({"grantSkills": fixed_skills} if fixed_skills else {}),
         }
+        race_entry = with_grants(race_entry, row)
         if row["name"] in {"Variant Human", "Custom Lineage"}:
             race_entry["optional"] = True
             race_entry["feat"] = True
@@ -1012,13 +1086,16 @@ def convert_backgrounds() -> tuple[list[dict[str, Any]], dict[str, Any]]:
             "src": row.get("source"),
             "sources": record["sources"],
         }
+        runtime[row["name"]] = with_grants(runtime[row["name"]], row)
     return records, runtime
 
 
 def convert_item(row: dict[str, Any], kind: str = "item") -> dict[str, Any]:
     text = render_text(row.get("entries", []))
     value = row.get("value")
-    return {**provenance(row, kind), "name": row["name"], "type": row.get("type", row.get("rarity", "")), "weight": row.get("weight", 0), "value": (value / 100 if isinstance(value, (int, float)) else value or ""), "ac": row.get("ac", 0) if isinstance(row.get("ac", 0), (int, float)) else 0, "strReq": row.get("strength", 0), "stealthDis": bool(row.get("stealth")), "dmg1": row.get("dmg1", ""), "dmg2": row.get("dmg2", ""), "dmgType": row.get("dmgType", ""), "property": ",".join(row.get("property", [])), "range": row.get("range", ""), "text": f"{text}\n\n{source_tail(row)}".strip()}
+    attached = row.get("attachedSpells") or (row.get("inherits") or {}).get("attachedSpells")
+    charges = row.get("charges", (row.get("inherits") or {}).get("charges"))
+    return with_grants({**provenance(row, kind), "name": row["name"], "type": row.get("type", row.get("rarity", "")), **({"charges": charges} if isinstance(charges, int) else {}), "weight": row.get("weight", 0), "value": (value / 100 if isinstance(value, (int, float)) else value or ""), "ac": row.get("ac", 0) if isinstance(row.get("ac", 0), (int, float)) else 0, "strReq": row.get("strength", 0), "stealthDis": bool(row.get("stealth")), "dmg1": row.get("dmg1", ""), "dmg2": row.get("dmg2", ""), "dmgType": row.get("dmgType", ""), "property": ",".join(row.get("property", [])), "range": row.get("range", ""), "text": f"{text}\n\n{source_tail(row)}".strip()}, row, attached)
 
 
 def cr_number(value: Any) -> float | int | None:
@@ -1170,6 +1247,7 @@ def main() -> None:
     spell_lookup = load(DATA / "generated" / "gendata-spell-source-lookup.json")
     raw_spells = collect_json("spells/spells-*.json", "spell")
     spells = latest([x for x in raw_spells if allowed_source(x.get("source"))], lambda x: x.get("name", ""))
+    SPELL_CANON.update({x["name"].lower(): (x["name"], x.get("level", 0)) for x in spells})
     raw_feats = load(DATA / "feats.json").get("feat", [])
     feats = latest(resolve_copies([x for x in raw_feats if allowed_source(x.get("source"))]), lambda x: x.get("name", ""))
     classes, subs, features, feature_texts, feature_sources = convert_classes()
@@ -1213,6 +1291,7 @@ def main() -> None:
             "asi": row["asi"],
             "feats": row["features"],
             "subs": [x["name"] for x in subs.get(name, [])],
+            **({"grants": row["grants"]} if row.get("grants") else {}),
         }
     mechanics = convert_mechanics_options()
     output = {
@@ -1223,7 +1302,7 @@ def main() -> None:
         "feats": converted_feats,
         "spells": converted_spells,
         "items": converted_items,
-        "rewards": [{**provenance(x, "reward"), "name": x["name"], "type": x.get("type"), "text": render_text(x.get("entries", []))} for x in rewards],
+        "rewards": [with_grants({**provenance(x, "reward"), "name": x["name"], "type": x.get("type"), "text": render_text(x.get("entries", []))}, x) for x in rewards],
         "bestiary": bestiary,
         "featureTexts": feature_texts,
         "runtime": {
@@ -1313,6 +1392,7 @@ def main() -> None:
             "unresolvedTags": 0,
             "unrelatedXphbRecords": 0,
         },
+        "unresolvedSpellGrants": dict(sorted(UNRESOLVED_SPELL_REFS.items())),
     }
 
     REPORT.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")

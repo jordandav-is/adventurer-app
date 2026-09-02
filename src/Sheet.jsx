@@ -1,5 +1,5 @@
 import { ABILITIES, ABIL_NAMES, ALL_SKILLS, ANCESTRIES, ARCANUM_UNLOCK, ASI, CANTRIPS_KNOWN, CHOICE_KEYS, CLASSES, DMG_TYPES, INVOCATIONS, INVOCATION_DATA, ITEM_TYPES, PACT, PREP_ALL_CLASSES, PROF_TEXT, RACES, SKILL_ABIL, SPELL_ABILITY, SPELL_LVL_HINT, STYLE_DESC, baseSubName } from "./data.js";
-import { EFFECT_BY_KEY, EFFECT_LIB, SUMMON_LIB, allKnownCantrips, allSubFeats, ammoRowFor, applyEffectPatch, armorClass, b64uFromBytes, bladeRiderTier, bytesFromB64u, canEquip, characterChoiceGroups, classLevel, consumableEffectKey, crShow, creatureByName, describeCustomFx, effDefOf, effEnds, effMaxHp, effectsOf, equippedOf, featChoiceOf, featChoiceSummary, featEffects, featureBuckets, featHpBonus, featSpellsOf, findItem, fmtMod, fxMods, hasEffect, hasStyle, hasSub, healingDiceFor, instMaxHp, invocationFor, invocationSpellsOf, isArmorType, isBladeCantrip, isConcDef, isConcInst, isConsumableRow, isWeaponType, knownSpellNames, maxSpellLevel, minionApplyHp, minionAttackRolls, minionHp, minionSaves, minionSkills, minionsOf, mod, pipeBytes, profBonus, raceGrantedSpells, round2, schoolName, searchRank, shareCustomsFor, sourceOf, speedOf, spellCapacity, spellFitsClass, spellSlots, spiritAc, spiritDefFromSpell, spiritHp, strikeProfile, subSpellData, summonDefFor, summonFormsFor, summonerSpellAtk, totalLevel, useRecipe, useTrackersFor, usesAmmo } from "./rules.js";
+import { EFFECT_BY_KEY, EFFECT_LIB, SUMMON_LIB, allKnownCantrips, allSubFeats, ammoRowFor, applyEffectPatch, armorClass, b64uFromBytes, bladeRiderTier, bytesFromB64u, canEquip, characterChoiceGroups, classLevel, consumableEffectKey, crShow, creatureByName, describeCustomFx, effDefOf, effEnds, effMaxHp, effectsOf, equippedOf, featChoiceOf, featChoiceSummary, featEffects, featureBuckets, featHpBonus, findItem, fmtMod, fxMods, hasEffect, hasStyle, hasSub, healingDiceFor, grantAbilityFor, grantLabel, grantTrackerFor, grantsFor, instMaxHp, isArmorType, isBladeCantrip, isConcDef, isConcInst, isConsumableRow, isWeaponType, knownSpellNames, maxSpellLevel, minionApplyHp, minionAttackRolls, minionHp, minionSaves, minionSkills, minionsOf, mod, pipeBytes, profBonus, round2, schoolName, searchRank, shareCustomsFor, sourceOf, speedOf, spellCapacity, spellFitsClass, spellGrantsOf, spellSlots, spiritAc, spiritDefFromSpell, spiritHp, strikeProfile, subSpellData, summonDefFor, summonFormsFor, summonerSpellAtk, totalLevel, useRecipe, useTrackersFor, usesAmmo } from "./rules.js";
 import { EMPTY_CUSTOM, SRD_SRC, __BESTIARY, __SOURCES, creatureSrcOf, isSourceEnabled, sourceCodesOf, sourceLabelOf, spellSrcOf, srcSpells, uid } from "./compendium.js";
 import React, { useEffect, useState } from "react";
 import { CLASS_THEMES, ClassTag, ICON_PATHS, Icon, LazyList, Portrait, SpellPickGrid, T, __showLore, btn, card, cornerBtn, lorePress, usePhotoUpload } from "./ui.jsx";
@@ -424,8 +424,8 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
   const hasTome = ch.pactBoon === "Pact of the Tome";
   const [adding, setAdding] = useState(null);
   const [q, setQ] = useState("");
-  const featSp = featSpellsOf(ch);
-  if (!casters.length && !featSp.length && !ch.racialChoices?.cantrip && !raceGrantedSpells(ch).length) return null;
+  const grants = spellGrantsOf(ch, customs);
+  if (!casters.length && !grants.length && !ch.racialChoices?.cantrip) return null;
   const book = ch.spells || {};
   const pool = srcSpells(customs?.spells || []);
 
@@ -443,7 +443,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
         .filter((sp) => sp.name.toLowerCase().includes(q.toLowerCase())).sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
     }
     if (kind === "tome") {
-      return pool.filter((sp) => sp.level === 0 && !allKnownCantrips(ch).includes(sp.name))
+      return pool.filter((sp) => sp.level === 0 && !allKnownCantrips(ch, customs).includes(sp.name))
         .filter((sp) => sp.name.toLowerCase().includes(q.toLowerCase())).sort((a, b) => a.name.localeCompare(b.name));
     }
     const entry = ch.classes.find((c) => c.name === clsName);
@@ -451,7 +451,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
     const extra = kind === "spells" ? expandedFor(clsName).filter((x) => !pool.some((sp) => sp.name === x.name && spellFitsClass(sp, clsName, entry.subclass))) : [];
     const taken = kind === "arcanum"
       ? Object.values(book[clsName]?.arcanum || {})
-      : kind === "cantrips" ? allKnownCantrips(ch)
+      : kind === "cantrips" ? allKnownCantrips(ch, customs)
       : (book[clsName]?.[kind]) || [];
     return [...pool, ...extra]
       .filter((sp) => spellFitsClass(sp, clsName, entry.subclass) || extra.includes(sp))
@@ -473,12 +473,18 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
   const usedSlotsArr = ch.usedSlots || [];
   const pactAll = wl ? PACT(wl.level) : null;
   const pactLeft = pactAll ? pactAll.n - Math.min(ch.usedPact || 0, pactAll.n) : 0;
-  const featSpellNames = new Set([...featSp.flatMap((e) => e.names), ...raceGrantedSpells(ch), ...(classLevel(ch, "Ranger") >= 1 ? ["Hunter's Mark"] : [])]);
+  const trackers = useTrackersFor(ch, customs);
+  const grantPayable = (g) => {
+    if (["will", "item", "ritual"].includes(g.cost)) return true;
+    const pay = grantTrackerFor(g, trackers);
+    if (!pay) return false;
+    return !!pay.tracker && pay.tracker.max - Math.min(ch.usedFeatures?.[pay.tracker.key] || 0, pay.tracker.max) >= pay.amount;
+  };
   const canPay = (n) => {
     const lvl = spLvl(n);
     if (lvl === 0) return true;
-    if (featSpellNames.has(n)) return true;
-    if (invocationFor(ch, n)?.atWill) return true;
+    if (grants.some((g) => g.spell === n && grantPayable(g))) return true;
+    if (classLevel(ch, "Ranger") >= 1 && n === "Hunter's Mark") return true;
     if (pool.find((s) => s.name === n)?.ritual) return true;
     if (Object.entries(book.Warlock?.arcanum || {}).some(([l, an]) => an === n && !(ch.usedArcanum || []).includes(+l))) return true;
     for (let L = lvl; L <= slotsAll.length; L++) if ((slotsAll[L - 1] || 0) - Math.min(usedSlotsArr[L - 1] || 0, slotsAll[L - 1] || 0) > 0) return true;
@@ -506,19 +512,14 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
     byLevel(grantedNow).forEach(([l, arr]) => addGroup(+l, (subData.label || "Granted").replace(/\s*\(always prepared\)/, " · always prepared"), arr, T.green));
     Object.entries(mine.arcanum || {}).forEach(([l, n]) => addGroup(+l, "Mystic Arcanum", [n], "#b48ead"));
   });
-  if (ch.racialChoices?.cantrip) addGroup(0, `${ch.race} · racial`, [ch.racialChoices.cantrip]);
   if (classLevel(ch, "Ranger") >= 1) addGroup(1, "Favored Enemy · always prepared", ["Hunter's Mark"], T.green);
   {
-    const rs = raceGrantedSpells(ch);
-    addGroup(0, `${ch.race} · racial`, rs.filter((n) => spLvl(n) === 0), "#8fbcbb");
-    byLevel(rs.filter((n) => spLvl(n) > 0)).forEach(([l, arr]) => addGroup(+l, `${ch.race} · racial`, arr, "#8fbcbb"));
+    const GRANT_TINT = { race: "#8fbcbb", feat: "#8fbcbb", background: "#8fbcbb", invocation: "#b48ead", "pact boon": "#b48ead", class: T.green, subclass: T.green, item: T.gold };
+    const byLabel = new Map();
+    grants.forEach((g) => { const k = grantLabel(g); if (!byLabel.has(k)) byLabel.set(k, { kind: g.kind, names: new Set() }); byLabel.get(k).names.add(g.spell); });
+    byLabel.forEach(({ kind, names }, label) => byLevel([...names]).forEach(([l, arr]) => addGroup(+l, label, arr, GRANT_TINT[kind] || T.ink)));
+    if (ch.racialChoices?.cantrip && !grants.some((g) => g.spell === ch.racialChoices.cantrip)) addGroup(0, `${ch.race} · racial`, [ch.racialChoices.cantrip]);
   }
-  featSp.forEach(({ feat, names }) => {
-    addGroup(0, `${feat} · feat`, names.filter((n) => spLvl(n) === 0), "#8fbcbb");
-    byLevel(names.filter((n) => spLvl(n) > 0)).forEach(([l, arr]) => addGroup(+l, `${feat} · feat`, arr, "#8fbcbb"));
-  });
-  invocationSpellsOf(ch).forEach(({ invocation, spell, atWill }) =>
-    addGroup(spLvl(spell), `${invocation} · invocation · ${atWill ? "at will" : "once per long rest · pact slot"}`, [spell], "#b48ead"));
   if (hasTome) addGroup(0, "Book of Shadows · Tome · cast at will", ch.tomeCantrips || []);
   if (hasBoAS) byLevel(ch.boasRituals || []).forEach(([l, arr]) => addGroup(+l, "Book of Shadows · ritual only", arr));
   const lvlsHeld = [...groups.keys()].sort((a, b) => a - b);
@@ -1081,7 +1082,7 @@ function MinionsCard({ ch, customs, onUpdate, onSummon, onRoll, onDice, readOnly
         const saves = minionSaves(c);
         const skills = minionSkills(c);
         const slot = rolling.slot || null;
-        const spellAtk = attacks.some((a) => a.useSpellAtk) ? summonerSpellAtk(ch, rolling.source) : null;
+        const spellAtk = attacks.some((a) => a.useSpellAtk) ? summonerSpellAtk(ch, rolling.source, customs) : null;
         const dmgBonus = (a) => a.bonus + (a.scaled && slot ? slot : 0);
         const closeThen = (fn) => { setRolling(null); fn(); };
         const pill = { ...btn(false), padding: "7px 12px", minHeight: 0, fontSize: 12.5, fontFamily: "inherit" };
@@ -1471,9 +1472,21 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
   const arcanum = ch.spells?.Warlock?.arcanum || {};
   const usedFeats = ch.usedFeatures || {};
   const boasOnly = sp ? (ch.boasRituals || []).includes(sp.name) && !knownSpellNames(ch, customs).has(sp.name) : false;
+  const trackers = useTrackersFor(ch, customs);
   const options = [];
-  const atWillInv = sp && invocationFor(ch, sp.name)?.atWill ? invocationFor(ch, sp.name) : null;
-  if (atWillInv) options.push({ id: "atwill", type: "atwill", lvl: sp.level, left: Infinity, label: `At will · ${atWillInv.invocation} — no slot` });
+  // Granted castings come first so they are the default way to pay.
+  (sp ? grantsFor(ch, customs, sp.name) : []).forEach((g, i) => {
+    const id = `grant:${i}`, lvl = g.castAt || sp.level;
+    if (g.cost === "will") options.push({ id, type: "free", lvl, left: Infinity, label: `At will · ${g.source} — no slot`, note: `at will by ${g.source} — no slot` });
+    else if (g.cost === "item") options.push({ id, type: "free", lvl, left: Infinity, label: `${g.source} — as the item describes`, note: `by ${g.source}` });
+    else if (g.cost === "ritual") options.push({ id, type: "ritual", lvl, left: Infinity, label: `Ritual · ${g.source} — no slot, +10 minutes` });
+    else if (g.cost !== "slot") {
+      const pay = grantTrackerFor(g, trackers);
+      if (!pay?.tracker) return;
+      const left = pay.tracker.max - Math.min(usedFeats[pay.tracker.key] || 0, pay.tracker.max);
+      options.push({ id, type: "tracker", lvl, tracker: pay.tracker, amount: pay.amount, left: Math.floor(left / pay.amount), label: `${g.source} · ${left}/${pay.tracker.max}${pay.tracker.unit ? ` ${pay.tracker.unit}` : ""}${pay.amount > 1 ? ` · costs ${pay.amount}` : ""}` });
+    }
+  });
   if (sp && sp.level >= 1 && !boasOnly) {
     for (let L = sp.level; L <= slots.length; L++) if ((slots[L - 1] || 0) > 0)
       options.push({ id: `slot:${L}`, type: "slot", lvl: L, left: (slots[L - 1] || 0) - Math.min(usedSlots[L - 1] || 0, slots[L - 1] || 0), label: L === sp.level ? `Level ${L} slot` : `Upcast · level ${L}` });
@@ -1486,6 +1499,8 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
 
   const [pick, setPick] = useState(() => (options.find((o) => o.left > 0) || options[0] || {}).id || null);
   const chosen = options.find((o) => o.id === pick) || null;
+  const tk = chosen?.tracker || tracker;
+  const tkLeft = tk ? tk.max - Math.min(usedFeats[tk.key] || 0, tk.max) : 0;
   const blocked = options.length > 0 && (!chosen || chosen.left <= 0);
   const [poolAmt, setPoolAmt] = useState(1);
   const [manual, setManual] = useState(eff?.input && eff.input.unit !== "slot" ? eff.input.def : 1);
@@ -1510,7 +1525,7 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
       const b = (ch.spells || {})[c.name];
       if (b && (["cantrips", "spells"].some((k) => (b[k] || []).includes(sp.name)) || Object.values(b.arcanum || {}).includes(sp.name))) return c.name;
     }
-    if ((ch.tomeCantrips || []).includes(sp.name) || (ch.boasRituals || []).includes(sp.name) || invocationFor(ch, sp.name)) return "Warlock";
+    if ((ch.tomeCantrips || []).includes(sp.name) || (ch.boasRituals || []).includes(sp.name)) return "Warlock";
     return ch.classes.find((c) => CLASSES[c.name].caster && spellFitsClass(sp, c.name, c.subclass))?.name || null;
   };
   const accent =
@@ -1530,11 +1545,11 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
       else if (chosen.type === "pact") { patch.usedPact = Math.min(pact.n, usedPact + 1); bits.push(`pact slot spent, ${pact.n - usedPact - 1} left`); }
       else if (chosen.type === "arcanum") { patch.usedArcanum = [...usedArc, chosen.lvl]; bits.push("arcanum spent until dawn"); }
       else if (chosen.type === "ritual") bits.push("cast as a ritual — no slot");
-      else if (chosen.type === "atwill") bits.push(`at will by ${atWillInv.invocation} — no slot`);
+      else if (chosen.type === "free") bits.push(chosen.note);
       else if (chosen.type === "tracker") {
-        const amt = tracker.pool ? Math.max(1, Math.min(trackerLeft, parseInt(poolAmt, 10) || 1)) : 1;
-        patch.usedFeatures = { ...usedFeats, [tracker.key]: Math.min(tracker.max, Math.min(usedFeats[tracker.key] || 0, tracker.max) + amt) };
-        bits.push(tracker.pool ? `${trackerLeft - amt}/${tracker.max}${tracker.unit ? ` ${tracker.unit}` : ""} left` : `${trackerLeft - 1} of ${tracker.max} left`);
+        const amt = chosen.amount ?? (tk.pool ? Math.max(1, Math.min(tkLeft, parseInt(poolAmt, 10) || 1)) : 1);
+        patch.usedFeatures = { ...usedFeats, [tk.key]: Math.min(tk.max, Math.min(usedFeats[tk.key] || 0, tk.max) + amt) };
+        bits.push(tk.pool ? `${tk.name}: ${tkLeft - amt}/${tk.max}${tk.unit ? ` ${tk.unit}` : ""} left` : `${tk.name}: ${tkLeft - amt} of ${tk.max} left`);
       }
     } else if (free && options.length > 0) bits.push("by the table's grace — nothing marked");
     if (eff) {
@@ -1552,8 +1567,8 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
     patch.log = [...(ch.log || []), `${verb === "Cast" ? "Cast" : "Used"} ${recipe.name}${bits.length ? " — " + bits.join("; ") : ""}.`];
     onUpdate(patch);
     if (summonDef && onSummon) onSummon(summonDef, slotVal || sp?.level || null);
-    if (!free && chosen?.type === "tracker" && tracker.die && onDice)
-      onDice({ title: `${tracker.name} — d${tracker.die}${tracker.dieBonus ? ` + ${tracker.dieBonus}` : ""}`, dice: [{ sides: tracker.die, value: roll(tracker.die) }], bonus: tracker.dieBonus || 0, bonusLabel: tracker.dieBonus ? tracker.dieLabel || "" : "", note: tracker.heal ? "Accept to heal yourself." : "Add it where the feature calls for it.", heal: !!tracker.heal });
+    if (!free && chosen?.type === "tracker" && tk.die && onDice)
+      onDice({ title: `${tk.name} — d${tk.die}${tk.dieBonus ? ` + ${tk.dieBonus}` : ""}`, dice: [{ sides: tk.die, value: roll(tk.die) }], bonus: tk.dieBonus || 0, bonusLabel: tk.dieBonus ? tk.dieLabel || "" : "", note: tk.heal ? "Accept to heal yourself." : "Add it where the feature calls for it.", heal: !!tk.heal });
     onClose();
   };
   const strikeCastLvl = sp ? (sp.level === 0 ? 0 : (slotVal || sp.level)) : 0;
@@ -1594,11 +1609,11 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
                 </button>
               ))}
             </div>
-            {chosen?.type === "tracker" && tracker.pool && (
+            {chosen?.type === "tracker" && tk.pool && chosen.amount == null && (
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, color: T.dim, fontSize: 13 }}>
                 Spend
-                <input type="number" min={1} max={trackerLeft} value={poolAmt} onChange={(e) => setPoolAmt(e.target.value)} style={{ ...fieldStyle, width: 74, textAlign: "center" }} />
-                {tracker.unit || "uses"}
+                <input type="number" min={1} max={tkLeft} value={poolAmt} onChange={(e) => setPoolAmt(e.target.value)} style={{ ...fieldStyle, width: 74, textAlign: "center" }} />
+                {tk.unit || "uses"}
               </div>
             )}
           </div>
@@ -2050,7 +2065,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   const longWould = dmgRaw > 0 || tempHp > 0 || usedSlots.some(Boolean) || usedPact > 0 || usedArc.length > 0 || effectsOf(ch).some((e) => restTouches(e, "long")) || trackers.some((t) => (usedFeats[t.key] || 0) > 0) || canPrep || restMinions("long").length < minionsOf(ch).length;
   const resetUses = (kind) => {
     const u = { ...usedFeats };
-    trackers.forEach((t) => { if (kind === "long" || t.per === "short") delete u[t.key]; });
+    trackers.forEach((t) => { if ((kind === "long" && t.per !== "never") || t.per === "short") delete u[t.key]; });
     return u;
   };
   const shortRest = () => {
@@ -2064,7 +2079,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   const [restAsk, setRestAsk] = useState(null);
   const [summoning, setSummoning] = useState(null);
   const longRest = () => {
-    onUpdate({ dmg: 0, usedSlots: [], usedPact: 0, usedArcanum: [], tempHp: 0, effects: restEffects("long"), usedFeatures: {}, minions: restMinions("long") });
+    onUpdate({ dmg: 0, usedSlots: [], usedPact: 0, usedArcanum: [], tempHp: 0, effects: restEffects("long"), usedFeatures: resetUses("long"), minions: restMinions("long") });
     if (canPrep) setPrepOpen(true);
   };
 
@@ -2212,7 +2227,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   };
   const strikeClassOf = (sp) =>
     ch.classes.find((c) => { const b = (ch.spells || {})[c.name]; return b && ["cantrips", "spells"].some((k) => (b[k] || []).includes(sp.name)); })?.name
-    || ((ch.tomeCantrips || []).includes(sp.name) || invocationFor(ch, sp.name) ? "Warlock" : null)
+    || ((ch.tomeCantrips || []).includes(sp.name) ? "Warlock" : null)
     || ch.classes.find((c) => CLASSES[c.name].caster && spellFitsClass(sp, c.name, c.subclass))?.name
     || ch.classes.find((c) => CLASSES[c.name].caster)?.name || null;
   const bestMentalMod = () => Math.max(mod(ch.abilities.int), mod(ch.abilities.wis), mod(ch.abilities.cha));
@@ -2220,7 +2235,8 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     const prof = strikeProfile(sp);
     if (!prof) return;
     const clsName = strikeClassOf(sp);
-    const abil = (clsName && SPELL_ABILITY[clsName]) || (bestMentalMod() === mod(ch.abilities.int) ? "int" : bestMentalMod() === mod(ch.abilities.wis) ? "wis" : "cha");
+    const inBook = !!clsName && ["cantrips", "spells"].some((k) => ((ch.spells || {})[clsName]?.[k] || []).includes(sp.name));
+    const abil = (inBook && SPELL_ABILITY[clsName]) || grantAbilityFor(ch, customs, sp.name) || (clsName && SPELL_ABILITY[clsName]) || (bestMentalMod() === mod(ch.abilities.int) ? "int" : bestMentalMod() === mod(ch.abilities.wis) ? "wis" : "cha");
     const cmod = mod(ch.abilities[abil]);
     const dc = 8 + pb + cmod;
     const rollN = (count, sides) => Array.from({ length: Math.max(0, count) }, () => ({ sides, value: roll(sides) }));
