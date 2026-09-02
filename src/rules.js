@@ -162,7 +162,7 @@ function spellGrantsOf(ch, customs) {
   (ch.invocations || []).forEach((n) => add("invocation", n, optionRecord("invocations", n)?.grants, lvl));
   if (ch.pactBoon) add("pact boon", ch.pactBoon, optionRecord("pactBoons", ch.pactBoon)?.grants, lvl);
   if (ch.background) add("background", ch.background, BACKGROUNDS[ch.background]?.grants, lvl);
-  (ch.inventory || []).filter((r) => (r.qty ?? 1) > 0).forEach((r) => add("item", r.name, findItem(r.name, customs)?.grants, lvl));
+  (ch.inventory || []).forEach((r) => { const it = findItem(r.name, customs); if (itemActive(r, it)) add("item", r.name, it.grants, lvl); });
   return out;
 }
 const grantsFor = (ch, customs, spellName) => spellGrantsOf(ch, customs).filter((g) => g.spell === spellName);
@@ -402,6 +402,37 @@ function canEquip(item, ch, customs) {
   }
   return true;
 }
+// ---- Attunement and gear magic. An item's magic works only while it is worn or wielded and, when it demands attunement, attuned.
+const attunementCap = (ch) => { const a = classLevel(ch, "Artificer"); return a >= 18 ? 6 : a >= 14 ? 5 : a >= 10 ? 4 : 3; };
+const isEquippable = (it) => !!it && (isArmorType(it.type) || it.type === "S" || isWeaponType(it.type));
+const itemActive = (row, it) => !!it && (row.qty ?? 1) > 0 && (!it.attune || !!row.attuned) && (!isEquippable(it) || !!row.equipped);
+const attunedRows = (ch) => (ch.inventory || []).filter((r) => r.attuned);
+// What worn gear does to the numbers: item bonuses to AC, saves, spell attacks and DCs, per-weapon magic,
+// and the price of armor you aren't proficient with — disadvantage on Strength and Dexterity rolls and no spellcasting.
+function gearMods(ch, customs) {
+  const out = { ac: [], save: [], spellAtk: [], spellDc: 0, weapon: {}, notes: { attack: [], save: [], check: [] }, armorPenalty: [], castBlocked: false };
+  (ch.inventory || []).forEach((row) => {
+    const it = findItem(row.name, customs);
+    if (!it) return;
+    if ((isArmorType(it.type) || it.type === "S") && row.equipped && !canEquip(it, ch, customs)) out.armorPenalty.push(it.name);
+    if (!itemActive(row, it)) return;
+    const b = it.bonus || {};
+    const { armor, shield } = equippedGear(ch, customs);
+    if (b.ac && !(b.acNoArmor && armor) && !(b.acNoShield && shield)) out.ac.push({ label: it.name, value: b.ac });
+    if (b.save) out.save.push({ label: it.name, value: b.save });
+    if (b.spellAtk) out.spellAtk.push({ label: it.name, value: b.spellAtk, scope: "spell" });
+    if (b.spellDc) out.spellDc += b.spellDc;
+    if (b.weapon && isWeaponType(it.type)) out.weapon[it.name] = b.weapon;
+  });
+  if (out.armorPenalty.length) {
+    out.castBlocked = true;
+    ["str", "dex"].forEach((abil) => {
+      const t = `Not proficient with ${out.armorPenalty.join(" and ")}: disadvantage on ${ABIL_NAMES[abil]} attacks, checks, and saves`;
+      out.notes.attack.push({ t, abil }); out.notes.check.push({ t, abil }); out.notes.save.push({ t, abil });
+    });
+  }
+  return out;
+}
 function equippedGear(ch, customs) {
   const inv = equippedOf(ch).map((r) => findItem(r.name, customs)).filter(Boolean);
   return { armor: inv.find((x) => isArmorType(x.type)), shield: inv.find((x) => x.type === "S") };
@@ -429,6 +460,7 @@ function armorClass(ch, customs, fx = fxMods(ch)) {
   if (!armor && rn.natArmorFlat && rn.natArmorFlat > ac) { ac = rn.natArmorFlat; parts.splice(0, parts.length, `Natural Armor ${rn.natArmorFlat} (Dex ignored)`); }
   if (!armor && fx.acBase && fx.acBase.value + dex > ac) { ac = fx.acBase.value + dex; parts.splice(0, parts.length, `${fx.acBase.label} ${fx.acBase.value}`, `Dex ${fmtMod(dex)}`); }
   if (shield) { ac += shield.ac || 2; parts.push(`${shield.name} +${shield.ac || 2}`); }
+  gearMods(ch, customs).ac.forEach((b) => { ac += b.value; parts.push(`${b.label} ${fmtMod(b.value)}`); });
   if (armor && hasStyle(ch, "Defense")) { ac += 1; parts.push("Defense style +1"); }
   if (rn.acBonus) { ac += rn.acBonus; parts.push(`Integrated Protection +${rn.acBonus}`); }
   fx.ac.forEach((b) => { ac += b.value; parts.push(`${b.label} ${fmtMod(b.value)}`); });
@@ -1298,4 +1330,4 @@ const searchRank = (name, q) => {
 };
 const schoolName = (s) => SCHOOL_NAMES[(s || "").toUpperCase()] || s;
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-export { mod, fmtMod, profBonus, subSpellData, meetsPrereq, featureBody, featChoiceOf, featEffects, hasStyle, featHpBonus, featBlockedBy, featPickOf, featGrantedSpells, spellGrantsOf, grantsFor, grantAbilityFor, grantLabel, grantTrackerKey, grantTrackerFor, featPickDone, spellCapacity, maxSpellLevel, foldStarredSpells, spellFitsClass, spellSlots, totalLevel, isTechnique, choiceCum, groupMatches, choiceOptionsFor, allChoiceGroups, characterChoiceGroups, allKnownCantrips, sourceOf, findItem, isArmorType, isWeaponType, equippedOf, canEquip, subclassProfsOf, subclassProfsAt, profSummary, armorClass, classLevel, hasSub, hasFeat, effectsOf, knownSpellNames, EFFECT_LIB, EFFECT_BY_KEY, hasEffect, effDefOf, isConcDef, isConcInst, effEnds, instMaxHp, describeCustomFx, applyEffectPatch, fxMods, effMaxHp, speedOf, useTrackersFor, minionsOf, crShow, creatureByName, summonFormsFor, SUMMON_LIB, summonDefFor, spiritHp, spiritAc, spiritDefFromSpell, minionAttackRolls, summonerSpellAtk, minionSaves, minionSkills, minionHp, minionApplyHp, isBladeCantrip, bladeRiderTier, strikeProfile, useRecipe, usesAmmo, ammoRowFor, isConsumableRow, healingDiceFor, consumableEffectKey, allSubs, allSubFeats, allFeats, b64uFromBytes, bytesFromB64u, pipeBytes, shareCustomsFor, getRacialBonusPool, getDefaultRacialSlots, formatStandardRaceBonus, searchRank, schoolName, round2, infoFor, featChoiceSummary, featureBuckets };
+export { mod, fmtMod, profBonus, subSpellData, meetsPrereq, featureBody, featChoiceOf, featEffects, hasStyle, featHpBonus, featBlockedBy, featPickOf, featGrantedSpells, spellGrantsOf, grantsFor, grantAbilityFor, grantLabel, grantTrackerKey, grantTrackerFor, featPickDone, spellCapacity, maxSpellLevel, foldStarredSpells, spellFitsClass, spellSlots, totalLevel, isTechnique, choiceCum, groupMatches, choiceOptionsFor, allChoiceGroups, characterChoiceGroups, allKnownCantrips, sourceOf, findItem, isArmorType, isWeaponType, equippedOf, canEquip, attunementCap, isEquippable, itemActive, attunedRows, gearMods, subclassProfsOf, subclassProfsAt, profSummary, armorClass, classLevel, hasSub, hasFeat, effectsOf, knownSpellNames, EFFECT_LIB, EFFECT_BY_KEY, hasEffect, effDefOf, isConcDef, isConcInst, effEnds, instMaxHp, describeCustomFx, applyEffectPatch, fxMods, effMaxHp, speedOf, useTrackersFor, minionsOf, crShow, creatureByName, summonFormsFor, SUMMON_LIB, summonDefFor, spiritHp, spiritAc, spiritDefFromSpell, minionAttackRolls, summonerSpellAtk, minionSaves, minionSkills, minionHp, minionApplyHp, isBladeCantrip, bladeRiderTier, strikeProfile, useRecipe, usesAmmo, ammoRowFor, isConsumableRow, healingDiceFor, consumableEffectKey, allSubs, allSubFeats, allFeats, b64uFromBytes, bytesFromB64u, pipeBytes, shareCustomsFor, getRacialBonusPool, getDefaultRacialSlots, formatStandardRaceBonus, searchRank, schoolName, round2, infoFor, featChoiceSummary, featureBuckets };

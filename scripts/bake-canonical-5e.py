@@ -1172,12 +1172,62 @@ def convert_backgrounds() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     return records, runtime
 
 
+BONUS_FIELDS = {"bonusAc": "ac", "bonusSavingThrow": "save", "bonusWeapon": "weapon", "bonusSpellAttack": "spellAtk", "bonusSpellSaveDc": "spellDc"}
+
+
+def item_bonus(row: dict[str, Any]) -> dict[str, int]:
+    """'+1' strings on the item (or its variant template) become integers keyed ac / save / weapon / spellAtk / spellDc."""
+    out = {}
+    for src_key, key in BONUS_FIELDS.items():
+        raw = row.get(src_key, (row.get("inherits") or {}).get(src_key))
+        m = re.match(r"^\s*([+-]?\d+)", str(raw)) if raw is not None else None
+        if m and int(m.group(1)): out[key] = int(m.group(1))
+    # An AC bonus some items grant only to the unarmored (Bracers of Defense) or the shieldless (Badge of the Watch).
+    if out.get("ac"):
+        text = render_text(row.get("entries", (row.get("inherits") or {}).get("entries", []))).lower()
+        clause = next((c for c in re.split(r"(?<=\.)\s+", text) if "bonus to ac" in c), "")
+        if re.search(r"(wearing no armor|aren't wearing armor|not wearing armor)", clause): out["acNoArmor"] = True
+        if re.search(r"(aren't using a shield|not using a shield|no shield)", clause): out["acNoShield"] = True
+    return out
+
+
+def item_attune(row: dict[str, Any]) -> Any:
+    """True when the item needs attunement, or the condition text ('by a Spellcaster') when it names one."""
+    raw = row.get("reqAttune", (row.get("inherits") or {}).get("reqAttune"))
+    if raw is True: return True
+    if isinstance(raw, str) and raw.strip(): return strip_tags(raw).strip()
+    return None
+
+
+def generic_magic_items(variants: list[dict[str, Any]], bases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The +1/+2/+3 Weapon, Armor, Shield, and Ammunition templates, applied to every PHB base item they fit
+    ('+1 Longsword', '+2 Chain Mail') so a table's most common magic items exist as real, equippable records."""
+    out = []
+    for v in variants:
+        m = re.match(r"^\+(\d) (Weapon|Armor|Shield|Ammunition)(?: \(\*\))?$", v.get("name", ""))
+        inh = v.get("inherits") or {}
+        if not m or inh.get("source") != "DMG": continue
+        kind = m.group(2)
+        excludes = {k for k, val in (v.get("excludes") or {}).items() if val}
+        for base in bases:
+            if base.get("source") != "PHB": continue
+            base_type = str(base.get("type", "")).split("|")[0]
+            fits = (kind == "Weapon" and base.get("weapon")) or (kind == "Armor" and base.get("armor")) or (kind == "Shield" and base_type == "S") or (kind == "Ammunition" and base_type == "A")
+            if not fits or base.get("name", "").lower() in excludes: continue
+            entries = [re.sub(r"\{=(\w+)\}", lambda mm: str(inh.get(mm.group(1), "")), e) if isinstance(e, str) else e for e in inh.get("entries", [])]
+            out.append({**base, "name": f"{inh.get('namePrefix', '')}{base['name']}", "source": "DMG", "page": inh.get("page"), "rarity": inh.get("rarity"),
+                        "entries": entries, **{k: inh[k] for k in BONUS_FIELDS if k in inh}, **({"reqAttune": inh["reqAttune"]} if inh.get("reqAttune") else {})})
+    return out
+
+
 def convert_item(row: dict[str, Any], kind: str = "item") -> dict[str, Any]:
     text = render_text(row.get("entries", []))
     value = row.get("value")
     attached = row.get("attachedSpells") or (row.get("inherits") or {}).get("attachedSpells")
     charges = row.get("charges", (row.get("inherits") or {}).get("charges"))
-    return with_grants({**provenance(row, kind), "name": row["name"], "type": row.get("type", row.get("rarity", "")), **({"charges": charges} if isinstance(charges, int) else {}), "weight": row.get("weight", 0), "value": (value / 100 if isinstance(value, (int, float)) else value or ""), "ac": row.get("ac", 0) if isinstance(row.get("ac", 0), (int, float)) else 0, "strReq": row.get("strength", 0), "stealthDis": bool(row.get("stealth")), "dmg1": row.get("dmg1", ""), "dmg2": row.get("dmg2", ""), "dmgType": row.get("dmgType", ""), "property": ",".join([x if isinstance(x, str) else str(x.get("uid", "")).split("|")[0] for x in row.get("property", [])] + (["M"] if row.get("weaponCategory") == "martial" else [])), "range": row.get("range", ""), "text": f"{text}\n\n{source_tail(row)}".strip()}, row, attached)
+    bonus = item_bonus(row)
+    attune = item_attune(row)
+    return with_grants({**provenance(row, kind), "name": row["name"], "type": row.get("type", row.get("rarity", "")), **({"charges": charges} if isinstance(charges, int) else {}), **({"bonus": bonus} if bonus else {}), **({"attune": attune} if attune else {}), "weight": row.get("weight", 0), "value": (value / 100 if isinstance(value, (int, float)) else value or ""), "ac": row.get("ac", 0) if isinstance(row.get("ac", 0), (int, float)) else 0, "strReq": row.get("strength", 0), "stealthDis": bool(row.get("stealth")), "dmg1": row.get("dmg1", ""), "dmg2": row.get("dmg2", ""), "dmgType": row.get("dmgType", ""), "property": ",".join([x if isinstance(x, str) else str(x.get("uid", "")).split("|")[0] for x in row.get("property", [])] + (["M"] if row.get("weaponCategory") == "martial" else [])), "range": row.get("range", ""), "text": f"{text}\n\n{source_tail(row)}".strip()}, row, attached)
 
 
 def cr_number(value: Any) -> float | int | None:
@@ -1340,6 +1390,7 @@ def main() -> None:
     raw_items = load(DATA / "items-base.json").get("baseitem", [])
     raw_items += load(DATA / "items.json").get("item", []) + load(DATA / "items.json").get("itemGroup", [])
     raw_items += load(DATA / "magicvariants.json").get("magicvariant", [])
+    raw_items += generic_magic_items(load(DATA / "magicvariants.json").get("magicvariant", []), load(DATA / "items-base.json").get("baseitem", []))
     items = latest([x for x in resolve_copies(raw_items) if allowed_source(x.get("source"))], lambda x: x.get("name", ""))
     raw_rewards = load(DATA / "rewards.json").get("reward", [])
     rewards = latest(resolve_copies([x for x in raw_rewards if allowed_source(x.get("source"))]), lambda x: x.get("name", ""))

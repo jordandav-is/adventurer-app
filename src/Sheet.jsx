@@ -1,5 +1,5 @@
 import { ABILITIES, ABIL_NAMES, ALL_SKILLS, ANCESTRIES, ARCANUM_UNLOCK, ASI, CANTRIPS_KNOWN, CHOICE_KEYS, CLASSES, DMG_TYPES, INVOCATIONS, INVOCATION_DATA, ITEM_TYPES, PACT, PREP_ALL_CLASSES, PROF_TEXT, RACES, SKILL_ABIL, SPELL_ABILITY, SPELL_LVL_HINT, STYLE_DESC, baseSubName } from "./data.js";
-import { EFFECT_BY_KEY, EFFECT_LIB, SUMMON_LIB, allKnownCantrips, allSubFeats, ammoRowFor, applyEffectPatch, armorClass, b64uFromBytes, bladeRiderTier, bytesFromB64u, canEquip, characterChoiceGroups, classLevel, consumableEffectKey, crShow, creatureByName, describeCustomFx, effDefOf, effEnds, effMaxHp, effectsOf, equippedOf, featChoiceOf, featChoiceSummary, featEffects, featureBuckets, featHpBonus, findItem, fmtMod, fxMods, hasEffect, hasStyle, hasSub, healingDiceFor, grantAbilityFor, grantLabel, grantTrackerFor, grantsFor, instMaxHp, isArmorType, isBladeCantrip, isConcDef, isConcInst, isConsumableRow, isWeaponType, knownSpellNames, maxSpellLevel, minionApplyHp, minionAttackRolls, minionHp, minionSaves, minionSkills, minionsOf, mod, pipeBytes, profBonus, profSummary, round2, schoolName, searchRank, shareCustomsFor, sourceOf, speedOf, spellCapacity, spellFitsClass, spellGrantsOf, spellSlots, spiritAc, spiritDefFromSpell, spiritHp, strikeProfile, subSpellData, subclassProfsOf, summonDefFor, summonFormsFor, summonerSpellAtk, totalLevel, useRecipe, useTrackersFor, usesAmmo } from "./rules.js";
+import { EFFECT_BY_KEY, EFFECT_LIB, SUMMON_LIB, allKnownCantrips, allSubFeats, ammoRowFor, applyEffectPatch, armorClass, attunedRows, attunementCap, b64uFromBytes, bladeRiderTier, bytesFromB64u, canEquip, characterChoiceGroups, classLevel, consumableEffectKey, crShow, creatureByName, describeCustomFx, effDefOf, effEnds, effMaxHp, effectsOf, equippedOf, featChoiceOf, featChoiceSummary, featEffects, featureBuckets, featHpBonus, findItem, fmtMod, fxMods, gearMods, hasEffect, hasStyle, hasSub, healingDiceFor, grantAbilityFor, grantLabel, grantTrackerFor, grantsFor, instMaxHp, isArmorType, isEquippable, isBladeCantrip, isConcDef, isConcInst, isConsumableRow, isWeaponType, knownSpellNames, maxSpellLevel, minionApplyHp, minionAttackRolls, minionHp, minionSaves, minionSkills, minionsOf, mod, pipeBytes, profBonus, profSummary, round2, schoolName, searchRank, shareCustomsFor, sourceOf, speedOf, spellCapacity, spellFitsClass, spellGrantsOf, spellSlots, spiritAc, spiritDefFromSpell, spiritHp, strikeProfile, subSpellData, subclassProfsOf, summonDefFor, summonFormsFor, summonerSpellAtk, totalLevel, useRecipe, useTrackersFor, usesAmmo } from "./rules.js";
 import { EMPTY_CUSTOM, SRD_SRC, __BESTIARY, __SOURCES, creatureSrcOf, isSourceEnabled, sourceCodesOf, sourceLabelOf, spellSrcOf, srcSpells, uid } from "./compendium.js";
 import React, { useEffect, useState } from "react";
 import { CLASS_THEMES, ClassTag, ICON_PATHS, Icon, LazyList, Portrait, SpellPickGrid, T, __showLore, btn, card, cornerBtn, lorePress, usePhotoUpload } from "./ui.jsx";
@@ -202,6 +202,11 @@ function InventoryCard({ ch, customs, onUpdate, onConsume, readOnly }) {
     });
   };
   const adjustGold = (delta, line) => onUpdate({ gold: round2(Math.max(0, gold + delta)), log: [...(ch.log || []), line] });
+  const attune = (row) => save(inv.map((r) => (r.name === row.name ? { ...r, attuned: !r.attuned } : r)));
+  const attuneCap = attunementCap(ch);
+  const attunedCount = attunedRows(ch).length;
+  const needsAttune = inv.some((r) => findItem(r.name, customs)?.attune);
+  const penaltyText = (it) => (isWeaponType(it.type) ? "no proficiency bonus to attack" : "disadvantage on Strength & Dexterity attacks, checks, and saves; no spellcasting");
   const totalWeight = inv.reduce((s, r) => s + ((findItem(r.name, customs)?.weight || 0) * (r.qty || 1)), 0);
   const capacity = ch.abilities.str * 15;
   const equip = (row) => {
@@ -235,6 +240,7 @@ function InventoryCard({ ch, customs, onUpdate, onConsume, readOnly }) {
           disabled={!coinAmt} title="Loot, rewards, ill-gotten gains" onClick={() => adjustGold(coinAmt, `Gained ${coinAmt} gp.`)}>+ Gain</button>
         {coinAmt > gold && <span style={{ color: "#d76a76", fontSize: 11 }}>the purse holds only {gold} gp</span>}</>}
       </div>
+      {needsAttune && <div style={{ color: attunedCount > attuneCap ? T.blood : T.dim, fontSize: 12, marginTop: 6 }}>Attunement {attunedCount}/{attuneCap} · a magic item that requires attunement does nothing until you attune to it{ch.classes.some((c) => c.name === "Artificer") ? " · your Artificer levels raise the cap" : ""}</div>}
       {inv.length === 0 && <div style={{ color: T.dim, fontSize: 13, margin: "8px 0" }}>{readOnly ? "The pack is empty." : "Empty packs win no battles. Add gear below — equip armor, shields, and weapons to power your AC and attack buttons."}</div>}
       {inv.map((row) => {
         const it = findItem(row.name, customs);
@@ -249,6 +255,7 @@ function InventoryCard({ ch, customs, onUpdate, onConsume, readOnly }) {
               <>
                 <span style={{ color: T.dim, fontSize: 13 }}>× {row.qty || 1}</span>
                 {row.equipped && <span style={{ color: T.gold, fontSize: 12 }}>✓ equipped</span>}
+                {row.attuned && <span style={{ color: "#b48ead", fontSize: 12 }}>✓ attuned</span>}
               </>
             ) : (
               <>
@@ -257,13 +264,18 @@ function InventoryCard({ ch, customs, onUpdate, onConsume, readOnly }) {
                   {row.qty || 1}
                   <button style={{ ...btn(false), padding: "1px 8px", minHeight: 0, fontSize: 13 }} onClick={() => save(inv.map((r) => (r.name === row.name ? { ...r, qty: (r.qty || 1) + 1 } : r)))}>＋</button>
                 </span>
-                {equippable && (canEquip(it, ch, customs)
-                  ? (
-                    <button style={{ ...btn(!!row.equipped), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => equip(row)}>
-                      {row.equipped ? "✓ Equipped" : "Equip"}
-                    </button>
-                  )
-                  : <span style={{ color: T.blood, fontSize: 11 }}>not proficient</span>)}
+                {equippable && (
+                  <button style={{ ...btn(!!row.equipped), padding: "3px 10px", fontSize: 12, minHeight: 0 }} onClick={() => equip(row)}>
+                    {row.equipped ? "✓ Equipped" : "Equip"}
+                  </button>
+                )}
+                {equippable && !canEquip(it, ch, customs) && <span style={{ color: T.blood, fontSize: 11 }} title={penaltyText(it)}>not proficient{row.equipped ? ` · ${penaltyText(it)}` : ""}</span>}
+                {it?.attune && (
+                  row.attuned || attunedCount < attuneCap
+                    ? <button style={{ ...btn(!!row.attuned), padding: "3px 10px", fontSize: 12, minHeight: 0, borderColor: "#b48ead", color: row.attuned ? T.bg : "#b48ead", background: row.attuned ? "#b48ead" : undefined }} title={typeof it.attune === "string" ? `Requires attunement ${it.attune}` : "Requires attunement"} onClick={() => attune(row)}>{row.attuned ? "✓ Attuned" : "Attune"}</button>
+                    : <span style={{ color: T.dim, fontSize: 11 }} title="Break attunement to another item first">attunement full</span>
+                )}
+                {typeof it?.attune === "string" && <span style={{ color: T.dim, fontSize: 11 }}>{it.attune}</span>}
                 {onConsume && isConsumableRow(row, it) && (
                   <button style={{ ...btn(false), padding: "3px 10px", fontSize: 12, minHeight: 0, borderColor: "#5eb1bf", color: "#5eb1bf" }} title="Spend one and apply what it does" onClick={() => onConsume(row)}>
                     {/potion|elixir|philter/i.test(row.name) ? "Drink" : "Use"}
@@ -474,6 +486,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
   const pactAll = wl ? PACT(wl.level) : null;
   const pactLeft = pactAll ? pactAll.n - Math.min(ch.usedPact || 0, pactAll.n) : 0;
   const trackers = useTrackersFor(ch, customs);
+  const castBlocked = gearMods(ch, customs).castBlocked;
   const grantPayable = (g) => {
     if (["will", "item", "ritual"].includes(g.cost)) return true;
     const pay = grantTrackerFor(g, trackers);
@@ -481,6 +494,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
     return !!pay.tracker && pay.tracker.max - Math.min(ch.usedFeatures?.[pay.tracker.key] || 0, pay.tracker.max) >= pay.amount;
   };
   const canPay = (n) => {
+    if (castBlocked) return false;
     const lvl = spLvl(n);
     if (lvl === 0) return true;
     if (grants.some((g) => g.spell === n && grantPayable(g))) return true;
@@ -529,6 +543,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
       <div style={{ ...card, padding: 16, marginTop: 14 }}>
       <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 4 }}>Grimoire</div>
       {pool.length === 0 && <div style={{ color: T.dim, fontSize: 12, marginBottom: 8 }}>No spell list loaded — import a compendium XML in the Homebrew Forge to enable pickers.</div>}
+      {castBlocked && <div style={{ color: "#d76a76", fontSize: 12, marginBottom: 8 }}>Armor or a shield you aren't proficient with is equipped — no spell can be cast until it comes off.</div>}
       {casters.map((c) => {
         const cap = spellCapacity(c.name, c.level, ch.abilities);
         const canCap = CANTRIPS_KNOWN[c.name] ? CANTRIPS_KNOWN[c.name](c.level) : 0;
@@ -1501,7 +1516,8 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
   const chosen = options.find((o) => o.id === pick) || null;
   const tk = chosen?.tracker || tracker;
   const tkLeft = tk ? tk.max - Math.min(usedFeats[tk.key] || 0, tk.max) : 0;
-  const blocked = options.length > 0 && (!chosen || chosen.left <= 0);
+  const armorBlock = !!sp && gearMods(ch, customs).castBlocked;
+  const blocked = armorBlock || (options.length > 0 && (!chosen || chosen.left <= 0));
   const [poolAmt, setPoolAmt] = useState(1);
   const [manual, setManual] = useState(eff?.input && eff.input.unit !== "slot" ? eff.input.def : 1);
   if (!recipe) return null;
@@ -1651,7 +1667,7 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
         {concEnding.length > 0 && <div style={{ color: "#b48ead", fontSize: 13, marginTop: 10 }}>◉ You're concentrating on {concEnding.map((e) => e.name).join(", ")} — this {verb.toLowerCase()} ends it.</div>}
         {(eff?.conc || spConc) && !concEnding.length && <div style={{ color: "#b48ead", fontSize: 13, marginTop: 10 }}>◉ Concentration — one at a time; Con save when you take damage.</div>}
         {activeInst && !freeToggle && <div style={{ color: T.dim, fontSize: 12.5, marginTop: 10 }}>Already active — {verb.toLowerCase()}ing again refreshes it rather than stacking.</div>}
-        {blocked && <div style={{ color: "#d76a76", fontSize: 13, marginTop: 10 }}>{tracker && chosen?.type === "tracker" ? `Spent — recharges on a ${chosen && tracker.per === "short" ? "short or long" : "long"} rest.` : "No slot can pay for this right now."}</div>}
+        {blocked && <div style={{ color: "#d76a76", fontSize: 13, marginTop: 10 }}>{armorBlock ? "You can't cast spells while wearing armor or a shield you aren't proficient with." : tracker && chosen?.type === "tracker" ? `Spent — recharges on a ${chosen && tracker.per === "short" ? "short or long" : "long"} rest.` : "No slot can pay for this right now."}</div>}
         {summonDef && (
           <div style={{ color: T.dim, fontSize: 12.5, marginTop: 10, lineHeight: 1.6 }}>
             <span style={{ color: T.gold }}>Calls creatures to your side</span>{summonDef.countHint ? ` — ${summonDef.countHint}.` : "."}
@@ -2015,6 +2031,10 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   const [confirmDel, setConfirmDel] = useState(false);
 
   const fx = fxMods(ch);
+  const gear = gearMods(ch, customs);
+  fx.save.push(...gear.save);
+  fx.atk.push(...gear.spellAtk);
+  ["attack", "save", "check"].forEach((k) => fx.notes[k].push(...gear.notes[k]));
   const effMax = effMaxHp(ch, fx);
   const spd = speedOf(ch, customs, fx);
   const dmgRaw = Math.max(0, ch.dmg || 0);
@@ -2170,11 +2190,13 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
   const weaponDie = (it) => (shillTarget(it) ? "1d8" : it.dmg1 || "1d4");
   const weaponAbilLabel = (it, abil) => (shillTarget(it) ? `${ABIL_NAMES[abil]} (Shillelagh)` : ABIL_NAMES[abil]);
   // Everything a weapon's damage roll shares with its attack roll: which ability, which properties, and the flat bonus.
+  const profPart = (it) => (canEquip(it, ch, customs) ? [{ label: "proficiency", value: pb }] : [{ label: "not proficient", value: 0 }]);
+  const magicPart = (it) => (gear.weapon[it.name] ? [{ label: `${it.name} (magic)`, value: gear.weapon[it.name] }] : []);
   const weaponDamage = (it) => {
     const abil = weaponAbility(it);
     const props = (it.property || "").split(",").map((x) => x.trim());
     const dueling = hasStyle(ch, "Dueling") && it.type === "M" && !props.includes("2H") ? 2 : 0;
-    const extras = fxDmg(it.type === "R" ? "ranged" : "melee", abil, props);
+    const extras = [...fxDmg(it.type === "R" ? "ranged" : "melee", abil, props), ...(gear.weapon[it.name] ? [{ label: "magic", value: gear.weapon[it.name] }] : [])];
     const bonus = mod(ch.abilities[abil]) + dueling + extras.reduce((s, b) => s + b.value, 0);
     return { abil, props, dueling, extras, bonus };
   };
@@ -2202,7 +2224,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     const elem = green ? "fire" : "thunder";
     const tier = bladeRiderTier(lvl);
     const { abil, props, dueling, extras, bonus } = weaponDamage(it);
-    const atkParts = [{ label: weaponAbilLabel(it, abil), value: mod(ch.abilities[abil]) }, { label: "proficiency", value: pb }, ...fxAtk("melee", abil, props)];
+    const atkParts = [{ label: weaponAbilLabel(it, abil), value: mod(ch.abilities[abil]) }, ...profPart(it), ...magicPart(it), ...fxAtk("melee", abil, props)];
     const md = weaponDie(it).match(/(\d+)d(\d+)/);
     const wpnDice = md ? Array.from({ length: +md[1] }, () => ({ sides: +md[2], value: roll(+md[2]) })) : [];
     const riderDice = Array.from({ length: tier }, () => ({ sides: 8, value: roll(8) }));
@@ -2238,7 +2260,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
     const inBook = !!clsName && ["cantrips", "spells"].some((k) => ((ch.spells || {})[clsName]?.[k] || []).includes(sp.name));
     const abil = (inBook && SPELL_ABILITY[clsName]) || grantAbilityFor(ch, customs, sp.name) || (clsName && SPELL_ABILITY[clsName]) || (bestMentalMod() === mod(ch.abilities.int) ? "int" : bestMentalMod() === mod(ch.abilities.wis) ? "wis" : "cha");
     const cmod = mod(ch.abilities[abil]);
-    const dc = 8 + pb + cmod;
+    const dc = 8 + pb + cmod + gear.spellDc;
     const rollN = (count, sides) => Array.from({ length: Math.max(0, count) }, () => ({ sides, value: roll(sides) }));
     const typeWord = DMG_TYPES[prof.type] || "damage";
     let dice, bonus = 0, bonusLabel = "", extraNote = [];
@@ -2467,7 +2489,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
             {equippedWeapons.map((it) => {
               const { abil, props, bonus: dmgBonus } = weaponDamage(it);
-              const atkParts = [{ label: weaponAbilLabel(it, abil), value: mod(ch.abilities[abil]) }, { label: "proficiency", value: pb }, ...(it.type === "R" && feats.archery ? [{ label: "Archery", value: feats.archery }] : []), ...fxAtk(it.type === "R" ? "ranged" : "melee", abil, props)];
+              const atkParts = [{ label: weaponAbilLabel(it, abil), value: mod(ch.abilities[abil]) }, ...profPart(it), ...magicPart(it), ...(it.type === "R" && feats.archery ? [{ label: "Archery", value: feats.archery }] : []), ...fxAtk(it.type === "R" ? "ranged" : "melee", abil, props)];
               const atkMod = atkParts.reduce((s, p) => s + p.value, 0);
               return (
                 <span key={it.name} style={{ display: "inline-flex", border: `1px solid ${T.edge}`, borderRadius: 10, overflow: "hidden" }}>
