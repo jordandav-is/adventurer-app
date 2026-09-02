@@ -1,5 +1,5 @@
 import { ABILITIES, ABIL_NAMES, ALL_SKILLS, ANCESTRIES, ARCANUM_UNLOCK, ASI, CANTRIPS_KNOWN, CHOICE_KEYS, CLASSES, DMG_TYPES, INVOCATIONS, INVOCATION_DATA, ITEM_TYPES, PACT, PREP_ALL_CLASSES, PROF_TEXT, RACES, SKILL_ABIL, SPELL_ABILITY, SPELL_LVL_HINT, STYLE_DESC, baseSubName } from "./data.js";
-import { EFFECT_BY_KEY, EFFECT_LIB, SUMMON_LIB, allKnownCantrips, allSubFeats, ammoRowFor, applyEffectPatch, armorClass, attunedRows, attunementCap, b64uFromBytes, bladeRiderTier, bytesFromB64u, canEquip, characterChoiceGroups, classLevel, consumableEffectKey, crShow, creatureByName, describeCustomFx, effDefOf, effEnds, effMaxHp, effectsOf, equippedOf, featChoiceOf, featChoiceSummary, featEffects, featureBuckets, featHpBonus, findItem, fmtMod, fxMods, gearMods, hasEffect, hasStyle, hasSub, healingDiceFor, grantAbilityFor, grantLabel, grantTrackerFor, grantsFor, instMaxHp, isArmorType, isEquippable, isBladeCantrip, isConcDef, isConcInst, isConsumableRow, isWeaponType, knownSpellNames, maxSpellLevel, minionApplyHp, minionAttackRolls, minionHp, minionSaves, minionSkills, minionsOf, mod, pipeBytes, profBonus, profSummary, round2, schoolName, searchRank, shareCustomsFor, sourceOf, speedOf, spellCapacity, spellFitsClass, spellGrantsOf, spellSlots, spiritAc, spiritDefFromSpell, spiritHp, strikeProfile, subSpellData, subclassProfsOf, summonDefFor, summonFormsFor, summonerSpellAtk, totalLevel, useRecipe, useTrackersFor, usesAmmo } from "./rules.js";
+import { EFFECT_BY_KEY, EFFECT_LIB, SUMMON_LIB, allKnownCantrips, allSubFeats, ammoRowFor, applyEffectPatch, armorClass, attuneBlocker, attunedRows, attunementCap, b64uFromBytes, bladeRiderTier, bytesFromB64u, canEquip, characterChoiceGroups, classLevel, consumableEffectKey, crShow, creatureByName, describeCustomFx, effDefOf, effEnds, effMaxHp, effectiveAbilities, effectsOf, equippedOf, featChoiceOf, featChoiceSummary, featEffects, featureBuckets, featHpBonus, findItem, fmtMod, fxMods, gearMods, hasEffect, hasStyle, hasSub, healingDiceFor, grantAbilityFor, grantLabel, grantTrackerFor, grantsFor, instMaxHp, isArmorType, isEquippable, isBladeCantrip, isConcDef, isConcInst, isConsumableRow, isWeaponType, knownSpellNames, maxSpellLevel, minionApplyHp, minionAttackRolls, minionHp, minionSaves, minionSkills, minionsOf, mod, pipeBytes, profBonus, profSummary, round2, schoolName, searchRank, shareCustomsFor, sourceOf, speedOf, spellCapacity, spellFitsClass, spellGrantsOf, spellSlots, spiritAc, spiritDefFromSpell, spiritHp, strikeProfile, subSpellData, subclassProfsOf, summonDefFor, summonFormsFor, summonerSpellAtk, totalLevel, useRecipe, useTrackersFor, usesAmmo } from "./rules.js";
 import { EMPTY_CUSTOM, SRD_SRC, __BESTIARY, __SOURCES, creatureSrcOf, isSourceEnabled, sourceCodesOf, sourceLabelOf, spellSrcOf, srcSpells, uid } from "./compendium.js";
 import React, { useEffect, useState } from "react";
 import { CLASS_THEMES, ClassTag, ICON_PATHS, Icon, LazyList, Portrait, SpellPickGrid, T, __showLore, btn, card, cornerBtn, lorePress, usePhotoUpload } from "./ui.jsx";
@@ -270,7 +270,8 @@ function InventoryCard({ ch, customs, onUpdate, onConsume, readOnly }) {
                   </button>
                 )}
                 {equippable && !canEquip(it, ch, customs) && <span style={{ color: T.blood, fontSize: 11 }} title={penaltyText(it)}>not proficient{row.equipped ? ` · ${penaltyText(it)}` : ""}</span>}
-                {it?.attune && (
+                {it?.attune && attuneBlocker(ch, it) && !row.attuned && <span style={{ color: T.dim, fontSize: 11 }} title="This item's attunement condition isn't met">can't attune · {attuneBlocker(ch, it)}</span>}
+                {it?.attune && !(attuneBlocker(ch, it) && !row.attuned) && (
                   row.attuned || attunedCount < attuneCap
                     ? <button style={{ ...btn(!!row.attuned), padding: "3px 10px", fontSize: 12, minHeight: 0, borderColor: "#b48ead", color: row.attuned ? T.bg : "#b48ead", background: row.attuned ? "#b48ead" : undefined }} title={typeof it.attune === "string" ? `Requires attunement ${it.attune}` : "Requires attunement"} onClick={() => attune(row)}>{row.attuned ? "✓ Attuned" : "Attune"}</button>
                     : <span style={{ color: T.dim, fontSize: 11 }} title="Break attunement to another item first">attunement full</span>
@@ -2021,7 +2022,9 @@ function ShareSheet({ ch, customs, onClose }) {
     </div>
   );
 }
-function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, onInvocations, onUpdate, onSources, customs, shared }) {
+function Sheet({ ch: storedCh, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, onInvocations, onUpdate, onSources, customs, shared }) {
+  const gearAbilities = effectiveAbilities(storedCh, customs);
+  const ch = { ...storedCh, abilities: gearAbilities.abilities };
   const lvl = totalLevel(ch);
   const pb = profBonus(lvl);
   const slots = spellSlots(ch.classes);
@@ -2351,8 +2354,9 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
             <div key={a} {...lorePress(ABIL_NAMES[a])} style={{ ...card, padding: 12, textAlign: "center", cursor: "pointer" }} title={`Roll a ${ABIL_NAMES[a]} check`}
               onClick={() => rollIt(`${ABIL_NAMES[a]} check`, checkPartsFor(a), "check", a)}>
               <div style={{ color: T.dim, fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>{ABIL_NAMES[a]}</div>
-              <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: T.ink }}>{ch.abilities[a]}</div>
+              <div style={{ fontSize: 26, fontFamily: "Georgia, serif", color: gearAbilities.notes[a] ? "#b48ead" : T.ink }} title={gearAbilities.notes[a]?.join(", ")}>{ch.abilities[a]}</div>
               <div style={{ color: T.gold }}>{fmtMod(mod(ch.abilities[a]))}</div>
+              {gearAbilities.notes[a] && <div style={{ color: "#b48ead", fontSize: 10 }}>{gearAbilities.notes[a].join(", ")}</div>}
               <div style={{ color: saveProf ? T.green : T.dim, fontSize: 11, marginTop: 4, padding: "2px 0", borderRadius: 6 }} title={`Roll a ${ABIL_NAMES[a]} save`}
                 onClick={(e) => { e.stopPropagation(); rollIt(`${ABIL_NAMES[a]} saving throw`, savePartsFor(a), "save", a); }}>
                 save {fmtMod(saveMod(a))}{saveProf ? " ●" : ""}
