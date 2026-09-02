@@ -319,12 +319,19 @@ def apply_mod(target: dict[str, Any], mods: dict[str, Any]) -> None:
                 target[prop] = f"{op.get('prefix', '')}{current or ''}{op.get('suffix', '')}"
 
 
+def copy_key(row: dict[str, Any], fallback: dict[str, Any] | None = None) -> tuple[Any, ...]:
+    # Class and subclass features share names across classes and levels ("Ability Score Improvement",
+    # "Spellcasting", "Extra Attack"), so identity must include those fields where present.
+    fb = fallback or {}
+    return tuple(row.get(k, fb.get(k)) for k in ("name", "source", "className", "subclassShortName", "level"))
+
+
 def resolve_copies(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    index = {(x.get("name"), x.get("source")): x for x in rows if x.get("name") and x.get("source")}
-    cache: dict[tuple[str, str], dict[str, Any]] = {}
-    active: set[tuple[str, str]] = set()
+    index = {copy_key(x): x for x in rows if x.get("name") and x.get("source")}
+    cache: dict[tuple[Any, ...], dict[str, Any]] = {}
+    active: set[tuple[Any, ...]] = set()
     def resolve(row: dict[str, Any]) -> dict[str, Any]:
-        key = (row.get("name", ""), row.get("source", ""))
+        key = copy_key(row)
         if key in cache:
             return copy.deepcopy(cache[key])
         if key in active:
@@ -332,7 +339,7 @@ def resolve_copies(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         active.add(key)
         spec = row.get("_copy")
         if spec:
-            base = index.get((spec.get("name"), spec.get("source")))
+            base = index.get(copy_key(spec, row))
             merged = resolve(base) if base else {}
             merged.update(copy.deepcopy({k: v for k, v in row.items() if k != "_copy"}))
             apply_mod(merged, spec.get("_mod", {}))
@@ -877,7 +884,10 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
         is_expanded = row["name"] not in core_base_races
         skills = row.get("skillProficiencies") or []
         skill_choose = next((x.get("choose") for x in skills if isinstance(x, dict) and x.get("choose")), None)
-        fixed_skills = [k.replace("sleight of hand", "Sleight of Hand").title() for x in skills if isinstance(x, dict) for k, v in x.items() if k != "choose" and v]
+        any_skills = sum(v for x in skills if isinstance(x, dict) for k, v in x.items() if k == "any" and isinstance(v, int))
+        fixed_skills = [k.replace("sleight of hand", "Sleight of Hand").title() for x in skills if isinstance(x, dict) for k, v in x.items() if k not in {"choose", "any"} and v]
+        if any_skills and not skill_choose:
+            skill_choose = {"count": any_skills, "from": []}
 
         record = {**provenance(row, "race"), "name": row["name"], "text": text}
         records.append(record)
@@ -893,7 +903,8 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
             "src": row.get("source"),
             "sources": record["sources"],
             **({"group": "expanded"} if is_expanded else {}),
-            **({"skills": skill_choose.get("count", 1), "skillsFrom": [x.title() for x in skill_choose.get("from", [])]} if skill_choose else {}),
+            **({"skills": skill_choose.get("count", 1)} if skill_choose else {}),
+            **({"skillsFrom": [x.title() for x in skill_choose["from"]]} if skill_choose and skill_choose.get("from") else {}),
             **({"grantSkills": fixed_skills} if fixed_skills else {}),
         }
         if row["name"] in {"Variant Human", "Custom Lineage"}:

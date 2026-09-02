@@ -1,4 +1,4 @@
-import { ABILITIES, ABILITY_INFO, ABIL_NAMES, ANCESTRIES, ASI, BACKGROUNDS, BOON_INFO, CASTING_CLASSES, CHOICE_GROUPS, CLASSES, CLASS_GEAR_PROFS, CORE_FEATURE_INFO, DMG_TYPES, DMG_WORD_CODE, FEATS, FEATURE_TEXT, FEAT_INDEX, FEAT_MECHANICS, FEAT_PICKS, GRANTED_SUB_CLASSES, GRANT_CANTRIPS, HALF1_SLOTS, HALF_SLOTS, HEALING_TIERS, INVOCATION_DATA, INVOCATION_INFO, ITEM_TYPES, LAND_TERRAINS, LANG_INFO, MANEUVERS, MC_GEAR_PROFS, MC_PREREQ, MC_SLOTS, METAMAGIC_INFO, PACT, POTION_EFFECT_ALIAS, RACES, RANGER_PREPARED, SCHOOL_NAMES, SIZE_RANK, SKILL_ABIL, SKILL_INFO, SOURCE_ABBR, SPELLS_KNOWN, SPELL_ABILITY, SRD_FOOT, STYLE_DESC, SUB_FEATS, SUB_LORE, SUB_SPELLS, TEXT_2024, WEAPON_PROPS, baseSubName, normSub, subFeatsFor } from "./data.js";
+import { ABILITIES, ABILITY_INFO, ABIL_NAMES, ANCESTRIES, ASI, BACKGROUNDS, BOON_INFO, CASTING_CLASSES, CHOICE_GROUPS, CLASSES, CLASS_GEAR_PROFS, CORE_FEATURE_INFO, DMG_TYPES, DMG_WORD_CODE, FEATS, FEATURE_TEXT, FEAT_INDEX, FEAT_MECHANICS, FEAT_PICKS, GRANTED_SUB_CLASSES, GRANT_CANTRIPS, HALF1_SLOTS, HALF_SLOTS, HEALING_TIERS, INVOCATION_DATA, INVOCATION_INFO, ITEM_TYPES, LAND_TERRAINS, LANG_INFO, MANEUVERS, MC_GEAR_PROFS, MC_PREREQ, MC_PROFS, MC_SLOTS, METAMAGIC_INFO, PACT, POTION_EFFECT_ALIAS, PROF_TEXT, RACES, RANGER_PREPARED, SCHOOL_NAMES, SIZE_RANK, SKILL_ABIL, SKILL_INFO, SOURCE_ABBR, SPELLS_KNOWN, SPELL_ABILITY, SRD_FOOT, STYLE_DESC, SUB_FEATS, SUB_LORE, SUB_SPELLS, TEXT_2024, WEAPON_PROPS, baseSubName, normSub, subFeatsFor } from "./data.js";
 import { EMPTY_CUSTOM, __BASE, __BESTIARY, __SRC_OFF, creatureSrcOf, isSourceEnabled, sourceLabelOf, srcSpells, stripBase } from "./compendium.js";
 const mod = (s) => Math.floor((s - 10) / 2);
 const fmtMod = (m) => (m >= 0 ? `+${m}` : `${m}`);
@@ -63,7 +63,7 @@ function featEffects(ch, customs) {
     const normN = String(n || "").toLowerCase().replace(/[^a-z0-9]/g, "");
     const def = feats.find((f) => String(f.name || "").toLowerCase().replace(/[^a-z0-9]/g, "") === normN);
     const fxKey = Object.keys(FEAT_MECHANICS).find((k) => String(k).toLowerCase().replace(/[^a-z0-9]/g, "") === normN);
-    const f = def?.fx || (!def?.canonical && fxKey ? FEAT_MECHANICS[fxKey] : null);
+    const f = def?.fx || (fxKey ? FEAT_MECHANICS[fxKey] : null);
     if (!f) return;
     if (f.hpPerLevel) { out.hpPerLevel += f.hpPerLevel; out.sources.push(n); }
     if (f.speed) { out.speed += f.speed; out.sources.push(n); }
@@ -1041,13 +1041,19 @@ function featureBuckets(ch, customs) {
     ...(rc.lineage ? [{ name: rc.lineage === "darkvision" ? "Darkvision 60 ft" : "Extra skill proficiency", detail: "lineage gift" }] : []),
   ] });
   const bg = BACKGROUNDS[ch.background];
-  buckets.push({ key: "background", label: "Background", title: ch.background, items: bg?.feature ? [{ name: bg.feature, lore: bg.feature, body: (customs?.featureTexts || {})[ch.background] || bg.featureText }] : [] });
+  const bgProfs = bg ? [bg.skills?.length ? `Skills: ${bg.skills.join(" & ")}` : null, bg.tools ? `Tools: ${bg.tools}` : null, bg.langs ? `${bg.langs} extra language${bg.langs > 1 ? "s" : ""}` : null].filter(Boolean).join(" · ") : "";
+  buckets.push({ key: "background", label: "Background", title: ch.background, items: [
+    ...(bg?.feature ? [{ name: bg.feature, lore: bg.feature, body: (customs?.featureTexts || {})[ch.background] || bg.featureText }] : []),
+    ...(bgProfs ? [{ name: "Proficiencies", detail: bgProfs }] : []),
+  ] });
   const styleHost = ch.classes.find((c) => Object.values(CLASSES[c.name]?.feats || {}).flat().includes("Fighting Style")) || ch.classes[0];
   const choiceHost = (key) => ch.classes.find((c) => c.name === CHOICE_GROUPS.find((g) => g.key === key)?.cls) || ch.classes[0];
   ch.classes.forEach((c) => {
     const cls = CLASSES[c.name];
     if (!cls) return;
     const items = [];
+    const gear = ch.classes[0] === c ? PROF_TEXT[c.name] : MC_PROFS[c.name];
+    items.push({ name: "Proficiencies", level: 1, detail: [gear, ch.classes[0] === c && cls.saves?.length ? `saves ${cls.saves.map((a) => a.toUpperCase()).join(" & ")}` : null].filter(Boolean).join(" · ") || "—" });
     for (let l = 1; l <= c.level; l++) {
       (cls.feats[l] || []).filter((f) => !(c.subclass && /\bfeature\b$/i.test(f))).forEach((f) => {
         const name = c.name === "Rogue" && /^Sneak Attack/.test(f) ? `Sneak Attack (${Math.ceil(c.level / 2)}d6)` : f;
@@ -1072,6 +1078,9 @@ function featureBuckets(ch, customs) {
     if (c.subclass) {
       const subItems = [];
       for (let l = 1; l <= c.level; l++) allSubFeats(c.subclass, l, customs).forEach((f) => subItems.push(item(f, { cls: c.name, level: l })));
+      const sd = subSpellData(c.subclass, c.name, customs);
+      const granted = sd ? Object.entries(sd.spells).filter(([l]) => +l <= c.level).flatMap(([, arr]) => arr) : [];
+      if (granted.length) subItems.push({ name: sd.label, detail: granted.join(", ") });
       buckets.push({ key: `sub:${c.name}`, label: cls.subName, title: c.subclass, cls: c.name, items: subItems });
     }
   });
