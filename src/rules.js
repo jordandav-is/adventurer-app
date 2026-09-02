@@ -38,12 +38,14 @@ function subSpellData(subclass, clsName, customs) {
     : { type: "expanded", label: `Expanded spell list — ${base} (added to your ${clsName} options)`, spells };
 }
 const meetsPrereq = (cls, ab) => (MC_PREREQ[cls] || [{ int: 13 }]).some((req) => Object.entries(req).every(([k, v]) => ab[k] >= v));
-function featureBody(rawName, cls, customs) {
+function featureBody(rawName, cls, customs, sub) {
   const name = String(rawName || "").trim();
   const strip = baseSubName(name);
   const ft = customs?.featureTexts || {};
   if (cls === "Ranger" && TEXT_2024.has(strip)) return FEATURE_TEXT[strip] || FEATURE_TEXT[name] || ft[name] || ft[strip];
-  return (cls && (ft[`${cls}:${name}`] || ft[`${cls}:${strip}`] || FEATURE_TEXT[`${cls}:${name}`] || FEATURE_TEXT[`${cls}:${strip}`]))
+  const subKey = cls && sub ? `${cls}:${baseSubName(sub)}:` : null;
+  return (subKey && (ft[subKey + name] || ft[subKey + strip]))
+    || (cls && (ft[`${cls}:${name}`] || ft[`${cls}:${strip}`] || FEATURE_TEXT[`${cls}:${name}`] || FEATURE_TEXT[`${cls}:${strip}`]))
     || ft[name] || ft[strip]
     || FEATURE_TEXT[name] || FEATURE_TEXT[strip]
     || CORE_FEATURE_INFO[strip]
@@ -407,6 +409,32 @@ const attunementCap = (ch) => { const a = classLevel(ch, "Artificer"); return a 
 const isEquippable = (it) => !!it && (isArmorType(it.type) || it.type === "S" || isWeaponType(it.type));
 const itemActive = (row, it) => !!it && (row.qty ?? 1) > 0 && (!it.attune || !!row.attuned) && (!isEquippable(it) || !!row.equipped);
 const attunedRows = (ch) => (ch.inventory || []).filter((r) => r.attuned);
+const THIRD_CASTERS = ["Eldritch Knight", "Arcane Trickster"];
+const isSpellcaster = (ch) => ch.classes.some((c) => CLASSES[c.name]?.caster || (c.subclass && THIRD_CASTERS.includes(baseSubName(c.subclass)) && c.level >= 3));
+const alignmentFits = (alignment, want) => {
+  const al = String(alignment || "").toLowerCase();
+  if (!al) return true;
+  return want.split(/\s+/).every((w) => (w.startsWith("non-") ? !al.includes(w.slice(4)) : al.includes(w)));
+};
+// Why this character cannot attune to an item, or null when the item's condition is met (or unstructured).
+function attuneBlocker(ch, it) {
+  const req = it?.attuneReq;
+  if (!req || req.other) return null;
+  if (req.classes?.length && !ch.classes.some((c) => req.classes.includes(c.name))) return `requires a ${req.classes.join(" or ")}`;
+  if (req.spellcaster && !isSpellcaster(ch)) return "requires a spellcaster";
+  if (req.races?.length && !req.races.some((r) => r === "humanoid" || r === "small humanoid" || String(ch.race || "").toLowerCase().includes(r))) return `requires a ${req.races.join(" or ")}`;
+  if (req.alignment && !alignmentFits(ch.alignment, req.alignment)) return `requires ${req.alignment} alignment`;
+  return null;
+}
+// Ability scores as worn magic leaves them: flat bonuses first (to the usual cap of 20), then items that set a score outright.
+function effectiveAbilities(ch, customs) {
+  const abilities = { ...ch.abilities };
+  const notes = {};
+  const active = (ch.inventory || []).map((r) => [r, findItem(r.name, customs)]).filter(([r, it]) => it?.ability && itemActive(r, it));
+  active.forEach(([, it]) => Object.entries(it.ability.add || {}).forEach(([a, n]) => { if (abilities[a] < 20) { abilities[a] = Math.min(20, abilities[a] + n); notes[a] = [...(notes[a] || []), `${it.name} ${fmtMod(n)}`]; } }));
+  active.forEach(([, it]) => Object.entries(it.ability.set || {}).forEach(([a, n]) => { if (n > abilities[a]) { abilities[a] = n; notes[a] = [...(notes[a] || []), `${it.name} sets ${n}`]; } }));
+  return { abilities, notes };
+}
 // What worn gear does to the numbers: item bonuses to AC, saves, spell attacks and DCs, per-weapon magic,
 // and the price of armor you aren't proficient with — disadvantage on Strength and Dexterity rolls and no spellcasting.
 function gearMods(ch, customs) {
@@ -1109,7 +1137,11 @@ function infoFor(rawName, customs) {
   let key = ft[name] ? name : ft[strip] ? strip : Object.keys(ft).find((k) => baseSubName(k) === strip || k.startsWith(strip + " ("));
   if (!key) { const cp = name.match(/^([^:]+):/); if (cp && ft[cp[1].trim()]) key = cp[1].trim(); }
   if (!key) key = Object.keys(ft).filter((k) => k.length > 3 && strip.startsWith(k + " ")).sort((a, b) => b.length - a.length)[0];
-  if (key) return { title: strip, meta: "Feature", body: ft[key], foot: sourceOf(fSrc) || sourceOf(ft[key]) || SRD_FOOT };
+  if (key) {
+    // A scoped key ("Cleric:Tempest Domain:Bonus Proficiencies") names the feature last; the scope becomes its meta line.
+    const scope = key.includes(":") ? key.split(":") : null;
+    return { title: scope ? scope[scope.length - 1] : strip, meta: scope ? `Feature · ${scope.slice(0, -1).reverse().join(" · ")}` : "Feature", body: ft[key], foot: sourceOf(fSrc) || sourceOf(ft[key]) || SRD_FOOT };
+  }
   if (FEATURE_TEXT[name] || FEATURE_TEXT[strip]) return { title: strip, meta: "Feature", body: FEATURE_TEXT[name] || FEATURE_TEXT[strip], foot: sourceOf(fSrc) || SRD_FOOT };
   if (CORE_FEATURE_INFO[strip]) return { title: strip, meta: "Feature", body: CORE_FEATURE_INFO[strip], foot: sourceOf(fSrc) || "Player's Handbook (2014)" };
   const eff = EFFECT_LIB.find((x) => x.name === name || x.name === strip);
@@ -1164,8 +1196,10 @@ const featChoiceSummary = (ch, name) => {
 };
 const loreName = (t) => String(t || "").replace(/\s*\(.*$/, "");
 function featureBuckets(ch, customs) {
-  const text = (name, cls) => featureBody(name, cls, customs) || infoFor(name, customs)?.body || null;
-  const item = (name, extra = {}) => ({ name, lore: name, body: text(extra.lore || name, extra.cls), ...extra });
+  const ft = customs?.featureTexts || {};
+  const text = (name, cls, sub) => featureBody(name, cls, customs, sub) || infoFor(name, customs)?.body || null;
+  const item = (name, extra = {}) => ({ name, lore: name, body: text(extra.lore || name, extra.cls, extra.sub), ...extra });
+  const subLore = (cls, sub, f) => (ft[`${cls}:${baseSubName(sub)}:${f}`] ? `${cls}:${baseSubName(sub)}:${f}` : f);
   const buckets = [];
   const race = RACES[ch.race];
   const rc = ch.racialChoices || {};
@@ -1213,7 +1247,7 @@ function featureBuckets(ch, customs) {
     buckets.push({ key: `class:${c.name}`, label: `Class · level ${c.level}`, title: c.name, cls: c.name, items });
     if (c.subclass) {
       const subItems = [];
-      for (let l = 1; l <= c.level; l++) allSubFeats(c.subclass, l, customs).forEach((f) => subItems.push(item(f, { cls: c.name, level: l })));
+      for (let l = 1; l <= c.level; l++) allSubFeats(c.subclass, l, customs).forEach((f) => subItems.push(item(f, { cls: c.name, sub: c.subclass, level: l, lore: subLore(c.name, c.subclass, f) })));
       const sd = subSpellData(c.subclass, c.name, customs);
       const granted = sd ? Object.entries(sd.spells).filter(([l]) => +l <= c.level).flatMap(([, arr]) => arr) : [];
       if (granted.length) subItems.push({ name: sd.label, detail: granted.join(", ") });
@@ -1330,4 +1364,4 @@ const searchRank = (name, q) => {
 };
 const schoolName = (s) => SCHOOL_NAMES[(s || "").toUpperCase()] || s;
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-export { mod, fmtMod, profBonus, subSpellData, meetsPrereq, featureBody, featChoiceOf, featEffects, hasStyle, featHpBonus, featBlockedBy, featPickOf, featGrantedSpells, spellGrantsOf, grantsFor, grantAbilityFor, grantLabel, grantTrackerKey, grantTrackerFor, featPickDone, spellCapacity, maxSpellLevel, foldStarredSpells, spellFitsClass, spellSlots, totalLevel, isTechnique, choiceCum, groupMatches, choiceOptionsFor, allChoiceGroups, characterChoiceGroups, allKnownCantrips, sourceOf, findItem, isArmorType, isWeaponType, equippedOf, canEquip, attunementCap, isEquippable, itemActive, attunedRows, gearMods, subclassProfsOf, subclassProfsAt, profSummary, armorClass, classLevel, hasSub, hasFeat, effectsOf, knownSpellNames, EFFECT_LIB, EFFECT_BY_KEY, hasEffect, effDefOf, isConcDef, isConcInst, effEnds, instMaxHp, describeCustomFx, applyEffectPatch, fxMods, effMaxHp, speedOf, useTrackersFor, minionsOf, crShow, creatureByName, summonFormsFor, SUMMON_LIB, summonDefFor, spiritHp, spiritAc, spiritDefFromSpell, minionAttackRolls, summonerSpellAtk, minionSaves, minionSkills, minionHp, minionApplyHp, isBladeCantrip, bladeRiderTier, strikeProfile, useRecipe, usesAmmo, ammoRowFor, isConsumableRow, healingDiceFor, consumableEffectKey, allSubs, allSubFeats, allFeats, b64uFromBytes, bytesFromB64u, pipeBytes, shareCustomsFor, getRacialBonusPool, getDefaultRacialSlots, formatStandardRaceBonus, searchRank, schoolName, round2, infoFor, featChoiceSummary, featureBuckets };
+export { mod, fmtMod, profBonus, subSpellData, meetsPrereq, featureBody, featChoiceOf, featEffects, hasStyle, featHpBonus, featBlockedBy, featPickOf, featGrantedSpells, spellGrantsOf, grantsFor, grantAbilityFor, grantLabel, grantTrackerKey, grantTrackerFor, featPickDone, spellCapacity, maxSpellLevel, foldStarredSpells, spellFitsClass, spellSlots, totalLevel, isTechnique, choiceCum, groupMatches, choiceOptionsFor, allChoiceGroups, characterChoiceGroups, allKnownCantrips, sourceOf, findItem, isArmorType, isWeaponType, equippedOf, canEquip, attunementCap, isEquippable, itemActive, attunedRows, attuneBlocker, effectiveAbilities, gearMods, subclassProfsOf, subclassProfsAt, profSummary, armorClass, classLevel, hasSub, hasFeat, effectsOf, knownSpellNames, EFFECT_LIB, EFFECT_BY_KEY, hasEffect, effDefOf, isConcDef, isConcInst, effEnds, instMaxHp, describeCustomFx, applyEffectPatch, fxMods, effMaxHp, speedOf, useTrackersFor, minionsOf, crShow, creatureByName, summonFormsFor, SUMMON_LIB, summonDefFor, spiritHp, spiritAc, spiritDefFromSpell, minionAttackRolls, summonerSpellAtk, minionSaves, minionSkills, minionHp, minionApplyHp, isBladeCantrip, bladeRiderTier, strikeProfile, useRecipe, usesAmmo, ammoRowFor, isConsumableRow, healingDiceFor, consumableEffectKey, allSubs, allSubFeats, allFeats, b64uFromBytes, bytesFromB64u, pipeBytes, shareCustomsFor, getRacialBonusPool, getDefaultRacialSlots, formatStandardRaceBonus, searchRank, schoolName, round2, infoFor, featChoiceSummary, featureBuckets };

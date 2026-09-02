@@ -16,7 +16,7 @@
   "legacyRecordsPreserved": {
     "bestiary": -7,
     "feats": 56,
-    "items": 124,
+    "items": 71,
     "spells": 123
   },
   "rejectedBySource": {
@@ -178,7 +178,7 @@
     "classes": 16,
     "feats": 134,
     "features": 1134,
-    "items": 1804,
+    "items": 2576,
     "optionalFeatures": 179,
     "races": 134,
     "rewards": 173,

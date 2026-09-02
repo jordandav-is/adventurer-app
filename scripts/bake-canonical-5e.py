@@ -692,7 +692,7 @@ def convert_classes() -> tuple[list[dict[str, Any]], dict[str, list[dict[str, An
             feature_records.append(rec)
             if text:
                 feature_texts[f"{class_name}:{name}"] = text
-                feature_texts.setdefault(name, text)
+                if not class_name.endswith(" Sidekick"): feature_texts.setdefault(name, text)
         skill_blocks = row.get("startingProficiencies", {}).get("skills", [])
         skill_choice = next((x.get("choose", {}) for x in skill_blocks if isinstance(x, dict) and x.get("choose")), {})
         asi = [int(level) for level, names in levels.items() if any("Ability Score Improvement" in name for name in names)]
@@ -1191,6 +1191,42 @@ def item_bonus(row: dict[str, Any]) -> dict[str, int]:
     return out
 
 
+CLASS_WORDS = {"artificer", "barbarian", "bard", "cleric", "druid", "fighter", "monk", "paladin", "ranger", "rogue", "sorcerer", "warlock", "wizard"}
+RACE_WORDS = {"dwarf", "elf", "half-elf", "warforged", "humanoid", "small humanoid", "mind flayer", "gnome", "halfling", "dragonborn", "tiefling", "human", "half-orc"}
+
+
+def attune_requirement(text: str) -> dict[str, Any] | None:
+    """'by a cleric or paladin of good alignment' -> {classes: [Cleric, Paladin], alignment: 'good'}.
+    Only the fixed vocabulary is structured; anything else stays display-only under 'other'."""
+    low = text.lower().strip().rstrip(".")
+    m = re.match(r"^by (?:an? |the )?(.+?)(?: of ([a-z -]+?) alignment)?$", low)
+    if not m: return {"other": text}
+    subject, alignment = m.group(1), m.group(2)
+    out: dict[str, Any] = {}
+    if alignment: out["alignment"] = alignment.strip()
+    tokens = [t.strip() for t in re.split(r",|\bor\b", subject) if t.strip()]
+    tokens = [re.sub(r"^(an?|the) ", "", t) for t in tokens]
+    for t in tokens:
+        if t in CLASS_WORDS: out.setdefault("classes", []).append(t.capitalize())
+        elif t == "spellcaster": out["spellcaster"] = True
+        elif t in RACE_WORDS: out.setdefault("races", []).append(t)
+        elif t == "creature": pass
+        else: return {"other": text}
+    return out or {"other": text}
+
+
+def item_ability(row: dict[str, Any]) -> dict[str, Any] | None:
+    """Ability score effects: {set: {con: 19}} for a fixed score, {add: {con: 2}} for a flat bonus. Picks are left to the table."""
+    ab = row.get("ability", (row.get("inherits") or {}).get("ability"))
+    if not isinstance(ab, dict): return None
+    out: dict[str, Any] = {}
+    static = ab.get("static")
+    if isinstance(static, dict): out["set"] = {k: int(v) for k, v in static.items() if k in ("str", "dex", "con", "int", "wis", "cha") and isinstance(v, int)}
+    add = {k: int(v) for k, v in ab.items() if k in ("str", "dex", "con", "int", "wis", "cha") and isinstance(v, int)}
+    if add: out["add"] = add
+    return {k: v for k, v in out.items() if v} or None
+
+
 def item_attune(row: dict[str, Any]) -> Any:
     """True when the item needs attunement, or the condition text ('by a Spellcaster') when it names one."""
     raw = row.get("reqAttune", (row.get("inherits") or {}).get("reqAttune"))
@@ -1199,24 +1235,48 @@ def item_attune(row: dict[str, Any]) -> Any:
     return None
 
 
+def variant_fits(req: dict[str, Any], base: dict[str, Any]) -> bool:
+    base_type = str(base.get("type", "")).split("|")[0]
+    for key, want in req.items():
+        ok = (
+            (key in {"weapon", "armor", "sword", "axe", "bow", "crossbow", "firearm", "staff", "club", "hammer", "mace", "spear", "dagger", "polearm", "net"} and bool(base.get(key)) == bool(want))
+            or (key == "type" and base_type == str(want).split("|")[0])
+            or (key == "name" and base.get("name") == want)
+            or (key in {"weaponCategory", "dmgType", "source"} and base.get(key) == want)
+            or (key == "property" and want in (base.get("property") or []))
+        )
+        if not ok: return False
+    return True
+
+
+def variant_excluded(v: dict[str, Any], base: dict[str, Any]) -> bool:
+    ex = v.get("excludes") or {}
+    for key, val in ex.items():
+        if key == "name" and base.get("name") in (val if isinstance(val, list) else [val]): return True
+        if key == "property" and any(p in (base.get("property") or []) for p in (val if isinstance(val, list) else [val])): return True
+        if key == "type" and str(base.get("type", "")).split("|")[0] in [str(x).split("|")[0] for x in (val if isinstance(val, list) else [val])]: return True
+        if key in {"weapon", "armor", "sword", "axe", "bow", "crossbow", "net"} and val and base.get(key): return True
+    return False
+
+
 def generic_magic_items(variants: list[dict[str, Any]], bases: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The +1/+2/+3 Weapon, Armor, Shield, and Ammunition templates, applied to every PHB base item they fit
-    ('+1 Longsword', '+2 Chain Mail') so a table's most common magic items exist as real, equippable records."""
+    """Every magic-item template of an allowed source (+1 Weapon, Holy Avenger, Flame Tongue, Mariner's Armor…) applied to
+    each PHB base item it fits, the way the source's own item list is built, so 'Holy Avenger Longsword' and
+    '+2 Chain Mail' exist as real, equippable records carrying the template's bonuses, attunement, and text."""
     out = []
     for v in variants:
-        m = re.match(r"^\+(\d) (Weapon|Armor|Shield|Ammunition)(?: \(\*\))?$", v.get("name", ""))
         inh = v.get("inherits") or {}
-        if not m or inh.get("source") != "DMG": continue
-        kind = m.group(2)
-        excludes = {k for k, val in (v.get("excludes") or {}).items() if val}
+        if not allowed_source(inh.get("source")): continue
         for base in bases:
             if base.get("source") != "PHB": continue
-            base_type = str(base.get("type", "")).split("|")[0]
-            fits = (kind == "Weapon" and base.get("weapon")) or (kind == "Armor" and base.get("armor")) or (kind == "Shield" and base_type == "S") or (kind == "Ammunition" and base_type == "A")
-            if not fits or base.get("name", "").lower() in excludes: continue
-            entries = [re.sub(r"\{=(\w+)\}", lambda mm: str(inh.get(mm.group(1), "")), e) if isinstance(e, str) else e for e in inh.get("entries", [])]
-            out.append({**base, "name": f"{inh.get('namePrefix', '')}{base['name']}", "source": "DMG", "page": inh.get("page"), "rarity": inh.get("rarity"),
-                        "entries": entries, **{k: inh[k] for k in BONUS_FIELDS if k in inh}, **({"reqAttune": inh["reqAttune"]} if inh.get("reqAttune") else {})})
+            if not any(variant_fits(r, base) for r in v.get("requires", [])) or variant_excluded(v, base): continue
+            def fill(text: str) -> str:
+                return re.sub(r"\{=(\w+)(?:/[a-z]+)?\}", lambda mm: base["name"].lower() if mm.group(1) == "baseName" else str(inh.get(mm.group(1), "")), text)
+            entries = [fill(e) if isinstance(e, str) else e for e in inh.get("entries", [])]
+            name = f"{inh.get('namePrefix', '')}{base['name']}{inh.get('nameSuffix', '')}"
+            row = {**base, **{k: val for k, val in inh.items() if k not in {"namePrefix", "nameSuffix", "entries", "nameRemove", "propertyAdd", "propertyRemove", "valueExpression", "weightExpression", "lootTables"}},
+                   "name": name, "source": inh.get("source"), "page": inh.get("page"), "entries": entries, "variantOf": v.get("name")}
+            out.append(row)
     return out
 
 
@@ -1227,7 +1287,9 @@ def convert_item(row: dict[str, Any], kind: str = "item") -> dict[str, Any]:
     charges = row.get("charges", (row.get("inherits") or {}).get("charges"))
     bonus = item_bonus(row)
     attune = item_attune(row)
-    return with_grants({**provenance(row, kind), "name": row["name"], "type": row.get("type", row.get("rarity", "")), **({"charges": charges} if isinstance(charges, int) else {}), **({"bonus": bonus} if bonus else {}), **({"attune": attune} if attune else {}), "weight": row.get("weight", 0), "value": (value / 100 if isinstance(value, (int, float)) else value or ""), "ac": row.get("ac", 0) if isinstance(row.get("ac", 0), (int, float)) else 0, "strReq": row.get("strength", 0), "stealthDis": bool(row.get("stealth")), "dmg1": row.get("dmg1", ""), "dmg2": row.get("dmg2", ""), "dmgType": row.get("dmgType", ""), "property": ",".join([x if isinstance(x, str) else str(x.get("uid", "")).split("|")[0] for x in row.get("property", [])] + (["M"] if row.get("weaponCategory") == "martial" else [])), "range": row.get("range", ""), "text": f"{text}\n\n{source_tail(row)}".strip()}, row, attached)
+    attune_req = attune_requirement(attune) if isinstance(attune, str) and attune.lower() != "optional" else None
+    ability = item_ability(row)
+    return with_grants({**provenance(row, kind), "name": row["name"], "type": row.get("type", row.get("rarity", "")), **({"charges": charges} if isinstance(charges, int) else {}), **({"bonus": bonus} if bonus else {}), **({"attune": attune} if attune else {}), **({"attuneReq": attune_req} if attune_req else {}), **({"ability": ability} if ability else {}), "weight": row.get("weight", 0), "value": (value / 100 if isinstance(value, (int, float)) else value or ""), "ac": row.get("ac", 0) if isinstance(row.get("ac", 0), (int, float)) else 0, "strReq": row.get("strength", 0), "stealthDis": bool(row.get("stealth")), "dmg1": row.get("dmg1", ""), "dmg2": row.get("dmg2", ""), "dmgType": row.get("dmgType", ""), "property": ",".join([x if isinstance(x, str) else str(x.get("uid", "")).split("|")[0] for x in row.get("property", [])] + (["M"] if row.get("weaponCategory") == "martial" else [])), "range": row.get("range", ""), "text": f"{text}\n\n{source_tail(row)}".strip()}, row, attached)
 
 
 def cr_number(value: Any) -> float | int | None:
