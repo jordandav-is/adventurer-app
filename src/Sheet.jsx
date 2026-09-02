@@ -1,5 +1,5 @@
 import { ABILITIES, ABIL_NAMES, ALL_SKILLS, ANCESTRIES, ARCANUM_UNLOCK, ASI, CANTRIPS_KNOWN, CHOICE_KEYS, CLASSES, DMG_TYPES, INVOCATIONS, INVOCATION_DATA, ITEM_TYPES, PACT, PREP_ALL_CLASSES, PROF_TEXT, RACES, SKILL_ABIL, SPELL_ABILITY, SPELL_LVL_HINT, STYLE_DESC, baseSubName } from "./data.js";
-import { EFFECT_BY_KEY, EFFECT_LIB, SUMMON_LIB, allKnownCantrips, allSubFeats, ammoRowFor, applyEffectPatch, armorClass, b64uFromBytes, bladeRiderTier, bytesFromB64u, canEquip, characterChoiceGroups, classLevel, consumableEffectKey, crShow, creatureByName, describeCustomFx, effDefOf, effEnds, effMaxHp, effectsOf, equippedOf, featChoiceOf, featEffects, featHpBonus, featSpellsOf, findItem, fmtMod, fxMods, hasEffect, hasStyle, hasSub, healingDiceFor, instMaxHp, isArmorType, isBladeCantrip, isConcDef, isConcInst, isConsumableRow, isWeaponType, knownSpellNames, maxSpellLevel, minionApplyHp, minionAttackRolls, minionHp, minionSaves, minionSkills, minionsOf, mod, pipeBytes, profBonus, raceGrantedSpells, round2, schoolName, searchRank, shareCustomsFor, sourceOf, speedOf, spellCapacity, spellFitsClass, spellSlots, spiritAc, spiritDefFromSpell, spiritHp, strikeProfile, subSpellData, summonDefFor, summonFormsFor, summonerSpellAtk, totalLevel, useRecipe, useTrackersFor, usesAmmo } from "./rules.js";
+import { EFFECT_BY_KEY, EFFECT_LIB, SUMMON_LIB, allKnownCantrips, allSubFeats, ammoRowFor, applyEffectPatch, armorClass, b64uFromBytes, bladeRiderTier, bytesFromB64u, canEquip, characterChoiceGroups, classLevel, consumableEffectKey, crShow, creatureByName, describeCustomFx, effDefOf, effEnds, effMaxHp, effectsOf, equippedOf, featChoiceOf, featChoiceSummary, featEffects, featureBuckets, featHpBonus, featSpellsOf, findItem, fmtMod, fxMods, hasEffect, hasStyle, hasSub, healingDiceFor, instMaxHp, isArmorType, isBladeCantrip, isConcDef, isConcInst, isConsumableRow, isWeaponType, knownSpellNames, maxSpellLevel, minionApplyHp, minionAttackRolls, minionHp, minionSaves, minionSkills, minionsOf, mod, pipeBytes, profBonus, raceGrantedSpells, round2, schoolName, searchRank, shareCustomsFor, sourceOf, speedOf, spellCapacity, spellFitsClass, spellSlots, spiritAc, spiritDefFromSpell, spiritHp, strikeProfile, subSpellData, summonDefFor, summonFormsFor, summonerSpellAtk, totalLevel, useRecipe, useTrackersFor, usesAmmo } from "./rules.js";
 import { EMPTY_CUSTOM, SRD_SRC, __BESTIARY, __SOURCES, creatureSrcOf, isSourceEnabled, sourceCodesOf, sourceLabelOf, spellSrcOf, srcSpells, uid } from "./compendium.js";
 import React, { useEffect, useState } from "react";
 import { CLASS_THEMES, ClassTag, ICON_PATHS, Icon, LazyList, Portrait, SpellPickGrid, T, __showLore, btn, card, cornerBtn, lorePress, usePhotoUpload } from "./ui.jsx";
@@ -218,7 +218,7 @@ function InventoryCard({ ch, customs, onUpdate, onConsume, readOnly }) {
     .filter((x) => !usableOnly || !(isArmorType(x.type) || x.type === "S" || isWeaponType(x.type)) || canEquip(x, ch))
     .sort((a, b) => searchRank(a.name, q) - searchRank(b.name, q) || a.name.localeCompare(b.name));
   return (
-    <div style={{ ...card, padding: 16, marginTop: 14 }}>
+      <div style={{ ...card, padding: 16, marginTop: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
         <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17 }}>Inventory</div>
         <div style={{ color: totalWeight > capacity ? T.blood : T.dim, fontSize: 12 }}>{totalWeight.toFixed(0)} / {capacity} lb{totalWeight > capacity ? " — over capacity!" : ""}</div>
@@ -339,7 +339,7 @@ function InvocationManager({ ch, onInvocations, readOnly }) {
   const reqMet = (req) => !req || (req === "eldritch blast cantrip" ? hasEB : ch.pactBoon === req);
   const options = INVOCATION_DATA.filter(([n, lvl, req, src, sources]) => !mine.includes(n) && wl.level >= lvl && isSourceEnabled({ src, sources }));
   return (
-    <div style={{ ...card, padding: 16, marginTop: 14 }}>
+      <div style={{ ...card, padding: 16, marginTop: 14 }}>
       <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 4 }}>Eldritch Invocations</div>
       <div style={{ color: mine.length > cap ? T.blood : T.dim, fontSize: 12, marginBottom: 8 }}>
         {mine.length}/{cap} known{ch.pactBoon ? ` · ${ch.pactBoon}` : ""} · swap freely on level-up per the rules
@@ -522,7 +522,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
   const LVL_NAMES = ["Cantrips", "1st level", "2nd level", "3rd level", "4th level", "5th level", "6th level", "7th level", "8th level", "9th level"];
 
   return (
-    <div style={{ ...card, padding: 16, marginTop: 14 }}>
+      <div style={{ ...card, padding: 16, marginTop: 14 }}>
       <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 4 }}>Grimoire</div>
       {pool.length === 0 && <div style={{ color: T.dim, fontSize: 12, marginBottom: 8 }}>No spell list loaded — import a compendium XML in the Homebrew Forge to enable pickers.</div>}
       {casters.map((c) => {
@@ -652,7 +652,7 @@ function ChoiceManager({ ch, customs, onUpdate }) {
   const save = (key, arr) => onUpdate({ choices: { ...(ch.choices || {}), [key]: arr } });
   const openGroup = groups.find((x) => x.g.key === open);
   return (
-    <div style={{ ...card, padding: 16, marginTop: 14 }}>
+      <div style={{ ...card, padding: 16, marginTop: 14 }}>
       <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 4 }}>Feature Choices</div>
       <div style={{ color: T.dim, fontSize: 12, marginBottom: 8 }}>Maneuvers, disciplines, totems, and other subclass options. Long-press anything to read it; swap by removing and re-adding.</div>
       {groups.map(({ g, entry, grants, held, cap }) => {
@@ -727,7 +727,7 @@ function EffectsCard({ ch, customs, fx, onUpdate, readOnly }) {
     fx.shillelagh && `club/quarterstaff ✦ ${ABIL_NAMES[fx.shillelagh.abil]} & 1d8`,
   ].filter(Boolean);
   return (
-    <div style={{ ...card, padding: 16, marginTop: 14 }}>
+      <div style={{ ...card, padding: 16, marginTop: 14 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17 }}>Active Effects</div>
         {fx.conc.length > 0 && <span title="One concentration effect at a time; Con save when you take damage" style={{ color: "#b48ead", fontSize: 12 }}>◉ concentrating on {fx.conc.join(", ")}</span>}
@@ -800,7 +800,7 @@ function FeatureUsesCard({ ch, customs, onUpdate, onUse, readOnly }) {
     setForging(false);
   };
   return (
-    <div style={{ ...card, padding: 16, marginTop: 14 }}>
+      <div style={{ ...card, padding: 16, marginTop: 14 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17 }}>Feature Uses {!readOnly && <span style={{ color: T.dim, fontSize: 12, fontFamily: "inherit" }}>· tap ◆ to expend, ◇ to recover</span>}</div>
         <div style={{ flex: 1 }} />
@@ -1010,7 +1010,7 @@ function MinionsCard({ ch, customs, onUpdate, onSummon, onRoll, onDice, readOnly
   const dismissAll = () => onUpdate({ minions: [], log: [...(ch.log || []), "Every summoned creature dismissed."] });
   const standing = minions.filter((m) => minionHp(m) > 0).length;
   return (
-    <div style={{ ...card, padding: 16, marginTop: 14 }}>
+      <div style={{ ...card, padding: 16, marginTop: 14 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17 }}>Minions &amp; Summons</div>
         {minions.length > 0 && <span style={{ color: T.dim, fontSize: 12 }}>{standing} of {minions.length} standing</span>}
@@ -1671,6 +1671,73 @@ function UsePrompt({ name, ch, customs, onUpdate, onDice, onBlade, onStrike, onS
     </div>
   );
 }
+function FeaturesCard({ ch, customs, onUpdate, onUse, spent, readOnly }) {
+  const [readAll, setReadAll] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const buckets = featureBuckets(ch, customs);
+  const boons = ch.boons || [];
+  const saveBoon = () => {
+    const name = draft.name.trim();
+    if (!name) return;
+    onUpdate({ boons: [...boons, { id: uid(), name, source: draft.source.trim(), text: draft.text.trim() }], log: [...(ch.log || []), `Granted: ${name}${draft.source.trim() ? ` (${draft.source.trim()})` : ""}.`] });
+    setDraft(null);
+  };
+  const removeBoon = (b) => onUpdate({ boons: boons.filter((x) => x.id !== b.id), log: [...(ch.log || []), `Boon removed: ${b.name}.`] });
+  return (
+    <div style={{ ...card, padding: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
+        <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17 }}>Features & Traits</div>
+        <button onClick={() => setReadAll((v) => !v)} style={{ background: "transparent", border: "none", color: T.dim, fontSize: 12, cursor: "pointer", padding: 0, textDecoration: "underline dotted", fontFamily: "inherit" }}>{readAll ? "names only" : "read everything"}</button>
+      </div>
+      {buckets.map((b) => {
+        const themed = (b.cls && CLASS_THEMES[b.cls]?.color) || T.gold;
+        return (
+          <div key={b.key} style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${T.edge}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+              <span style={{ color: T.ink, fontWeight: 700, fontSize: 14 }}>{b.cls ? <ClassTag name={b.cls} size={14}>{b.title}</ClassTag> : b.title}</span>
+              {b.label && <span style={{ color: T.dim, fontSize: 11, textTransform: "uppercase", letterSpacing: 1, textAlign: "right" }}>{b.label}</span>}
+            </div>
+            {b.items.length === 0 && <div style={{ color: T.dim, fontSize: 12.5, marginTop: 4 }}>Nothing granted yet — anything the DM bestows lives here.</div>}
+            {b.items.map((it, i) => {
+              const isSpent = it.lore ? spent(it.lore) : false;
+              const showBody = it.body && (readAll || b.key === "boons");
+              return (
+                <div key={it.id || `${it.name}-${i}`} style={{ marginTop: 5, opacity: isSpent ? 0.5 : 1 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 13, lineHeight: 1.5 }}>
+                    {it.level != null && <span style={{ color: themed, fontSize: 10.5, fontWeight: 700, minWidth: 14 }}>{it.level}</span>}
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      {it.lore
+                        ? <span {...lorePress(it.lore)} onClick={() => onUse(it.lore)} style={{ color: T.ink, cursor: "pointer" }}>{it.name}</span>
+                        : <span style={{ color: T.ink }}>{it.name}</span>}
+                      {it.detail && <span style={{ color: T.dim }}> · {it.detail}</span>}
+                      {isSpent && <span style={{ color: T.dim, fontSize: 10.5 }}> ◇ spent</span>}
+                    </span>
+                    {b.key === "boons" && !readOnly && <button aria-label={`Remove ${it.name}`} onClick={() => removeBoon(it)} style={{ background: "transparent", border: "none", color: T.dim, cursor: "pointer", fontSize: 14, padding: "0 2px", lineHeight: 1 }}>✕</button>}
+                  </div>
+                  {showBody && <div style={{ color: T.dim, fontSize: 12.5, lineHeight: 1.6, whiteSpace: "pre-wrap", marginLeft: it.level != null ? 20 : 0 }}>{it.body}</div>}
+                </div>
+              );
+            })}
+            {b.key === "boons" && !readOnly && (draft ? (
+              <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+                <input autoFocus value={draft.name} placeholder="Name — Blessing of the Raven Queen" onChange={(e) => setDraft({ ...draft, name: e.target.value })} style={fieldStyle} />
+                <input value={draft.source} placeholder="Granted by (optional) — the DM, a relic, a bargain…" onChange={(e) => setDraft({ ...draft, source: e.target.value })} style={fieldStyle} />
+                <textarea value={draft.text} rows={3} placeholder="What it does." onChange={(e) => setDraft({ ...draft, text: e.target.value })} style={{ ...fieldStyle, resize: "vertical" }} />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button style={{ ...btn(true), opacity: draft.name.trim() ? 1 : 0.4 }} disabled={!draft.name.trim()} onClick={saveBoon}>Grant it</button>
+                  <button style={btn(false)} onClick={() => setDraft(null)}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setDraft({ name: "", source: "", text: "" })} style={{ ...btn(false), marginTop: 8, padding: "7px 12px", minHeight: 0, fontSize: 13 }}>+ Add a boon or grant</button>
+            ))}
+          </div>
+        );
+      })}
+      <div style={{ color: T.dim, fontSize: 11, marginTop: 10 }}>{readOnly ? "Tap or hold any name to read it." : "Tap a name to use it — long-press to read."} Everything this character is entitled to, in one place.</div>
+    </div>
+  );
+}
 const SHEET_GUIDE = [
   {
     icon: "book", title: "First, the one golden rule",
@@ -1775,6 +1842,14 @@ const SHEET_GUIDE = [
       ["Tap any skill", "rolls it with the right ability and proficiency."],
       ["● proficient · ★ expertise", "expertise doubles your proficiency bonus on that skill."],
       ["Jack of All Trades · Reliable Talent", "these fold in automatically, noted in the fine print when you have them."],
+    ],
+  },
+  {
+    icon: "book", title: "Features & Traits",
+    items: [
+      ["One block for the DM", "every trait, feature, feat, and choice this character holds — bucketed by race, background, class, subclass, and feats."],
+      ["Read everything", "flips the whole block from names to full rules text; names only folds it back."],
+      ["Boons & grants", "anything the DM bestows outside the rules — a blessing, a relic's gift, a bargain's price — gets written in here and shows on shared sheets."],
     ],
   },
   {
@@ -2512,12 +2587,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           <div style={{ color: T.dim, fontSize: 11, marginTop: 6 }}>● proficient · ★ expertise (double proficiency) · tap any skill to roll it{feats.jack ? " · Jack of All Trades adds +" + feats.jack + " to the rest" : ""}{feats.reliable ? " · Reliable Talent floors proficient checks at 10" : ""}</div>
           {ch.feats?.length > 0 && (
             <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Feats: {ch.feats.map((f, i) => {
-              const c = featChoiceOf(ch, f);
-              const detail = [
-                c.bump ? `+1 ${c.bump.toUpperCase()}` : null, c.choice,
-                ...(c.skills || []), ...(c.expertise || []).map((x) => `★ ${x}`), ...(c.langs || []),
-                ...(c.cantrips || []), ...(c.spells || []), ...(c.maneuvers || []),
-              ].filter(Boolean).join(", ");
+              const detail = featChoiceSummary(ch, f);
               return (
                 <span key={f}>{i > 0 ? ", " : ""}
                   <span {...lorePress(f)} onClick={() => openUse(f)} style={{ cursor: "pointer" }}>{f}</span>
@@ -2546,24 +2616,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
           {ch.languages?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Languages: {ch.languages.map((l, i) => <span key={l + i} {...lorePress(l)}>{i > 0 ? ", " : ""}{l}</span>)}</div>}
           <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Racial traits: {RACES[ch.race].traits.map((t, i) => <span key={t} {...lorePress(t.replace(/\s*\(.*$/, ""))} onClick={() => openUse(t.replace(/\s*\(.*$/, ""))} style={{ cursor: "pointer" }}>{i > 0 ? " · " : ""}{t}</span>)}{ch.racialChoices?.ancestry ? ` · ${ch.racialChoices.ancestry} dragon ancestry (${ANCESTRIES[ch.racialChoices.ancestry]})` : ""}{ch.racialChoices?.cantrip ? ` · Cantrip: ${ch.racialChoices.cantrip}` : ""}{ch.racialChoices?.lineage ? ` · Lineage gift: ${ch.racialChoices.lineage === "darkvision" ? "Darkvision 60 ft" : "an extra skill proficiency"}` : ""}</div>
         </div>
-        <div style={{ ...card, padding: 16 }}>
-          <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>Notes & Inventory</div>
-          {ch.persona && Object.values(ch.persona).some(Boolean) && (
-            <div style={{ color: T.dim, fontSize: 13, marginBottom: 10, lineHeight: 1.7 }}>
-              {ch.persona.traits && <div><b style={{ color: T.gold }}>Traits:</b> {ch.persona.traits}</div>}
-              {ch.persona.ideals && <div><b style={{ color: T.gold }}>Ideals:</b> {ch.persona.ideals}</div>}
-              {ch.persona.bonds && <div><b style={{ color: T.gold }}>Bonds:</b> {ch.persona.bonds}</div>}
-              {ch.persona.flaws && <div><b style={{ color: T.gold }}>Flaws:</b> {ch.persona.flaws}</div>}
-            </div>
-          )}
-          {shared ? (
-            <div style={{ color: ch.notes ? T.ink : T.dim, fontSize: 14, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{ch.notes || "No notes recorded."}</div>
-          ) : (
-            <textarea key={ch.notes || ""} defaultValue={ch.notes || ""} onBlur={(e) => onNotes(e.target.value)} rows={7}
-              placeholder="Equipment, personality traits, ideals, bonds, flaws, debts owed to ravens…"
-              style={{ width: "100%", boxSizing: "border-box", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 16, resize: "vertical", fontFamily: "inherit" }} />
-          )}
-        </div>
+        <FeaturesCard ch={ch} customs={customs} onUpdate={onUpdate} onUse={openUse} spent={featureSpent} readOnly={shared} />
         {!shared && (
           <div style={{ ...card, padding: 16 }}>
             <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>Chronicle</div>
@@ -2571,6 +2624,25 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
               {ch.log.map((l, i) => <div key={i}>{l}</div>)}
             </div>
           </div>
+        )}
+      </div>
+
+      <div style={{ ...card, padding: 16, marginTop: 14 }}>
+        <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>Notes</div>
+        {ch.persona && Object.values(ch.persona).some(Boolean) && (
+          <div style={{ color: T.dim, fontSize: 13, marginBottom: 10, lineHeight: 1.7 }}>
+            {ch.persona.traits && <div><b style={{ color: T.gold }}>Traits:</b> {ch.persona.traits}</div>}
+            {ch.persona.ideals && <div><b style={{ color: T.gold }}>Ideals:</b> {ch.persona.ideals}</div>}
+            {ch.persona.bonds && <div><b style={{ color: T.gold }}>Bonds:</b> {ch.persona.bonds}</div>}
+            {ch.persona.flaws && <div><b style={{ color: T.gold }}>Flaws:</b> {ch.persona.flaws}</div>}
+          </div>
+        )}
+        {shared ? (
+          <div style={{ color: ch.notes ? T.ink : T.dim, fontSize: 14, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{ch.notes || "No notes recorded."}</div>
+        ) : (
+          <textarea key={ch.notes || ""} defaultValue={ch.notes || ""} onBlur={(e) => onNotes(e.target.value)} rows={7}
+            placeholder="Equipment, personality traits, ideals, bonds, flaws, debts owed to ravens…"
+            style={{ width: "100%", boxSizing: "border-box", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 16, resize: "vertical", fontFamily: "inherit" }} />
         )}
       </div>
 

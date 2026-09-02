@@ -1,4 +1,4 @@
-import { ABILITIES, ABILITY_INFO, ABIL_NAMES, BACKGROUNDS, BOON_INFO, CASTING_CLASSES, CHOICE_GROUPS, CLASSES, CLASS_GEAR_PROFS, CORE_FEATURE_INFO, DMG_TYPES, DMG_WORD_CODE, FEATS, FEATURE_TEXT, FEAT_INDEX, FEAT_MECHANICS, FEAT_PICKS, GRANTED_SUB_CLASSES, GRANT_CANTRIPS, HALF1_SLOTS, HALF_SLOTS, HEALING_TIERS, INVOCATION_DATA, INVOCATION_INFO, ITEM_TYPES, LAND_TERRAINS, LANG_INFO, MANEUVERS, MC_GEAR_PROFS, MC_PREREQ, MC_SLOTS, METAMAGIC_INFO, PACT, POTION_EFFECT_ALIAS, RACES, RANGER_PREPARED, SCHOOL_NAMES, SIZE_RANK, SKILL_ABIL, SKILL_INFO, SOURCE_ABBR, SPELLS_KNOWN, SPELL_ABILITY, SRD_FOOT, STYLE_DESC, SUB_FEATS, SUB_LORE, SUB_SPELLS, TEXT_2024, WEAPON_PROPS, baseSubName, normSub, subFeatsFor } from "./data.js";
+import { ABILITIES, ABILITY_INFO, ABIL_NAMES, ANCESTRIES, ASI, BACKGROUNDS, BOON_INFO, CASTING_CLASSES, CHOICE_GROUPS, CLASSES, CLASS_GEAR_PROFS, CORE_FEATURE_INFO, DMG_TYPES, DMG_WORD_CODE, FEATS, FEATURE_TEXT, FEAT_INDEX, FEAT_MECHANICS, FEAT_PICKS, GRANTED_SUB_CLASSES, GRANT_CANTRIPS, HALF1_SLOTS, HALF_SLOTS, HEALING_TIERS, INVOCATION_DATA, INVOCATION_INFO, ITEM_TYPES, LAND_TERRAINS, LANG_INFO, MANEUVERS, MC_GEAR_PROFS, MC_PREREQ, MC_SLOTS, METAMAGIC_INFO, PACT, POTION_EFFECT_ALIAS, RACES, RANGER_PREPARED, SCHOOL_NAMES, SIZE_RANK, SKILL_ABIL, SKILL_INFO, SOURCE_ABBR, SPELLS_KNOWN, SPELL_ABILITY, SRD_FOOT, STYLE_DESC, SUB_FEATS, SUB_LORE, SUB_SPELLS, TEXT_2024, WEAPON_PROPS, baseSubName, normSub, subFeatsFor } from "./data.js";
 import { EMPTY_CUSTOM, __BASE, __BESTIARY, __SRC_OFF, creatureSrcOf, isSourceEnabled, sourceLabelOf, srcSpells, stripBase } from "./compendium.js";
 const mod = (s) => Math.floor((s - 10) / 2);
 const fmtMod = (m) => (m >= 0 ? `+${m}` : `${m}`);
@@ -1019,6 +1019,66 @@ const allFeats = (customs) => {
   });
   return [...map.values()].filter(isSourceEnabled).map((f) => ({ ...f, pick: featPickOf(f.name, f) }));
 };
+const featChoiceSummary = (ch, name) => {
+  const c = featChoiceOf(ch, name);
+  return [
+    c.bump ? `+1 ${c.bump.toUpperCase()}` : null, c.choice,
+    ...(c.skills || []), ...(c.expertise || []).map((x) => `★ ${x}`), ...(c.langs || []),
+    ...(c.cantrips || []), ...(c.spells || []), ...(c.maneuvers || []),
+  ].filter(Boolean).join(", ");
+};
+const loreName = (t) => String(t || "").replace(/\s*\(.*$/, "");
+function featureBuckets(ch, customs) {
+  const text = (name, cls) => featureBody(name, cls, customs) || infoFor(name, customs)?.body || null;
+  const item = (name, extra = {}) => ({ name, lore: name, body: text(extra.lore || name, extra.cls), ...extra });
+  const buckets = [];
+  const race = RACES[ch.race];
+  const rc = ch.racialChoices || {};
+  buckets.push({ key: "race", label: "Race", title: ch.race, items: [
+    ...(race?.traits || []).map((t) => item(t, { lore: loreName(t) })),
+    ...(rc.ancestry ? [{ name: `${rc.ancestry} Dragon Ancestry`, lore: "Draconic Ancestry", detail: `${ANCESTRIES[rc.ancestry]} breath weapon & resistance`, body: text("Draconic Ancestry") }] : []),
+    ...(rc.cantrip ? [item(rc.cantrip, { detail: "racial cantrip" })] : []),
+    ...(rc.lineage ? [{ name: rc.lineage === "darkvision" ? "Darkvision 60 ft" : "Extra skill proficiency", detail: "lineage gift" }] : []),
+  ] });
+  const bg = BACKGROUNDS[ch.background];
+  buckets.push({ key: "background", label: "Background", title: ch.background, items: bg?.feature ? [{ name: bg.feature, lore: bg.feature, body: (customs?.featureTexts || {})[ch.background] || bg.featureText }] : [] });
+  const styleHost = ch.classes.find((c) => Object.values(CLASSES[c.name]?.feats || {}).flat().includes("Fighting Style")) || ch.classes[0];
+  const choiceHost = (key) => ch.classes.find((c) => c.name === CHOICE_GROUPS.find((g) => g.key === key)?.cls) || ch.classes[0];
+  ch.classes.forEach((c) => {
+    const cls = CLASSES[c.name];
+    if (!cls) return;
+    const items = [];
+    for (let l = 1; l <= c.level; l++) {
+      (cls.feats[l] || []).filter((f) => !(c.subclass && /\bfeature\b$/i.test(f))).forEach((f) => {
+        const name = c.name === "Rogue" && /^Sneak Attack/.test(f) ? `Sneak Attack (${Math.ceil(c.level / 2)}d6)` : f;
+        items.push(item(name, { lore: f, cls: c.name, level: l }));
+      });
+      if (cls.asi.includes(l)) items.push(item(ASI, { cls: c.name, level: l }));
+    }
+    if (c === styleHost) (ch.styles || []).forEach((st) => items.push(item(`Fighting Style: ${st}`, { detail: STYLE_DESC[st] })));
+    if (c.name === "Sorcerer") (ch.metamagic || []).forEach((m) => items.push(item(m, { detail: "metamagic" })));
+    if (c.name === "Warlock") {
+      if (ch.pactBoon) items.push(item(ch.pactBoon, { detail: "pact boon" }));
+      (ch.invocations || []).forEach((inv) => items.push(item(inv, { detail: "eldritch invocation" })));
+    }
+    if (c.name === "Ranger" && ch.rangerChoices) {
+      const foes = [ch.rangerChoices.favEnemy, ...(ch.rangerChoices.extraEnemies || [])].filter(Boolean);
+      const lands = [ch.rangerChoices.natTerrain, ...(ch.rangerChoices.extraTerrains || [])].filter(Boolean);
+      if (foes.length) items.push(item("Favored Enemy", { detail: foes.join(", ") }));
+      if (lands.length) items.push(item("Natural Explorer", { detail: lands.join(", ") }));
+    }
+    Object.entries(ch.choices || {}).filter(([k, v]) => v?.length && choiceHost(k) === c).forEach(([k, v]) => v.forEach((n) => items.push(item(n, { detail: k }))));
+    buckets.push({ key: `class:${c.name}`, label: `Class · level ${c.level}`, title: c.name, cls: c.name, items });
+    if (c.subclass) {
+      const subItems = [];
+      for (let l = 1; l <= c.level; l++) allSubFeats(c.subclass, l, customs).forEach((f) => subItems.push(item(f, { cls: c.name, level: l })));
+      buckets.push({ key: `sub:${c.name}`, label: cls.subName, title: c.subclass, cls: c.name, items: subItems });
+    }
+  });
+  buckets.push({ key: "feats", label: null, title: "Feats", items: (ch.feats || []).map((f) => item(f, { detail: featChoiceSummary(ch, f) || null })) });
+  buckets.push({ key: "boons", label: null, title: "Boons & Grants", items: (ch.boons || []).map((b) => ({ id: b.id, name: b.name, detail: b.source || null, body: b.text || null })) });
+  return buckets.filter((b) => b.items.length || b.key === "boons");
+}
 const b64uFromBytes = (bytes) => {
   let bin = "";
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
@@ -1125,4 +1185,4 @@ const searchRank = (name, q) => {
 };
 const schoolName = (s) => SCHOOL_NAMES[(s || "").toUpperCase()] || s;
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-export { mod, fmtMod, profBonus, subSpellData, meetsPrereq, featureBody, featChoiceOf, featEffects, hasStyle, featHpBonus, featBlockedBy, featPickOf, featGrantedSpells, raceGrantedSpells, featSpellsOf, featPickDone, spellCapacity, maxSpellLevel, foldStarredSpells, spellFitsClass, spellSlots, totalLevel, isTechnique, choiceCum, groupMatches, choiceOptionsFor, characterChoiceGroups, allKnownCantrips, sourceOf, findItem, isArmorType, isWeaponType, equippedOf, canEquip, armorClass, classLevel, hasSub, hasFeat, effectsOf, knownSpellNames, EFFECT_LIB, EFFECT_BY_KEY, hasEffect, effDefOf, isConcDef, isConcInst, effEnds, instMaxHp, describeCustomFx, applyEffectPatch, fxMods, effMaxHp, speedOf, useTrackersFor, minionsOf, crShow, creatureByName, summonFormsFor, SUMMON_LIB, summonDefFor, spiritHp, spiritAc, spiritDefFromSpell, minionAttackRolls, summonerSpellAtk, minionSaves, minionSkills, minionHp, minionApplyHp, isBladeCantrip, bladeRiderTier, strikeProfile, useRecipe, usesAmmo, ammoRowFor, isConsumableRow, healingDiceFor, consumableEffectKey, allSubs, allSubFeats, allFeats, b64uFromBytes, bytesFromB64u, pipeBytes, shareCustomsFor, getRacialBonusPool, getDefaultRacialSlots, formatStandardRaceBonus, searchRank, schoolName, round2, infoFor };
+export { mod, fmtMod, profBonus, subSpellData, meetsPrereq, featureBody, featChoiceOf, featEffects, hasStyle, featHpBonus, featBlockedBy, featPickOf, featGrantedSpells, raceGrantedSpells, featSpellsOf, featPickDone, spellCapacity, maxSpellLevel, foldStarredSpells, spellFitsClass, spellSlots, totalLevel, isTechnique, choiceCum, groupMatches, choiceOptionsFor, characterChoiceGroups, allKnownCantrips, sourceOf, findItem, isArmorType, isWeaponType, equippedOf, canEquip, armorClass, classLevel, hasSub, hasFeat, effectsOf, knownSpellNames, EFFECT_LIB, EFFECT_BY_KEY, hasEffect, effDefOf, isConcDef, isConcInst, effEnds, instMaxHp, describeCustomFx, applyEffectPatch, fxMods, effMaxHp, speedOf, useTrackersFor, minionsOf, crShow, creatureByName, summonFormsFor, SUMMON_LIB, summonDefFor, spiritHp, spiritAc, spiritDefFromSpell, minionAttackRolls, summonerSpellAtk, minionSaves, minionSkills, minionHp, minionApplyHp, isBladeCantrip, bladeRiderTier, strikeProfile, useRecipe, usesAmmo, ammoRowFor, isConsumableRow, healingDiceFor, consumableEffectKey, allSubs, allSubFeats, allFeats, b64uFromBytes, bytesFromB64u, pipeBytes, shareCustomsFor, getRacialBonusPool, getDefaultRacialSlots, formatStandardRaceBonus, searchRank, schoolName, round2, infoFor, featChoiceSummary, featureBuckets };
