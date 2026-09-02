@@ -463,6 +463,7 @@ function FeatPickPanel({ pick: pk, value, set, customs, level = 20, skillsTaken,
   const grants = featGrantedSpells(value.name, level, null);
   const laterGrants = featGrantedSpells(value.name, 20, null).filter((n) => !grants.includes(n));
   const expPool = pk.allSkills ? ALL_SKILLS : [...new Set([...profSkills, ...(value.skills || [])])];
+  const weaponPool = pk.weapons?.n ? (customs?.items || []).filter((it) => ["M", "R"].includes(it.type) && it.src === "PHB" && !it.bonus && !it.attune).map((it) => it.name).sort() : [];
   return (
     <div onClick={(e) => e.stopPropagation()}>
       {pk.choice && (
@@ -481,6 +482,7 @@ function FeatPickPanel({ pick: pk, value, set, customs, level = 20, skillsTaken,
       {pk.expertise?.n > 0 && chipRow("Expertise (double proficiency)", expPool, "expertise", pk.expertise.n)}
       {pk.langs?.n > 0 && chipRow("Languages", LANGS.filter((l) => !knownLangs.includes(l) && !(value.langs || []).includes(l)).concat(value.langs || []).sort(), "langs", pk.langs.n, undefined, true)}
       {pk.maneuvers?.n > 0 && chipRow("Battle Master maneuvers · long-press to read", Object.keys(MANEUVERS), "maneuvers", pk.maneuvers.n, undefined, true)}
+      {pk.weapons?.n > 0 && chipRow("Weapon proficiencies · long-press to read", weaponPool, "weapons", pk.weapons.n, undefined, true)}
       {grants.length > 0 && (
         <div style={{ color: T.green, fontSize: 12, marginTop: 8 }}>
           Grants: {grants.map((n, i) => <span key={n} {...lorePress(n)}>{i > 0 ? ", " : ""}{n}</span>)} — they appear in your Grimoire.

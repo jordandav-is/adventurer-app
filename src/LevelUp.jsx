@@ -158,7 +158,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
       ? { ...(ch.featChoices || {}), [featPick]: {
           bump: featBump || null, skills: featSkills, choice: featSel.choice || null,
           expertise: featSel.expertise || [], langs: featSel.langs || [],
-          cantrips: featSel.cantrips || [], spells: featSel.spells || [], maneuvers: featSel.maneuvers || [],
+          cantrips: featSel.cantrips || [], spells: featSel.spells || [], maneuvers: featSel.maneuvers || [], weapons: featSel.weapons || [],
         } }
       : ch.featChoices;
     onDone({

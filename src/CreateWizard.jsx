@@ -456,7 +456,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
       featChoices: raceFeat?.name ? { [raceFeat.name]: {
         bump: raceFeat.bump || null, skills: raceFeat.skills || [], choice: raceFeat.choice || null,
         expertise: raceFeat.expertise || [], langs: raceFeat.langs || [],
-        cantrips: raceFeat.cantrips || [], spells: raceFeat.spells || [], maneuvers: raceFeat.maneuvers || [],
+        cantrips: raceFeat.cantrips || [], spells: raceFeat.spells || [], maneuvers: raceFeat.maneuvers || [], weapons: raceFeat.weapons || [],
       } } : {},
       expertise: [...rogueExp, ...(raceFeat?.expertise || [])].filter((v, i, a) => a.indexOf(v) === i),
       languages: [...RACE_LANGS[race].fixed, ...langPicks, ...(cls === "Ranger" && favLang ? [favLang] : []), ...(raceFeat?.langs || []), ...(raceFeat?.name ? featPickOf(raceFeat.name)?.grantLangs || [] : [])].filter((v, i, a) => a.indexOf(v) === i),
