@@ -13,6 +13,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+import shutil
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -21,6 +22,8 @@ from typing import Any
 APP_ROOT = Path(__file__).resolve().parent.parent
 VETOOLS_ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else APP_ROOT.parent / "5etools-src"
 DATA = VETOOLS_ROOT / "data"
+IMG_ROOT = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else APP_ROOT.parent / "5etools-img"
+ART = APP_ROOT / "public" / "art"
 OUT = APP_ROOT / "public" / "compendium.json"
 REPORT = APP_ROOT / "public" / "content-report.json"
 CUTOFF = "2020-11-17"
@@ -1491,6 +1494,22 @@ def merge_existing(canonical: list[dict[str, Any]], existing: list[dict[str, Any
     return sorted(canonical, key=lambda x: (x.get("name", "").lower(), x.get("id", "")))
 
 
+def bundle_art(paths: list[str]) -> None:
+    """Copy the referenced images out of the 5etools image mirror so the app ships them itself."""
+    if not IMG_ROOT.exists():
+        raise SystemExit(f"5etools image mirror not found: {IMG_ROOT}")
+    wanted = set(paths)
+    for stale in (p for p in ART.rglob("*") if p.is_file() and str(p.relative_to(ART)) not in wanted):
+        stale.unlink()
+    for rel in paths:
+        src, dst = IMG_ROOT / rel, ART / rel
+        if not src.exists():
+            raise SystemExit(f"race art missing from image mirror: {rel}")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dst)
+    print(f"Bundled {len(paths)} race images into {ART}")
+
+
 def main() -> None:
     if not DATA.exists():
         raise SystemExit(f"5etools data not found: {DATA}")
@@ -1649,6 +1668,7 @@ def main() -> None:
 
     REPORT.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
+    bundle_art(sorted({entry["art"] for entry in runtime_races.values() if entry.get("art")}))
     OUT.write_text(json.dumps(output, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"Baked {OUT} ({OUT.stat().st_size / 1048576:.1f} MiB)")
     print(json.dumps(counts, indent=2, sort_keys=True))

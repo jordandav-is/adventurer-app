@@ -5,9 +5,8 @@ let __SOURCES = [];
 const setSourceExclusions = (sources) => { __SRC_OFF = sources; };
 let __BESTIARY = [];
 const SRD_SRC = "System Reference Document 5.1";
-// Race art is served from the 5etools image mirror; the compendium stores repository-relative paths.
-const RACE_ART_BASE = "https://raw.githubusercontent.com/5etools-mirror-3/5etools-img/main/";
-const raceArtUrl = (path) => (path ? RACE_ART_BASE + path.split("/").map(encodeURIComponent).join("/") : null);
+// Race art is bundled under public/art by the bake; the compendium stores paths relative to it.
+const raceArtUrl = (path) => (path ? "art/" + path.split("/").map(encodeURIComponent).join("/") : null);
 const sourceByCode = (code) => __SOURCES.find((source) => source.code === code);
 const sourceCodesOf = (record) => {
   if (!record || typeof record !== "object") return [];
