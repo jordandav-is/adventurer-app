@@ -21,6 +21,9 @@ const ALLOWED_ORIGINS = new Set([
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HEX_64_RE = /^[0-9a-f]{64}$/i;
 const DATA_KEY = /^(c\/[\w-]{1,64}|m\/(custom|prefs))$/;
+const ASSET_PATH = /^\/asset\/([0-9a-f]{64})$/;
+const ASSET_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const ASSET_MAX_BYTES = 8 * 1024 * 1024;
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
@@ -34,8 +37,8 @@ function getCorsHeaders(origin) {
   };
   if (origin && ALLOWED_ORIGINS.has(origin)) {
     headers["access-control-allow-origin"] = origin;
-    headers["access-control-allow-methods"] = "POST, GET, OPTIONS";
-    headers["access-control-allow-headers"] = "content-type";
+    headers["access-control-allow-methods"] = "POST, GET, PUT, OPTIONS";
+    headers["access-control-allow-headers"] = "content-type, authorization";
   }
   return headers;
 }
@@ -106,6 +109,36 @@ export default {
         return err(401, "Unauthorized", origin);
       }
       return env.ACCOUNT.get(env.ACCOUNT.idFromName(accountId)).fetch(req);
+    }
+
+    const asset = path.match(ASSET_PATH);
+    if (asset) {
+      // Content-addressed originals in R2 under <account>/<sha256>: immutable, so cache forever.
+      if (req.method !== "GET" && req.method !== "PUT") return err(405, "Method not allowed", origin);
+      if (!env.ASSETS) return err(503, "Assets not configured", origin);
+      const accountId = url.searchParams.get("account") || "";
+      const token = (req.headers.get("authorization") || "").replace(/^Bearer /, "");
+      if (!UUID_RE.test(accountId) || !HEX_64_RE.test(token)) return err(400, "Bad request", origin);
+      const account = await identityStub.getAccountById(accountId);
+      const live = account && (await env.ACCOUNT.get(env.ACCOUNT.idFromName(accountId)).touchSession(token));
+      if (!live) return err(401, "Unauthorized", origin);
+      const key = `${accountId}/${asset[1]}`;
+      if (req.method === "GET") {
+        const obj = await env.ASSETS.get(key);
+        if (!obj) return err(404, "Not found", origin);
+        return new Response(obj.body, {
+          headers: { ...getCorsHeaders(origin), "content-type": obj.httpMetadata?.contentType || "application/octet-stream", "cache-control": "private, max-age=31536000, immutable" },
+        });
+      }
+      if (await env.ASSETS.head(key)) return json(200, { ok: true }, origin);
+      const type = req.headers.get("content-type") || "";
+      if (!ASSET_TYPES.has(type)) return err(415, "Unsupported media type", origin);
+      if (parseInt(req.headers.get("content-length") || "0", 10) > ASSET_MAX_BYTES) return err(413, "Payload too large", origin);
+      const bytes = await req.arrayBuffer();
+      if (bytes.byteLength > ASSET_MAX_BYTES) return err(413, "Payload too large", origin);
+      if ((await sha256Hex(bytes)) !== asset[1]) return err(400, "Digest mismatch", origin);
+      await env.ASSETS.put(key, bytes, { httpMetadata: { contentType: type } });
+      return json(200, { ok: true }, origin);
     }
 
     if (req.method !== "POST") {
@@ -652,7 +685,8 @@ export class Account extends DurableObject {
     }
   }
 
-  async createWsTicket(token) {
+  // Validates a session token and marks it active. Returns the session digest, or null.
+  async touchSession(token) {
     if (typeof token !== "string" || !token) return null;
     const sessionDigest = await sha256Hex(token);
     this.purgeSessions();
@@ -669,6 +703,12 @@ export class Account extends DurableObject {
       Date.now(),
       sessionDigest
     );
+    return sessionDigest;
+  }
+
+  async createWsTicket(token) {
+    const sessionDigest = await this.touchSession(token);
+    if (!sessionDigest) return null;
 
     this.purgeWsTickets();
     const ticket = randomHex(32);

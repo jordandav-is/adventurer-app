@@ -2,7 +2,7 @@ import { ABILITIES, ALL_SKILLS, CANTRIPS_KNOWN, CLASSES, FAVORED_ENEMIES, FIGHTI
 import { allChoiceGroups, allFeats, allKnownCantrips, allSubFeats, allSubs, choiceCum, gearProfsOf, subclassProfsAt, choiceOptionsFor, featPickDone, featPickOf, fmtMod, groupMatches, hasStyle, isTechnique, maxSpellLevel, meetsPrereq, mod, profBonus, spellFitsClass, totalLevel } from "./rules.js";
 import { isSourceEnabled, srcSpells } from "./compendium.js";
 import { useEffect, useRef, useState } from "react";
-import { ClassTag, FeatChooser, FeatureLine, Icon, SpellPickGrid, SubclassDetail, T, btn, card, lorePress } from "./ui.jsx";
+import { ClassTag, FeatChooser, FeatureLine, Icon, Portrait, SpellPickGrid, SubclassDetail, T, btn, card, lorePress } from "./ui.jsx";
 import { DiceTray, roll } from "./dice.jsx";
 function LevelUp({ ch, onDone, onCancel, customs }) {
   const lvl = totalLevel(ch);
@@ -298,8 +298,13 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   return (
     <div ref={scrollRef} style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 50, overflowY: "auto", padding: "calc(30px + env(safe-area-inset-top)) 14px calc(30px + env(safe-area-inset-bottom))" }}>
       <div style={{ ...card, maxWidth: 640, margin: "0 auto", padding: 22 }}>
-        <div style={{ fontFamily: "Georgia, serif", fontSize: 22, color: T.gold, marginBottom: 4 }}>Level {lvl} → {lvl + 1}</div>
-        <div style={{ color: T.dim, fontSize: 13, marginBottom: 16 }}>{ch.name} · proficiency bonus becomes +{profBonus(lvl + 1)}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+          <Portrait photo={ch.photo} portrait={ch.portrait} size={64} name={ch.name} />
+          <div>
+            <div style={{ fontFamily: "Georgia, serif", fontSize: 22, color: T.gold, marginBottom: 4 }}>Level {lvl} → {lvl + 1}</div>
+            <div style={{ color: T.dim, fontSize: 13 }}>{ch.name} · proficiency bonus becomes +{profBonus(lvl + 1)}</div>
+          </div>
+        </div>
 
         {stage === "class" && (
           <div>

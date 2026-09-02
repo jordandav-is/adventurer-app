@@ -174,7 +174,6 @@ export function signOut() {
   setAccount(null);
   outbox.clear();
   localStorage.removeItem(OUTBOX_KEY);
-  gens.clear();
   stop();
 }
 
@@ -185,7 +184,6 @@ let seq = 0;
 let clock = 0;
 let H = null;
 let connGen = 0;
-const gens = new Map();
 
 const tick = () => (clock = Math.max(Date.now(), clock + 1));
 const observe = (ts) => {
@@ -433,43 +431,17 @@ export function pushChars(next, prev) {
 }
 
 export function deleteChar(id) {
-  gens.set(id, (gens.get(id) || 0) + 1);
   if (getAccount()) queue("c/" + id, null);
 }
 
-async function prep(ch, i, base) {
+function prep(ch, i, base) {
   const k = "c/" + ch.id;
   if (base && base.get(ch.id) === JSON.stringify({ i, c: ch })) return;
-  const gen = (gens.get(ch.id) || 0) + 1;
-  gens.set(ch.id, gen);
-  let body = ch;
-  if (body.photo && body.photo.length > 90000) {
-    const p = await shrinkPhoto(body.photo);
-    if (gens.get(ch.id) !== gen) return;
-    if (p) { H.photo(ch.id, p); body = { ...body, photo: p }; }
-    else { const { photo, ...rest } = body; body = rest; }
-  }
-  if (gens.get(ch.id) !== gen) return;
-  let v = JSON.stringify({ i, c: body });
-  if (v.length > CAP) { const { log, hpLog, ...rest } = body; v = JSON.stringify({ i, c: rest }); }
+  let v = JSON.stringify({ i, c: ch });
+  if (v.length > CAP) { const { log, hpLog, ...rest } = ch; v = JSON.stringify({ i, c: rest }); }
   if (v.length > CAP) { H.error(`${ch.name} is too large to sync.`); return; }
   if (known?.get(k) !== v && outbox.get(k)?.v !== v) queue(k, v);
 }
-
-const shrinkPhoto = (dataUrl) => new Promise((res) => {
-  const img = new Image();
-  img.onload = () => {
-    try {
-      const c = document.createElement("canvas");
-      c.width = c.height = 220;
-      const min = Math.min(img.width, img.height);
-      c.getContext("2d").drawImage(img, (img.width - min) / 2, (img.height - min) / 2, min, min, 0, 0, 220, 220);
-      res(c.toDataURL("image/jpeg", 0.82));
-    } catch { res(null); }
-  };
-  img.onerror = () => res(null);
-  img.src = dataUrl;
-});
 
 export function pushCustom(stripped) {
   if (!getAccount()) return;

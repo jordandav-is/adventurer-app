@@ -60,9 +60,21 @@ Set secret (paste token at the prompt to avoid recording secrets in shell histor
 gh secret set CLOUDFLARE_API_TOKEN
 ```
 
-### 3. Continuous deployment
+### 3. R2 bucket for portraits
+Create the bucket the Worker binds as `ASSETS` (see `worker/wrangler.toml`), and grant the API token `Account` → `Workers R2 Storage` → `Edit`:
+```sh
+cd worker && npx wrangler r2 bucket create ledger-assets
+```
+
+### 4. Continuous deployment
 - **GitHub Pages**: Pushes to `main` install dependencies via `npm ci`, validate `SYNC_URL`, build with Node 24, and deploy `dist/` via `deploy.yml`. Site: https://jordandav-is.github.io/adventurer-app/
 - **Worker**: Pushes modifying `worker/**` install dependencies via `npm ci`, run tests, validate `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`, and deploy via `deploy-worker.yml` using `npm run deploy`.
+
+## Portraits
+
+A portrait is imported once at up to 2048px, hashed (SHA-256), and kept as a content-addressed Blob in IndexedDB. The character record stores only `portrait: { id, w, h, x, y, z }` (asset hash, pixel size, and a framing: normalized centre plus zoom) alongside `photo`, a 220px thumb rendered from that framing. Tapping a portrait opens the framing editor (drag, pinch, or slide to zoom). Roster, share cards, and exports use the thumb, so they never need the original.
+
+When an account is signed in, originals upload to R2 through the Worker (`PUT /asset/<sha256>?account=<id>` with a `Bearer` session token) and other devices fetch them lazily (`GET`) the first time a sheet needs full resolution. Objects live under `<account>/<sha256>`, are verified against their digest on upload, and are immutable. Without R2 configured the Worker answers 503 and the app simply keeps originals device-local, with thumbs still syncing.
 
 ## Share a sheet
 

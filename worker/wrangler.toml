@@ -7,6 +7,10 @@ GATE_SALT = "edffce3ce9712cbd6f997900359f6dd9"
 GATE_HASH = "faf79b899def21c5e3f3cdce3ac6813f2ac2c01c8b4f9c6cce222cf84ad4aed1"
 GATE_ITERATIONS = 600000
 
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "ledger-assets"
+
 [[durable_objects.bindings]]
 name = "IDENTITY"
 class_name = "Identity"

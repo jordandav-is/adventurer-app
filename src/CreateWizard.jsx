@@ -2,7 +2,7 @@ import { ABILITIES, ABIL_MAX, ABIL_MIN, ABIL_NAMES, ALIGNMENTS, ALL_SKILLS, ANCE
 import { allChoiceGroups, allFeats, allSubs, canEquip, choiceCum, choiceOptionsFor, groupMatches, featGrantedSpells, featPickDone, featPickOf, findItem, subclassProfsAt, fmtMod, formatStandardRaceBonus, getDefaultRacialSlots, getRacialBonusPool, isArmorType, isWeaponType, mod, searchRank, spellCapacity, spellFitsClass } from "./rules.js";
 import { isSourceEnabled, srcSpells, uid } from "./compendium.js";
 import { useEffect, useState } from "react";
-import { ClassDetail, ClassTag, FeatChooser, Icon, LazyList, Portrait, SubclassDetail, T, btn, card, lorePress, usePhotoUpload } from "./ui.jsx";
+import { ClassDetail, ClassTag, FeatChooser, Icon, LazyList, Portrait, SubclassDetail, PortraitButton, T, btn, card, lorePress } from "./ui.jsx";
 import { DiceTray, roll } from "./dice.jsx";
 
 // Albert Bierstadt, On the Plains, Sunset (public domain)
@@ -301,7 +301,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const [step, setStep] = useState(0);
   useEffect(() => { window.scrollTo(0, 0); }, [step]);
   const [name, setName] = useState("");
-  const [photo, setPhoto] = useState(null);
+  const [photo, setPhoto] = useState({ photo: null, portrait: null });
   const [race, setRace] = useState("Human");
   const [raceAbilPicks, setRaceAbilPicks] = useState([]);
   const [customOriginAsi, setCustomOriginAsi] = useState(false);
@@ -338,7 +338,6 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const [heCantrip, setHeCantrip] = useState("");
   const [method, setMethod] = useState("Standard Array");
   const [scores, setScores] = useState(Object.fromEntries(ABILITIES.map((a) => [a, 8])));
-  const photoUpload = usePhotoUpload(setPhoto);
 
   const raceData = RACES[race];
   const clsData = CLASSES[cls];
@@ -440,7 +439,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const finish = () => {
     const inventory = gearMode === "standard" ? standardItems() : purchases.map(({ name: nm, qty }) => ({ name: nm, qty }));
     onDone({
-      id: uid(), name: name.trim(), photo, race, background: bg, alignment,
+      id: uid(), name: name.trim(), ...photo, race, background: bg, alignment,
       gold: gearMode === "standard" ? (bgData ? bgData.gold : 10) : Math.max(0, goldLeft),
       inventory,
       styles: style ? [style] : [], notes: "", persona,
@@ -493,12 +492,8 @@ function CreateWizard({ onDone, onCancel, customs }) {
             {ALIGNMENTS.map((a) => <option key={a}>{a}</option>)}
           </select>
           <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 18 }}>
-            <Portrait photo={photo} size={84} name={name} />
-            <label style={{ ...btn(false), display: "inline-block" }}>
-              Upload portrait
-              <input type="file" accept="image/*" onChange={photoUpload} style={{ display: "none" }} />
-            </label>
-            {photo && <button style={{ ...btn(false), borderColor: T.blood, color: T.blood }} onClick={() => setPhoto(null)}>Remove</button>}
+            <PortraitButton {...photo} size={84} name={name} onChange={setPhoto} />
+            <div style={{ color: T.dim, fontSize: 13 }}>{photo.portrait ? "Tap the portrait to reframe or change it." : "Tap the circle to add a portrait."}</div>
           </div>
         </div>
       )}
@@ -1019,7 +1014,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
       {step === 7 && (
         <div style={{ ...card, padding: 20 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <Portrait photo={photo} size={72} name={name} />
+            <Portrait {...photo} size={72} name={name} />
             <div>
               <div style={{ fontFamily: "Georgia, serif", fontSize: 24, color: T.gold }}>{name}</div>
               <div style={{ color: T.dim }}>{race} {cls} 1 {subclass ? `(${subclass})` : ""} · {bg}</div>
