@@ -1700,7 +1700,7 @@ function FeaturesCard({ ch, customs, onUpdate, onUse, spent, readOnly }) {
             {b.items.length === 0 && <div style={{ color: T.dim, fontSize: 12.5, marginTop: 4 }}>Nothing granted yet — anything the DM bestows lives here.</div>}
             {b.items.map((it, i) => {
               const isSpent = it.lore ? spent(it.lore) : false;
-              const showBody = it.body && (readAll || b.key === "boons");
+              const showBody = it.body && it.body !== it.detail && (readAll || b.key === "boons");
               return (
                 <div key={it.id || `${it.name}-${i}`} style={{ marginTop: 5, opacity: isSpent ? 0.5 : 1 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 13, lineHeight: 1.5 }}>
@@ -2550,7 +2550,7 @@ function Sheet({ ch, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, on
                   .flatMap((l) => (CLASSES[c.name].feats[l] || [])
                     .filter((f) => !(c.subclass && /\bfeature\b$/i.test(f)))
                     .concat(allSubFeats(c.subclass, l, customs))
-                    .concat(CLASSES[c.name].asi.includes(l) ? [ASI] : [])
+                    .concat(CLASSES[c.name].asi.includes(l) && !(CLASSES[c.name].feats[l] || []).includes(ASI) ? [ASI] : [])
                     .map((f) => ({ l, f })));
                 return items.length ? items.map(({ l, f }, i) => (
                   <span key={i} {...lorePress(f)} onClick={() => openUse(f)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel2, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "3px 9px", fontSize: 12.5, color: T.ink, cursor: "pointer", opacity: featureSpent(f) ? 0.45 : 1 }}>

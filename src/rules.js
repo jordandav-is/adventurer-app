@@ -1059,7 +1059,7 @@ function featureBuckets(ch, customs) {
         const name = c.name === "Rogue" && /^Sneak Attack/.test(f) ? `Sneak Attack (${Math.ceil(c.level / 2)}d6)` : f;
         items.push(item(name, { lore: f, cls: c.name, level: l }));
       });
-      if (cls.asi.includes(l)) items.push(item(ASI, { cls: c.name, level: l }));
+      if (cls.asi.includes(l) && !(cls.feats[l] || []).includes(ASI)) items.push(item(ASI, { cls: c.name, level: l }));
     }
     if (c === styleHost) (ch.styles || []).forEach((st) => items.push(item(`Fighting Style: ${st}`, { detail: STYLE_DESC[st] })));
     if (c.name === "Sorcerer") (ch.metamagic || []).forEach((m) => items.push(item(m, { detail: "metamagic" })));
