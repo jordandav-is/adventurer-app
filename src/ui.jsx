@@ -274,8 +274,11 @@ function LoreSheet({ customs }) {
         </div>
         {item.meta && <div style={{ color: "#b48ead", fontSize: 13, marginTop: 4, fontStyle: item.block ? "italic" : "normal" }}>{item.meta}</div>}
         {item.art && (
-          <img key={item.art} src={item.art} alt="" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; }}
-            style={{ display: "block", width: "100%", maxHeight: 280, objectFit: "cover", objectPosition: "top", borderRadius: 10, marginTop: 12, border: `1px solid ${T.edge}` }} />
+          // Shown whole at natural size, never cropped or upscaled: the art mixes tall cut-out figures with wide paintings.
+          <div key={item.art} style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
+            <img src={item.art} alt="" loading="lazy" onError={(e) => { e.currentTarget.parentElement.style.display = "none"; }}
+              style={{ display: "block", maxWidth: "100%", maxHeight: "min(380px, 46vh)", width: "auto", height: "auto", borderRadius: 10 }} />
+          </div>
         )}
         <div style={{ color: T.ink, fontSize: 14, lineHeight: 1.7, marginTop: 12 }}>
           {item.block
