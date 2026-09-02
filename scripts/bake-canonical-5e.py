@@ -13,6 +13,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+import shutil
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -21,6 +22,8 @@ from typing import Any
 APP_ROOT = Path(__file__).resolve().parent.parent
 VETOOLS_ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else APP_ROOT.parent / "5etools-src"
 DATA = VETOOLS_ROOT / "data"
+IMG_ROOT = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else APP_ROOT.parent / "5etools-img"
+ART = APP_ROOT / "public" / "art"
 OUT = APP_ROOT / "public" / "compendium.json"
 REPORT = APP_ROOT / "public" / "content-report.json"
 CUTOFF = "2020-11-17"
@@ -333,8 +336,10 @@ def apply_mod(target: dict[str, Any], mods: dict[str, Any]) -> None:
 def copy_key(row: dict[str, Any], fallback: dict[str, Any] | None = None) -> tuple[Any, ...]:
     # Class and subclass features share names across classes and levels ("Ability Score Improvement",
     # "Spellcasting", "Extra Attack"), so identity must include those fields where present.
+    # Subraces may carry no name of their own (the plain PHB Human, Half-Elf, Half-Orc, Tiefling), so their
+    # identity is the parent race they extend.
     fb = fallback or {}
-    return tuple(row.get(k, fb.get(k)) for k in ("name", "source", "className", "subclassShortName", "level"))
+    return tuple(row.get(k, fb.get(k)) for k in ("name", "source", "className", "subclassShortName", "level", "raceName", "raceSource"))
 
 
 def resolve_copies(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -955,14 +960,19 @@ def race_bonus(row: dict[str, Any]) -> tuple[dict[str, int], dict[str, Any]]:
 
 def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any], dict[str, Any]]:
     races_data = load(DATA / "races.json")
-    fluff_races_raw = load(DATA / "fluff-races.json").get("raceFluff", [])
-    fluff_races = {}
+    fluff_races_raw = resolve_copies(load(DATA / "fluff-races.json").get("raceFluff", []))
+    fluff_races, fluff_art = {}, {}
     for fl in fluff_races_raw:
         fname, fsrc = fl.get("name", "").lower(), fl.get("source", "")
         ftext = render_text(fl.get("entries", []))
         if fname and ftext:
             fluff_races[(fname, fsrc)] = ftext
             fluff_races.setdefault(fname, ftext)
+        # Art lives in the 5etools image mirror; the fluff records point at it by repository-relative path.
+        art = next((img["href"]["path"] for img in (fl.get("images") or []) if isinstance(img, dict) and isinstance(img.get("href"), dict) and img["href"].get("type") == "internal" and img["href"].get("path")), None)
+        if fname and art:
+            fluff_art[(fname, fsrc)] = art
+            fluff_art.setdefault(fname, art)
     raw_races = resolve_copies(races_data.get("race", []))
     raw_subraces = resolve_copies(races_data.get("subrace", []))
     allowed_races = latest([r for r in raw_races if allowed_source(r.get("source"))], lambda x: x.get("name", ""))
@@ -1101,13 +1111,16 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
         record = {**provenance(row, "race"), "name": row["name"], "text": text}
         records.append(record)
         base_key = row.get("baseRace", row["name"]).lower()
-        race_flavor = fluff_races.get((row["name"].lower(), row.get("source", ""))) or fluff_races.get(row["name"].lower()) or fluff_races.get((base_key, row.get("source", ""))) or fluff_races.get(base_key) or ""
+        fluff_of = lambda table: table.get((row["name"].lower(), row.get("source", ""))) or table.get(row["name"].lower()) or table.get((base_key, row.get("source", ""))) or table.get(base_key)
+        race_flavor = fluff_of(fluff_races) or ""
+        race_art = fluff_of(fluff_art)
 
         race_entry = {
             "bonus": bonus,
             **choice,
             "speed": speed,
             "flavor": race_flavor,
+            **({"art": race_art} if race_art else {}),
             "traits": traits or ([text] if text else []),
             "src": row.get("source"),
             "sources": record["sources"],
@@ -1137,7 +1150,7 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
                     count += v
                 elif k == "choose" and isinstance(v, dict):
                     count += v.get("count", 1)
-        langs[row["name"]] = {"fixed": fixed or ["Common"], "choose": count}
+        langs[row["name"]] = {"fixed": list(dict.fromkeys(fixed)) or ["Common"], "choose": count}
     return records, runtime, langs, race_traits
 
 def convert_backgrounds() -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -1481,6 +1494,22 @@ def merge_existing(canonical: list[dict[str, Any]], existing: list[dict[str, Any
     return sorted(canonical, key=lambda x: (x.get("name", "").lower(), x.get("id", "")))
 
 
+def bundle_art(paths: list[str]) -> None:
+    """Copy the referenced images out of the 5etools image mirror so the app ships them itself."""
+    if not IMG_ROOT.exists():
+        raise SystemExit(f"5etools image mirror not found: {IMG_ROOT}")
+    wanted = set(paths)
+    for stale in (p for p in ART.rglob("*") if p.is_file() and str(p.relative_to(ART)) not in wanted):
+        stale.unlink()
+    for rel in paths:
+        src, dst = IMG_ROOT / rel, ART / rel
+        if not src.exists():
+            raise SystemExit(f"race art missing from image mirror: {rel}")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dst)
+    print(f"Bundled {len(paths)} race images into {ART}")
+
+
 def main() -> None:
     if not DATA.exists():
         raise SystemExit(f"5etools data not found: {DATA}")
@@ -1639,6 +1668,7 @@ def main() -> None:
 
     REPORT.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
+    bundle_art(sorted({entry["art"] for entry in runtime_races.values() if entry.get("art")}))
     OUT.write_text(json.dumps(output, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"Baked {OUT} ({OUT.stat().st_size / 1048576:.1f} MiB)")
     print(json.dumps(counts, indent=2, sort_keys=True))

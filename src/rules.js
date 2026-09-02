@@ -1,5 +1,5 @@
 import { ABILITIES, ABILITY_INFO, ABIL_NAMES, ANCESTRIES, ASI, BACKGROUNDS, BOON_INFO, CASTING_CLASSES, CHOICE_GROUPS, CLASSES, CLASS_GEAR_PROFS, CORE_FEATURE_INFO, DMG_TYPES, DMG_WORD_CODE, FEATS, FEATURE_TEXT, FEAT_INDEX, FEAT_MECHANICS, FEAT_PICKS, GRANTED_SUB_CLASSES, HALF1_SLOTS, HALF_SLOTS, HEALING_TIERS, INVOCATION_DATA, INVOCATION_INFO, ITEM_TYPES, LAND_TERRAINS, LANG_INFO, MANEUVERS, MC_GEAR_PROFS, MC_PREREQ, MC_PROFS, MC_SLOTS, METAMAGIC_INFO, PACT, POTION_EFFECT_ALIAS, PROF_TEXT, RACES, RANGER_PREPARED, SCHOOL_NAMES, SIZE_RANK, SKILL_ABIL, SKILL_INFO, SOURCE_ABBR, SPELLS_KNOWN, SPELL_ABILITY, SRD_FOOT, STYLE_DESC, SUB_FEATS, SUB_LORE, SUB_SPELLS, TEXT_2024, WEAPON_PROPS, baseSubName, normSub, subFeatsFor } from "./data.js";
-import { EMPTY_CUSTOM, __BASE, __BESTIARY, __SRC_OFF, creatureSrcOf, isSourceEnabled, sourceLabelOf, srcSpells, stripBase } from "./compendium.js";
+import { EMPTY_CUSTOM, __BASE, __BESTIARY, __SRC_OFF, creatureSrcOf, isSourceEnabled, raceArtUrl, sourceLabelOf, srcSpells, stripBase } from "./compendium.js";
 const mod = (s) => Math.floor((s - 10) / 2);
 const fmtMod = (m) => (m >= 0 ? `+${m}` : `${m}`);
 const profBonus = (lvl) => Math.ceil(lvl / 4) + 1;
@@ -1106,16 +1106,19 @@ function infoFor(rawName, customs) {
   if (rt) return { title: rt.name, meta: rt.race ? `Racial trait · ${rt.race}` : "Racial trait", body: rt.desc, foot: sourceOf(rt) };
   const optF = (__BASE?.runtime?.optionalFeatureMap || {})[name] || (__BASE?.runtime?.optionalFeatureMap || {})[strip];
   if (optF) return { title: optF.name, meta: "Optional Feature", body: optF.desc, foot: sourceOf(optF) };
-  const raceData = RACES[name] || RACES[strip];
-  if (raceData) {
-    const rParts = [];
-    if (raceData.flavor) rParts.push(raceData.flavor);
-    if (raceData.traits?.length) rParts.push("Racial Traits:\n" + raceData.traits.map((t) => `• ${t}`).join("\n"));
-    if (rParts.length || raceData.text) {
+  const raceName = RACES[name] ? name : RACES[strip] ? strip : null;
+  if (raceName) {
+    const raceData = RACES[raceName];
+    // The baked race record carries every trait written out in full; the runtime entry only names them.
+    const record = (__BASE?.races || []).find((r) => r.name === raceName);
+    const traits = record?.text || (raceData.traits?.length ? raceData.traits.map((t) => `• ${t}`).join("\n") : null);
+    if (raceData.flavor || traits) {
       return {
-        title: name,
+        title: raceName,
         meta: ["Race", raceData.speed ? `${raceData.speed} ft speed` : null].filter(Boolean).join(" · "),
-        body: rParts.join("\n\n") || raceData.text || null,
+        art: raceArtUrl(raceData.art),
+        body: raceData.flavor || null,
+        traits,
         foot: sourceOf(raceData) || "Player's Handbook (2014)",
       };
     }

@@ -5,6 +5,8 @@ let __SOURCES = [];
 const setSourceExclusions = (sources) => { __SRC_OFF = sources; };
 let __BESTIARY = [];
 const SRD_SRC = "System Reference Document 5.1";
+// Race art is bundled under public/art by the bake; the compendium stores paths relative to it.
+const raceArtUrl = (path) => (path ? "art/" + path.split("/").map(encodeURIComponent).join("/") : null);
 const sourceByCode = (code) => __SOURCES.find((source) => source.code === code);
 const sourceCodesOf = (record) => {
   if (!record || typeof record !== "object") return [];
@@ -283,4 +285,4 @@ function parseCompendiumXML(text) {
   return out;
 }
 if (typeof window !== "undefined") window.__parseCompendium = parseCompendiumXML;
-export { __SRC_OFF, __SOURCES, __BESTIARY, SRD_SRC, sourceCodesOf, sourceLabelOf, isSourceEnabled, spellSrcOf, creatureSrcOf, srcSpells, setSourceExclusions, loadChars, saveChars, loadSrcPrefs, saveSrcPrefs, EMPTY_CUSTOM, __BASE, fetchBaseCompendium, stripBase, loadCustom, saveCustom, exportLedger, mergeLedger, unionCustoms, mergeCompendium, parseCompendiumXML, uid };
+export { __SRC_OFF, __SOURCES, __BESTIARY, SRD_SRC, raceArtUrl, sourceCodesOf, sourceLabelOf, isSourceEnabled, spellSrcOf, creatureSrcOf, srcSpells, setSourceExclusions, loadChars, saveChars, loadSrcPrefs, saveSrcPrefs, EMPTY_CUSTOM, __BASE, fetchBaseCompendium, stripBase, loadCustom, saveCustom, exportLedger, mergeLedger, unionCustoms, mergeCompendium, parseCompendiumXML, uid };
