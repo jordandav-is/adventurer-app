@@ -266,7 +266,9 @@ export function SharedView({ token, onExit }) {
     let live = true;
     (async () => {
       try {
-        const [payload, base] = await Promise.all([decodeShare(token), fetchBaseCompendium()]);
+        // The compendium must hydrate the race and class tables before the link can be validated against them.
+        const base = await fetchBaseCompendium();
+        const payload = await decodeShare(token);
         const customs = base ? mergeCompendium(payload.x, base).customs : payload.x;
         if (!live) return;
         document.title = `${payload.c.name} · ${payload.c.classes.map((c) => `${c.name} ${c.level}`).join(" / ")} — The Adventurer's Ledger`;
