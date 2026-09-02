@@ -852,15 +852,56 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
         speed = row.get("speed", 30)
         if isinstance(speed, dict): speed = speed.get("walk", 30)
         text = render_text(row.get("entries", []))
-        traits = [strip_tags(x.get("name")) for x in row.get("entries", []) if isinstance(x, dict) and x.get("name")]
-        skills = row.get("skillProficiencies", [])
+        meta_names = {"age", "size", "speed", "languages", "ability score increase", "alignment", "subrace", "creature type"}
+        traits = [strip_tags(x.get("name")) for x in row.get("entries", []) if isinstance(x, dict) and x.get("name") and strip_tags(x.get("name")).strip().lower() not in meta_names]
+        if row["name"] == "Human":
+            traits = ["+1 to all ability scores"]
+        elif row["name"] == "Variant Human":
+            traits = ["+1 to two different ability scores", "One extra skill proficiency", "One feat of your choice at 1st level"]
+        elif row["name"] == "Custom Lineage":
+            traits = ["+2 to one ability score of your choice", "Darkvision 60 ft or one extra skill", "One feat of your choice at 1st level", "Size Small or Medium (your choice)"]
+
+        core_base_races = {
+            "Hill Dwarf",
+            "High Elf",
+            "Lightfoot Halfling",
+            "Human",
+            "Dragonborn",
+            "Rock Gnome",
+            "Half-Elf",
+            "Half-Orc",
+            "Tiefling",
+            "Variant Human",
+            "Custom Lineage",
+        }
+        is_expanded = row["name"] not in core_base_races
+        skills = row.get("skillProficiencies") or []
         skill_choose = next((x.get("choose") for x in skills if isinstance(x, dict) and x.get("choose")), None)
         fixed_skills = [k.replace("sleight of hand", "Sleight of Hand").title() for x in skills if isinstance(x, dict) for k, v in x.items() if k != "choose" and v]
+
         record = {**provenance(row, "race"), "name": row["name"], "text": text}
         records.append(record)
         base_key = row.get("baseRace", row["name"]).lower()
         race_flavor = fluff_races.get((row["name"].lower(), row.get("source", ""))) or fluff_races.get(row["name"].lower()) or fluff_races.get((base_key, row.get("source", ""))) or fluff_races.get(base_key) or ""
-        runtime[row["name"]] = {"bonus": bonus, **choice, "speed": speed, "flavor": race_flavor, "traits": traits or ([text] if text else []), "src": row.get("source"), "sources": record["sources"], "group": "expanded", **({"skills": skill_choose.get("count", 1), "skillsFrom": [x.title() for x in skill_choose.get("from", [])]} if skill_choose else {}), **({"grantSkills": fixed_skills} if fixed_skills else {})}
+
+        race_entry = {
+            "bonus": bonus,
+            **choice,
+            "speed": speed,
+            "flavor": race_flavor,
+            "traits": traits or ([text] if text else []),
+            "src": row.get("source"),
+            "sources": record["sources"],
+            **({"group": "expanded"} if is_expanded else {}),
+            **({"skills": skill_choose.get("count", 1), "skillsFrom": [x.title() for x in skill_choose.get("from", [])]} if skill_choose else {}),
+            **({"grantSkills": fixed_skills} if fixed_skills else {}),
+        }
+        if row["name"] in {"Variant Human", "Custom Lineage"}:
+            race_entry["optional"] = True
+            race_entry["feat"] = True
+            if row["name"] == "Custom Lineage":
+                race_entry["lineageTrait"] = True
+        runtime[row["name"]] = race_entry
         language_rows = row.get("languageProficiencies") or []
         fixed, count = [], 0
         for block in language_rows:
