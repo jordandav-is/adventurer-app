@@ -123,8 +123,24 @@ const isCantripPick = (g) => /(^|\|)level=0(\||$)/.test(g.choose || "");
 const chosenFor = (ch, kind, holder, g) => {
   if (kind === "feat") { const c = featChoiceOf(ch, holder); return isCantripPick(g) ? c.cantrips || [] : c.spells || []; }
   if (kind === "race") return isCantripPick(g) && ch.racialChoices?.cantrip ? [ch.racialChoices.cantrip] : [];
+  if (kind === "subclass") return isCantripPick(g) ? ch.choices?.[bonusCantripKey(holder)] || [] : [];
   return [];
 };
+// A subclass's "choose N cantrips from list X" grant is a choice group like any other, keyed by the subclass.
+const bonusCantripKey = (subclass) => `${subclass}: bonus cantrip`;
+const spellChooseFilter = (choose) => Object.fromEntries(String(choose || "").split("|").map((kv) => kv.split("=")).map(([k, v]) => [k.trim().toLowerCase(), (v || "").split(";").map((x) => x.trim()).filter(Boolean)]));
+function grantChoiceGroups(customs) {
+  const byKey = new Map();
+  Object.entries(customs?.subs || {}).forEach(([cls, arr]) => arr.forEach((s) => (s.grants || []).forEach((g) => {
+    if (!g.choose || !isCantripPick(g)) return;
+    const key = bonusCantripKey(s.name), at = g.at || 1;
+    const group = byKey.get(key) || { key, cls, sub: s.name, source: { spellChoose: g.choose }, counts: {}, derived: true };
+    group.counts[at] = (group.counts[at] || 0) + (g.count || 1);
+    byKey.set(key, group);
+  })));
+  return [...byKey.values()];
+}
+const allChoiceGroups = (customs) => [...CHOICE_GROUPS, ...grantChoiceGroups(customs)];
 function spellGrantsOf(ch, customs) {
   if (!ch) return [];
   const lvl = totalLevel(ch);
@@ -284,6 +300,14 @@ function choiceOptionsFor(g, customs) {
     if (list.length) return list.filter(isSourceEnabled).map((i) => ({ name: i.name, minLvl: i.minLevel || 0 })).sort((a, b) => (a.minLvl || 0) - (b.minLvl || 0) || a.name.localeCompare(b.name));
   }
   if (g.source.list && g.source.list.length) return g.source.list.map((n) => ({ name: n }));
+  if (g.source.spellChoose) {
+    const f = spellChooseFilter(g.source.spellChoose);
+    const levels = (f.level || ["0"]).map(Number);
+    const classes = (f.class || []).map((c) => c[0].toUpperCase() + c.slice(1));
+    const schools = (f.school || []).map((c) => ({ E: "EN", V: "EV" }[c.toUpperCase()] || c.toUpperCase()));
+    return srcSpells(customs?.spells || []).filter((sp) => levels.includes(sp.level) && (!classes.length || classes.some((c) => spellFitsClass(sp, c))) && (!schools.length || schools.includes((sp.school || "").toUpperCase())))
+      .map((sp) => ({ name: sp.name })).sort((a, b) => a.name.localeCompare(b.name));
+  }
   if (g.source.spellTag) {
     return srcSpells(customs?.spells || []).filter((sp) => isTechnique(sp) && spellFitsClass(sp, g.cls, g.sub))
       .map((sp) => ({ name: sp.name, minLvl: +((sp.text || "").match(/Prerequisite:\s*(\d+)\w*\s*level/i)?.[1] || 0) }))
@@ -302,7 +326,7 @@ function choiceOptionsFor(g, customs) {
 }
 function characterChoiceGroups(ch, customs) {
   const out = [];
-  for (const g of CHOICE_GROUPS) {
+  for (const g of allChoiceGroups(customs)) {
     const entry = ch.classes.find((c) => groupMatches(g, c.name, c.subclass));
     if (!entry) continue;
     const options = choiceOptionsFor(g, customs);
@@ -1274,4 +1298,4 @@ const searchRank = (name, q) => {
 };
 const schoolName = (s) => SCHOOL_NAMES[(s || "").toUpperCase()] || s;
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-export { mod, fmtMod, profBonus, subSpellData, meetsPrereq, featureBody, featChoiceOf, featEffects, hasStyle, featHpBonus, featBlockedBy, featPickOf, featGrantedSpells, spellGrantsOf, grantsFor, grantAbilityFor, grantLabel, grantTrackerKey, grantTrackerFor, featPickDone, spellCapacity, maxSpellLevel, foldStarredSpells, spellFitsClass, spellSlots, totalLevel, isTechnique, choiceCum, groupMatches, choiceOptionsFor, characterChoiceGroups, allKnownCantrips, sourceOf, findItem, isArmorType, isWeaponType, equippedOf, canEquip, subclassProfsOf, subclassProfsAt, profSummary, armorClass, classLevel, hasSub, hasFeat, effectsOf, knownSpellNames, EFFECT_LIB, EFFECT_BY_KEY, hasEffect, effDefOf, isConcDef, isConcInst, effEnds, instMaxHp, describeCustomFx, applyEffectPatch, fxMods, effMaxHp, speedOf, useTrackersFor, minionsOf, crShow, creatureByName, summonFormsFor, SUMMON_LIB, summonDefFor, spiritHp, spiritAc, spiritDefFromSpell, minionAttackRolls, summonerSpellAtk, minionSaves, minionSkills, minionHp, minionApplyHp, isBladeCantrip, bladeRiderTier, strikeProfile, useRecipe, usesAmmo, ammoRowFor, isConsumableRow, healingDiceFor, consumableEffectKey, allSubs, allSubFeats, allFeats, b64uFromBytes, bytesFromB64u, pipeBytes, shareCustomsFor, getRacialBonusPool, getDefaultRacialSlots, formatStandardRaceBonus, searchRank, schoolName, round2, infoFor, featChoiceSummary, featureBuckets };
+export { mod, fmtMod, profBonus, subSpellData, meetsPrereq, featureBody, featChoiceOf, featEffects, hasStyle, featHpBonus, featBlockedBy, featPickOf, featGrantedSpells, spellGrantsOf, grantsFor, grantAbilityFor, grantLabel, grantTrackerKey, grantTrackerFor, featPickDone, spellCapacity, maxSpellLevel, foldStarredSpells, spellFitsClass, spellSlots, totalLevel, isTechnique, choiceCum, groupMatches, choiceOptionsFor, allChoiceGroups, characterChoiceGroups, allKnownCantrips, sourceOf, findItem, isArmorType, isWeaponType, equippedOf, canEquip, subclassProfsOf, subclassProfsAt, profSummary, armorClass, classLevel, hasSub, hasFeat, effectsOf, knownSpellNames, EFFECT_LIB, EFFECT_BY_KEY, hasEffect, effDefOf, isConcDef, isConcInst, effEnds, instMaxHp, describeCustomFx, applyEffectPatch, fxMods, effMaxHp, speedOf, useTrackersFor, minionsOf, crShow, creatureByName, summonFormsFor, SUMMON_LIB, summonDefFor, spiritHp, spiritAc, spiritDefFromSpell, minionAttackRolls, summonerSpellAtk, minionSaves, minionSkills, minionHp, minionApplyHp, isBladeCantrip, bladeRiderTier, strikeProfile, useRecipe, usesAmmo, ammoRowFor, isConsumableRow, healingDiceFor, consumableEffectKey, allSubs, allSubFeats, allFeats, b64uFromBytes, bytesFromB64u, pipeBytes, shareCustomsFor, getRacialBonusPool, getDefaultRacialSlots, formatStandardRaceBonus, searchRank, schoolName, round2, infoFor, featChoiceSummary, featureBuckets };

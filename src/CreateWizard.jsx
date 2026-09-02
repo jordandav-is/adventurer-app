@@ -1,5 +1,5 @@
 import { ABILITIES, ABIL_MAX, ABIL_MIN, ABIL_NAMES, ALIGNMENTS, ALL_SKILLS, ANCESTRIES, BACKGROUNDS, CANTRIPS_KNOWN, CLASSES, FAVORED_ENEMIES, FEAT_MECHANICS, FIGHTING_STYLES, GEAR_LISTS, ITEM_TYPES, LANGS, PB_COST, RACES, RACE_LANGS, STARTING_GEAR, START_GOLD, STD_ARRAY, STYLE_DESC } from "./data.js";
-import { allFeats, allSubs, canEquip, featGrantedSpells, featPickDone, featPickOf, findItem, subclassProfsAt, fmtMod, formatStandardRaceBonus, getDefaultRacialSlots, getRacialBonusPool, isArmorType, isWeaponType, mod, searchRank, spellCapacity, spellFitsClass } from "./rules.js";
+import { allChoiceGroups, allFeats, allSubs, canEquip, choiceCum, choiceOptionsFor, groupMatches, featGrantedSpells, featPickDone, featPickOf, findItem, subclassProfsAt, fmtMod, formatStandardRaceBonus, getDefaultRacialSlots, getRacialBonusPool, isArmorType, isWeaponType, mod, searchRank, spellCapacity, spellFitsClass } from "./rules.js";
 import { isSourceEnabled, srcSpells, uid } from "./compendium.js";
 import { useEffect, useState } from "react";
 import { ClassDetail, ClassTag, FeatChooser, Icon, LazyList, Portrait, SubclassDetail, T, btn, card, lorePress, usePhotoUpload } from "./ui.jsx";
@@ -312,6 +312,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const [subclass, setSubclass] = useState(null);
   const [skills, setSkills] = useState([]);
   const [subSkillPicks, setSubSkillPicks] = useState({});
+  const [groupPicks1, setGroupPicks1] = useState({});
   const [alignment, setAlignment] = useState("True Neutral");
   const [bg, setBg] = useState("Acolyte");
   const [bgSkills, setBgSkills] = useState([]);
@@ -384,6 +385,10 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const subFixedSkills = subProfs1.flatMap((p) => p.skills || []);
   const subSkillChoices = subProfs1.flatMap((p) => (p.skillChoice || []).map((c, i) => ({ key: `${p.feature}:${i}`, feature: p.feature, n: c.n, from: c.from.length ? c.from : ALL_SKILLS })));
   const subSkillsPicked = Object.values(subSkillPicks).flat();
+  // Picks a level-1 subclass owes right away (a Nature cleric's druid cantrip, an Arcana cleric's wizard cantrips, a Draconic Bloodline's ancestor).
+  const choiceGroups1 = clsData.subLvl === 1 && subclass
+    ? allChoiceGroups(customs).filter((g) => groupMatches(g, cls, subclass) && choiceCum(g, 1) > 0).map((g) => ({ g, options: choiceOptionsFor(g, customs), need: choiceCum(g, 1) })).filter((d) => d.options.length)
+    : [];
   const skillsElsewhere = [...bgGrantSkills, ...raceSkillsEff, ...featSkillsEff, ...(raceData.grantSkills || []), ...subFixedSkills, ...subSkillsPicked];
   let clsSkillOpts = clsData.skills.filter((s) => !skillsElsewhere.includes(s));
   if (clsSkillOpts.length < clsData.nSkills)
@@ -427,7 +432,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
     step === 0 ? name.trim().length > 0 :
     step === 1 ? (!raceData.lineageTrait || !!lineageTrait) :
     step === 2 ? langPicks.length === langNeed && (bg !== "Custom" || bgSkills.length === 2) && (race !== "Dragonborn" || ancestry) && raceSkills.length === raceSkillNeed && (race !== "High Elf" || heCantrip.trim()) :
-    step === 3 ? skills.length === clsData.nSkills && (clsData.subLvl > 1 || subclass) && subSkillChoices.every((c) => (subSkillPicks[c.key] || []).length === c.n) && (cls !== "Fighter" || style) && (cls !== "Rogue" || rogueExp.length === 2) && (cls !== "Ranger" || (favEnemy && (favEnemy !== "Two humanoid races" || favHumanoids.trim()) && favLang)) :
+    step === 3 ? skills.length === clsData.nSkills && (clsData.subLvl > 1 || subclass) && subSkillChoices.every((c) => (subSkillPicks[c.key] || []).length === c.n) && choiceGroups1.every((d) => (groupPicks1[d.g.key] || []).length === Math.min(d.need, d.options.length)) && (cls !== "Fighter" || style) && (cls !== "Rogue" || rogueExp.length === 2) && (cls !== "Ranger" || (favEnemy && (favEnemy !== "Two humanoid races" || favHumanoids.trim()) && favLang)) :
     step === 4 ? customAsiReady && (!raceData.feat || featPickDone(raceFeatDef, raceFeat)) :
     step === 6 ? (gearMode === "standard" ? standardReady : gearMode === "gold" ? gold !== null : false) :
     true;
@@ -445,6 +450,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
       spells: castsAt1 && (spellPicks.cantrips.length || spellPicks.spells.length) ? { [cls]: spellPicks } : {},
       abilities: finalScores, method,
       classes: [{ name: cls, level: 1, subclass: clsData.subLvl === 1 ? subclass : null }],
+      choices: Object.fromEntries(choiceGroups1.map((d) => [d.g.key, groupPicks1[d.g.key] || []]).filter(([, v]) => v.length)),
       skills: [...skills, ...raceSkillsEff, ...bgGrantSkills, ...featSkillsEff, ...(raceData.grantSkills || []), ...subFixedSkills, ...subSkillsPicked].filter((v, i, a) => a.indexOf(v) === i),
       feats: raceFeat?.name ? [raceFeat.name] : [],
       featChoices: raceFeat?.name ? { [raceFeat.name]: {
@@ -715,10 +721,25 @@ function CreateWizard({ onDone, onCancel, customs }) {
               <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>{clsData.subName} (chosen at level 1)</div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {allSubs(cls, customs).map((s) => (
-                  <button key={s} {...lorePress(s)} style={{ ...btn(subclass === s), padding: "6px 14px" }} onClick={() => { setSubclass(s); setSubSkillPicks({}); setSkills(skills.filter((x) => !subclassProfsAt(cls, s, 1, customs).flatMap((p) => p.skills || []).includes(x))); }}>{s}</button>
+                  <button key={s} {...lorePress(s)} style={{ ...btn(subclass === s), padding: "6px 14px" }} onClick={() => { setSubclass(s); setSubSkillPicks({}); setGroupPicks1({}); setSkills(skills.filter((x) => !subclassProfsAt(cls, s, 1, customs).flatMap((p) => p.skills || []).includes(x))); }}>{s}</button>
                 ))}
               </div>
               {subFixedSkills.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>{subclass} grants proficiency in {subFixedSkills.join(" and ")}.</div>}
+              {choiceGroups1.map((d) => {
+                const picked = groupPicks1[d.g.key] || [];
+                const need = Math.min(d.need, d.options.length);
+                return (
+                  <div key={d.g.key} style={{ marginTop: 10 }}>
+                    <div style={{ color: T.gold, fontSize: 13, marginBottom: 6 }}>{d.g.key} — choose {need} ({picked.length}/{need})</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxHeight: 180, overflowY: "auto" }}>
+                      {d.options.filter((o) => !spellPicks.cantrips.includes(o.name)).map((o) => (
+                        <button key={o.name} {...lorePress(o.name)} style={{ ...btn(picked.includes(o.name)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
+                          onClick={() => setGroupPicks1({ ...groupPicks1, [d.g.key]: picked.includes(o.name) ? picked.filter((x) => x !== o.name) : picked.length < need ? [...picked, o.name] : picked })}>{o.name}</button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
               {subSkillChoices.map((c) => {
                 const picked = subSkillPicks[c.key] || [];
                 const taken = [...skillsElsewhere.filter((x) => !picked.includes(x)), ...skills];

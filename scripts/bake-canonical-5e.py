@@ -437,6 +437,13 @@ def convert_spell(row: dict[str, Any], spell_lookup: dict[str, Any]) -> dict[str
             class_names.update(classes)
         elif class_source == RANGER_SOURCE and "Ranger" in classes:
             class_names.add("Ranger")
+    # Supplement spells (Xanathar's, Tasha's, Wildemount…) join class lists through classVariant, keyed by the class's own source.
+    for class_source, classes in lookup.get("classVariant", {}).items():
+        for class_name, info in classes.items():
+            defined = [x for x in (info or {}).get("definedInSources", []) if allowed_source(x)]
+            if not defined: continue
+            if allowed_source(class_source) or (class_source == RANGER_SOURCE and class_name == "Ranger"):
+                class_names.add(class_name)
     for class_source, classes in lookup.get("subclass", {}).items():
         if not allowed_source(class_source) and class_source != RANGER_SOURCE:
             continue
@@ -445,7 +452,11 @@ def convert_spell(row: dict[str, Any], spell_lookup: dict[str, Any]) -> dict[str
                 continue
             for subclass_source, subclasses in class_sources.items():
                 if allowed_source(subclass_source) or (subclass_source == RANGER_SOURCE and class_name == "Ranger"):
-                    class_names.update(f"{class_name} ({v.get('name', short)})" for short, v in subclasses.items())
+                    for short, v in subclasses.items():
+                        sub_name = v.get("name", short)
+                        listed = SUBCLASS_SPELLS.get((class_name, sub_name))
+                        if listed is None or row.get("name", "").lower() in listed:
+                            class_names.add(f"{class_name} ({sub_name})")
     text = "\n".join(x for x in [render_text(row.get("entries", [])), render_text(row.get("entriesHigherLevel", []))] if x)
     casting_time = " or ".join(
         f"{x.get('number')} {x.get('unit')}" + (f", {strip_tags(x.get('condition'))}" if x.get("condition") else "")
@@ -584,6 +595,7 @@ def convert_feat(row: dict[str, Any]) -> dict[str, Any]:
     }, row)
 
 WEAPON_NAMES: set[str] = set()
+SUBCLASS_SPELLS: dict[tuple[str, str], set[str]] = {}
 PROF_RE = re.compile(r"gains? proficiency (?:with|in) ([^.]*)\.", re.I)
 ARMOR_WORDS = {"light armor": "LA", "medium armor": "MA", "heavy armor": "HA", "shields": "S"}
 COUNT_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4}
@@ -738,6 +750,10 @@ def convert_classes() -> tuple[list[dict[str, Any]], dict[str, list[dict[str, An
             if text:
                 feature_texts[f"{class_name}:{row['name']}:{name}"] = text
                 feature_texts.setdefault(name, text)
+        # A subclass that lists spells by name gets tagged only for those; one that opens a whole list ("all wizard
+        # spells" for an Eldritch Knight) or declares nothing keeps the lookup's own tags.
+        grants = spell_grants(row)
+        SUBCLASS_SPELLS[(row["className"], row["name"])] = None if not row.get("additionalSpells") or any(g.get("all") for g in grants) else {g["spell"].lower() for g in grants if g.get("spell")}
         subs[row["className"]].append(with_grants({**provenance(row, "subclass", row["className"]), "name": row["name"], "feats": dict(feats), **({"profs": profs} if profs else {})}, row))
     for values in subs.values(): values.sort(key=lambda x: x["name"])
     feature_sources = {}
@@ -1265,7 +1281,7 @@ def merge_existing(canonical: list[dict[str, Any]], existing: list[dict[str, Any
     legacy_by_name = {slug(str(row.get("name", ""))): row for row in existing if row.get("name")}
     canonical_names = {slug(str(row.get("name", ""))) for row in canonical}
     canonical_ids = {row.get("id") for row in canonical}
-    reserved = {"id", "src", "sources", "source", "page", "published", "canonical"}
+    reserved = {"id", "src", "sources", "source", "page", "published", "canonical", "classes"}
     for record in canonical:
         legacy = legacy_by_name.get(slug(record["name"]))
         if not legacy:
