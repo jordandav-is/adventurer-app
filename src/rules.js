@@ -1,4 +1,4 @@
-import { ABILITIES, ABILITY_INFO, ABIL_NAMES, ANCESTRIES, ASI, BACKGROUNDS, BOON_INFO, CASTING_CLASSES, CHOICE_GROUPS, CLASSES, CLASS_GEAR_PROFS, CORE_FEATURE_INFO, DMG_TYPES, DMG_WORD_CODE, FEATS, FEATURE_TEXT, FEAT_INDEX, FEAT_MECHANICS, FEAT_PICKS, GRANTED_SUB_CLASSES, GRANT_CANTRIPS, HALF1_SLOTS, HALF_SLOTS, HEALING_TIERS, INVOCATION_DATA, INVOCATION_INFO, ITEM_TYPES, LAND_TERRAINS, LANG_INFO, MANEUVERS, MC_GEAR_PROFS, MC_PREREQ, MC_PROFS, MC_SLOTS, METAMAGIC_INFO, PACT, POTION_EFFECT_ALIAS, PROF_TEXT, RACES, RANGER_PREPARED, SCHOOL_NAMES, SIZE_RANK, SKILL_ABIL, SKILL_INFO, SOURCE_ABBR, SPELLS_KNOWN, SPELL_ABILITY, SRD_FOOT, STYLE_DESC, SUB_FEATS, SUB_LORE, SUB_SPELLS, TEXT_2024, WEAPON_PROPS, baseSubName, normSub, subFeatsFor } from "./data.js";
+import { ABILITIES, ABILITY_INFO, ABIL_NAMES, ANCESTRIES, ASI, BACKGROUNDS, BOON_INFO, CASTING_CLASSES, CHOICE_GROUPS, CLASSES, CLASS_GEAR_PROFS, CORE_FEATURE_INFO, DMG_TYPES, DMG_WORD_CODE, FEATS, FEATURE_TEXT, FEAT_INDEX, FEAT_MECHANICS, FEAT_PICKS, GRANTED_SUB_CLASSES, HALF1_SLOTS, HALF_SLOTS, HEALING_TIERS, INVOCATION_DATA, INVOCATION_INFO, ITEM_TYPES, LAND_TERRAINS, LANG_INFO, MANEUVERS, MC_GEAR_PROFS, MC_PREREQ, MC_PROFS, MC_SLOTS, METAMAGIC_INFO, PACT, POTION_EFFECT_ALIAS, PROF_TEXT, RACES, RANGER_PREPARED, SCHOOL_NAMES, SIZE_RANK, SKILL_ABIL, SKILL_INFO, SOURCE_ABBR, SPELLS_KNOWN, SPELL_ABILITY, SRD_FOOT, STYLE_DESC, SUB_FEATS, SUB_LORE, SUB_SPELLS, TEXT_2024, WEAPON_PROPS, baseSubName, normSub, subFeatsFor } from "./data.js";
 import { EMPTY_CUSTOM, __BASE, __BESTIARY, __SRC_OFF, creatureSrcOf, isSourceEnabled, sourceLabelOf, srcSpells, stripBase } from "./compendium.js";
 const mod = (s) => Math.floor((s - 10) / 2);
 const fmtMod = (m) => (m >= 0 ? `+${m}` : `${m}`);
@@ -99,25 +99,84 @@ const featPickOf = (name, def) => {
   const pkKey = Object.keys(FEAT_PICKS).find((k) => String(k).toLowerCase().replace(/[^a-z0-9]/g, "") === normN);
   return pkKey ? FEAT_PICKS[pkKey] : null;
 };
-function featGrantedSpells(name, level = 20, def) {
-  const g = featPickOf(name, def)?.spells?.grant;
-  if (!g) return [];
-  if (Array.isArray(g)) return g;
-  return Object.entries(g).filter(([l]) => level >= +l).flatMap(([, arr]) => arr);
-}
-function raceGrantedSpells(ch) {
-  const g = RACES[ch?.race]?.grantSpells;
-  if (!g) return [];
+// ---- Spell grants: the one channel for every spell a character can cast that isn't a class-list pick.
+// Baked from 5etools' structured additionalSpells / attachedSpells blocks onto races, feats, classes, subclasses,
+// invocations, pact boons, backgrounds, and items. Each grant: { spell, level, how, cost, at, uses?, each?, resource?, ability?, castAt? }
+// cost: will · slot · daily · rest · limited · charges · resource · ritual · item.
+const GRANT_COST_TEXT = { will: "at will", slot: "", daily: "per long rest", rest: "per short rest", limited: "limited uses", charges: "item charges", ritual: "ritual only", item: "as the item describes" };
+const normName = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const featRecord = (name, customs) => {
+  // The character's own feat record wins; a record without grants (the static fallback table) defers to the baked one.
+  const find = (key) => {
+    const own = allFeats(customs || EMPTY_CUSTOM).find((f) => normName(f.name) === key) || null;
+    const baked = (__BASE?.feats || []).find((f) => normName(f.name) === key) || null;
+    return own?.grants ? own : baked || own;
+  };
+  const exact = find(normName(name));
+  if (exact?.grants) return exact;
+  const base = find(normName(baseSubName(name)));
+  return base?.grants ? base : exact || base;
+};
+const optionRecord = (list, name) => (__BASE?.runtime?.[list] || []).find((x) => x.name === name) || null;
+const isCantripPick = (g) => /(^|\|)level=0(\||$)/.test(g.choose || "");
+// Names the character picked to fill a choose-a-spell grant (Magic Initiate's cantrips, a High Elf's wizard cantrip…).
+const chosenFor = (ch, kind, holder, g) => {
+  if (kind === "feat") { const c = featChoiceOf(ch, holder); return isCantripPick(g) ? c.cantrips || [] : c.spells || []; }
+  if (kind === "race") return isCantripPick(g) && ch.racialChoices?.cantrip ? [ch.racialChoices.cantrip] : [];
+  return [];
+};
+function spellGrantsOf(ch, customs) {
+  if (!ch) return [];
   const lvl = totalLevel(ch);
-  return Object.entries(g).filter(([l]) => lvl >= +l).flatMap(([, arr]) => arr);
+  const out = [], seen = new Set();
+  const push = (rec) => { const k = `${rec.kind}|${rec.source}|${rec.spell}|${rec.cost}`; if (!seen.has(k)) { seen.add(k); out.push(rec); } };
+  const add = (kind, source, grants, atLvl, skip = ["expanded"]) => (grants || []).forEach((g) => {
+    if ((g.at && atLvl < g.at) || skip.includes(g.how)) return;
+    if (g.spell) push({ kind, source, ...g });
+    else if (g.choose) chosenFor(ch, kind, source, g).forEach((spell) => push({ kind, source, ...g, choose: undefined, count: undefined, spell }));
+  });
+  add("race", ch.race, RACES[ch.race]?.grants, lvl);
+  (ch.feats || []).forEach((n) => add("feat", n, featRecord(n, customs)?.grants, lvl));
+  (ch.classes || []).forEach((c) => {
+    add("class", c.name, CLASSES[c.name]?.grants, c.level);
+    // A subclass's expanded and always-prepared lists already reach the Grimoire through subSpellData.
+    const sub = c.subclass && (customs?.subs?.[c.name] || []).find((s) => s.name === c.subclass || s.name === baseSubName(c.subclass));
+    if (sub) add("subclass", baseSubName(c.subclass), sub.grants, c.level, ["expanded", "prepared"]);
+  });
+  (ch.invocations || []).forEach((n) => add("invocation", n, optionRecord("invocations", n)?.grants, lvl));
+  if (ch.pactBoon) add("pact boon", ch.pactBoon, optionRecord("pactBoons", ch.pactBoon)?.grants, lvl);
+  if (ch.background) add("background", ch.background, BACKGROUNDS[ch.background]?.grants, lvl);
+  (ch.inventory || []).filter((r) => (r.qty ?? 1) > 0).forEach((r) => add("item", r.name, findItem(r.name, customs)?.grants, lvl));
+  return out;
 }
-function featSpellsOf(ch) {
-  const lvl = totalLevel(ch);
-  return (ch?.feats || []).map((n) => {
-    const c = featChoiceOf(ch, n);
-    return { feat: n, names: [...featGrantedSpells(n, lvl), ...(c.cantrips || []), ...(c.spells || [])] };
-  }).filter((e) => e.names.length);
+const grantsFor = (ch, customs, spellName) => spellGrantsOf(ch, customs).filter((g) => g.spell === spellName);
+const bestMental = (ch) => ["int", "wis", "cha"].sort((a, b) => mod(ch.abilities[b]) - mod(ch.abilities[a]))[0];
+const grantAbility = (ch, g) => (ABILITIES.includes(g?.ability) ? g.ability : bestMental(ch));
+const grantAbilityFor = (ch, customs, spellName) => { const g = grantsFor(ch, customs, spellName)[0]; return g ? grantAbility(ch, g) : null; };
+const grantLabel = (g) => `${g.source} · ${g.kind}${g.cost === "resource" ? ` · ${g.uses} ${g.resource}` : GRANT_COST_TEXT[g.cost] ? ` · ${GRANT_COST_TEXT[g.cost]}` : ""}`;
+// Limited-use grants become use trackers: one per source (or per spell when each spell has its own uses); items spend a charge pool.
+const grantTrackerKey = (g) => `grant-${slugFx(g.kind)}-${slugFx(g.source)}${g.cost !== "charges" && g.each ? `-${slugFx(g.spell)}` : ""}`;
+function grantTrackers(ch, customs) {
+  const out = [], seen = new Set();
+  spellGrantsOf(ch, customs).forEach((g) => {
+    if (!["daily", "rest", "limited", "charges"].includes(g.cost)) return;
+    const key = grantTrackerKey(g);
+    if (seen.has(key)) return;
+    seen.add(key);
+    if (g.cost === "charges") { out.push({ key, name: `${g.source} · charges`, max: findItem(g.source, customs)?.charges || g.uses || 1, per: "long", pool: true, unit: "charges", grant: true, source: g.source }); return; }
+    const max = typeof g.uses === "number" ? g.uses : Math.max(1, mod(ch.abilities[g.uses] ?? 10));
+    out.push({ key, name: g.each ? `${g.source} · ${g.spell}` : `${g.source} · spells`, max, per: g.cost === "rest" ? "short" : g.cost === "limited" ? "never" : "long", grant: true, source: g.source });
+  });
+  return out;
 }
+// How a grant pays from a tracker: charges cost `uses` per cast, a resource (ki) costs `uses`, anything else one use.
+const grantTrackerFor = (g, trackers) => {
+  if (g.cost === "resource") return { tracker: trackers.find((t) => t.name.toLowerCase().startsWith(String(g.resource || "").toLowerCase())) || null, amount: g.uses || 1 };
+  if (["daily", "rest", "limited", "charges"].includes(g.cost)) return { tracker: trackers.find((t) => t.key === grantTrackerKey(g)) || null, amount: g.cost === "charges" ? g.uses || 1 : 1 };
+  return null;
+};
+const featGrantedSpells = (name, level = 20, def, customs) =>
+  (def?.grants || featRecord(name, customs)?.grants || []).filter((g) => g.spell && g.how !== "expanded" && (!g.at || level >= g.at)).map((g) => g.spell);
 function featPickDone(def, v) {
   if (!v?.name) return false;
   if (def?.bump?.length && !v.bump) return false;
@@ -254,17 +313,14 @@ function characterChoiceGroups(ch, customs) {
   }
   return out;
 }
-function allKnownCantrips(ch) {
-  return [
+function allKnownCantrips(ch, customs) {
+  return [...new Set([
     ...Object.values(ch.spells || {}).flatMap((b) => b.cantrips || []),
     ...(ch.tomeCantrips || []),
     ...(ch.racialChoices?.cantrip ? [ch.racialChoices.cantrip] : []),
-    ...(ch.feats || []).flatMap((n) => [
-      ...(featChoiceOf(ch, n).cantrips || []),
-      ...featGrantedSpells(n, totalLevel(ch)).filter((sp) => GRANT_CANTRIPS.has(sp)),
-    ]),
-    ...raceGrantedSpells(ch).filter((sp) => GRANT_CANTRIPS.has(sp)),
-  ];
+    ...(ch.feats || []).flatMap((n) => featChoiceOf(ch, n).cantrips || []),
+    ...spellGrantsOf(ch, customs).filter((g) => g.level === 0).map((g) => g.spell),
+  ])];
 }
 function sourceOf(value) {
   if (value && typeof value === "object") {
@@ -350,6 +406,7 @@ const knownSpellNames = (ch, customs) => {
     const sd = c.subclass && subSpellData(c.subclass, c.name, customs);
     if (sd?.type === "granted") Object.entries(sd.spells).forEach(([lvl, arr]) => { if (c.level >= +lvl) arr.forEach((n) => out.add(n)); });
   });
+  spellGrantsOf(ch, customs).forEach((g) => out.add(g.spell));
   return out;
 };
 const slugFx = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -599,11 +656,13 @@ function parseLimitedUse(text, ch) {
 function derivedTrackers(ch, customs) {
   const normFeatName = (s) => baseSubName(String(s || "").trim()).toLowerCase();
   const curated = new Set(USE_TRACKERS.map((t) => normFeatName(t.name)));
+  // A feature whose uses are already declared by its structured spell grants keeps that tracker, not one parsed from prose.
+  const granted = new Set(grantTrackers(ch, customs).map((t) => normFeatName(t.source)));
   const names = [], seen = new Set();
   const add = (raw) => {
     const n = String(raw || "").trim();
     const k = normFeatName(n);
-    if (n && k && !seen.has(k) && !curated.has(k)) { seen.add(k); names.push(n); }
+    if (n && k && !seen.has(k) && !curated.has(k) && !granted.has(k)) { seen.add(k); names.push(n); }
   };
   ch.classes.forEach((c) => {
     for (let l = 1; l <= c.level; l++) {
@@ -624,7 +683,7 @@ function derivedTrackers(ch, customs) {
 function useTrackersFor(ch, customs) {
   const built = USE_TRACKERS.filter((t) => t.when(ch)).map((t) => ({ ...t, max: t.max(ch), per: typeof t.per === "function" ? t.per(ch) : t.per, die: typeof t.die === "function" ? t.die(ch) : t.die, dieBonus: typeof t.dieBonus === "function" ? t.dieBonus(ch) : t.dieBonus }));
   const custom = (Array.isArray(ch.customTrackers) ? ch.customTrackers : []).map((t) => ({ key: `custom-${t.id}`, name: t.name, max: Math.max(1, t.max || 1), per: t.per === "short" ? "short" : "long", pool: (t.max || 1) > 12, custom: true, id: t.id }));
-  return [...built, ...derivedTrackers(ch, customs), ...custom];
+  return [...built, ...derivedTrackers(ch, customs), ...grantTrackers(ch, customs), ...custom];
 }
 const minionsOf = (ch) => (Array.isArray(ch.minions) ? ch.minions : []);
 const crShow = (cr) => (cr === 0.125 ? "⅛" : cr === 0.25 ? "¼" : cr === 0.5 ? "½" : String(cr));
@@ -777,15 +836,16 @@ function minionAttackRolls(c) {
   });
   return out;
 }
-function summonerSpellAtk(ch, spellName) {
+function summonerSpellAtk(ch, spellName, customs) {
   let cls = null;
   for (const c of ch.classes) {
     const b = (ch.spells || {})[c.name];
     if (b && (["cantrips", "spells"].some((k) => (b[k] || []).includes(spellName)) || Object.values(b.arcanum || {}).includes(spellName))) { cls = c.name; break; }
   }
   if (!cls && (ch.tomeCantrips || []).includes(spellName)) cls = "Warlock";
+  const granted = !cls && grantAbilityFor(ch, customs, spellName);
   if (!cls) cls = ch.classes.find((c) => CLASSES[c.name].caster)?.name || null;
-  const abil = SPELL_ABILITY[cls];
+  const abil = granted || SPELL_ABILITY[cls];
   return abil ? profBonus(totalLevel(ch)) + mod(ch.abilities[abil]) : null;
 }
 function minionSaves(c) {
@@ -1111,9 +1171,9 @@ function shareCustomsFor(ch, customs) {
   Object.values(ch.choices || {}).forEach((v) => (Array.isArray(v) ? v : [v]).forEach(addSpell));
   (ch.feats || []).forEach((fn) => {
     const c = featChoiceOf(ch, fn);
-    [...(c.cantrips || []), ...(c.spells || []), ...featGrantedSpells(fn, totalLevel(ch))].forEach(addSpell);
+    [...(c.cantrips || []), ...(c.spells || [])].forEach(addSpell);
   });
-  raceGrantedSpells(ch).forEach(addSpell);
+  spellGrantsOf(ch, customs).forEach((g) => addSpell(g.spell));
   if (ch.classes.some((c) => c.name === "Ranger")) addSpell("Hunter's Mark");
   const itemNames = new Set((ch.inventory || []).map((r) => norm(r.name)));
   const subKeep = new Set(ch.classes.flatMap((c) => (c.subclass ? [norm(c.subclass), norm(baseSubName(c.subclass))] : [])));
@@ -1194,4 +1254,4 @@ const searchRank = (name, q) => {
 };
 const schoolName = (s) => SCHOOL_NAMES[(s || "").toUpperCase()] || s;
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-export { mod, fmtMod, profBonus, subSpellData, meetsPrereq, featureBody, featChoiceOf, featEffects, hasStyle, featHpBonus, featBlockedBy, featPickOf, featGrantedSpells, raceGrantedSpells, featSpellsOf, featPickDone, spellCapacity, maxSpellLevel, foldStarredSpells, spellFitsClass, spellSlots, totalLevel, isTechnique, choiceCum, groupMatches, choiceOptionsFor, characterChoiceGroups, allKnownCantrips, sourceOf, findItem, isArmorType, isWeaponType, equippedOf, canEquip, armorClass, classLevel, hasSub, hasFeat, effectsOf, knownSpellNames, EFFECT_LIB, EFFECT_BY_KEY, hasEffect, effDefOf, isConcDef, isConcInst, effEnds, instMaxHp, describeCustomFx, applyEffectPatch, fxMods, effMaxHp, speedOf, useTrackersFor, minionsOf, crShow, creatureByName, summonFormsFor, SUMMON_LIB, summonDefFor, spiritHp, spiritAc, spiritDefFromSpell, minionAttackRolls, summonerSpellAtk, minionSaves, minionSkills, minionHp, minionApplyHp, isBladeCantrip, bladeRiderTier, strikeProfile, useRecipe, usesAmmo, ammoRowFor, isConsumableRow, healingDiceFor, consumableEffectKey, allSubs, allSubFeats, allFeats, b64uFromBytes, bytesFromB64u, pipeBytes, shareCustomsFor, getRacialBonusPool, getDefaultRacialSlots, formatStandardRaceBonus, searchRank, schoolName, round2, infoFor, featChoiceSummary, featureBuckets };
+export { mod, fmtMod, profBonus, subSpellData, meetsPrereq, featureBody, featChoiceOf, featEffects, hasStyle, featHpBonus, featBlockedBy, featPickOf, featGrantedSpells, spellGrantsOf, grantsFor, grantAbilityFor, grantLabel, grantTrackerKey, grantTrackerFor, featPickDone, spellCapacity, maxSpellLevel, foldStarredSpells, spellFitsClass, spellSlots, totalLevel, isTechnique, choiceCum, groupMatches, choiceOptionsFor, characterChoiceGroups, allKnownCantrips, sourceOf, findItem, isArmorType, isWeaponType, equippedOf, canEquip, armorClass, classLevel, hasSub, hasFeat, effectsOf, knownSpellNames, EFFECT_LIB, EFFECT_BY_KEY, hasEffect, effDefOf, isConcDef, isConcInst, effEnds, instMaxHp, describeCustomFx, applyEffectPatch, fxMods, effMaxHp, speedOf, useTrackersFor, minionsOf, crShow, creatureByName, summonFormsFor, SUMMON_LIB, summonDefFor, spiritHp, spiritAc, spiritDefFromSpell, minionAttackRolls, summonerSpellAtk, minionSaves, minionSkills, minionHp, minionApplyHp, isBladeCantrip, bladeRiderTier, strikeProfile, useRecipe, usesAmmo, ammoRowFor, isConsumableRow, healingDiceFor, consumableEffectKey, allSubs, allSubFeats, allFeats, b64uFromBytes, bytesFromB64u, pipeBytes, shareCustomsFor, getRacialBonusPool, getDefaultRacialSlots, formatStandardRaceBonus, searchRank, schoolName, round2, infoFor, featChoiceSummary, featureBuckets };

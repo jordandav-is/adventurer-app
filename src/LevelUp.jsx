@@ -205,7 +205,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const cantripTarget = CANTRIPS_KNOWN[pick] ? CANTRIPS_KNOWN[pick](newClsLevel) : 0;
   const cantripPrev = entry && CANTRIPS_KNOWN[pick] ? CANTRIPS_KNOWN[pick](newClsLevel - 1) : 0;
   const cantripAllow = Math.max(0, cantripTarget - (book.cantrips || []).length);
-  const knownCans = allKnownCantrips(ch);
+  const knownCans = allKnownCantrips(ch, customs);
   const cantripPool = pick ? pool.filter((sp) => sp.level === 0 && fits(sp) && !knownCans.includes(sp.name) && !tomePicks.includes(sp.name)).sort(sortSp) : [];
   const cantripReq = Math.min(Math.max(0, cantripTarget - cantripPrev), cantripAllow, cantripPool.length);
   const gainsCantrips = cantripAllow > 0 && cantripPool.length > 0;
@@ -385,7 +385,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                 {asiMode === "feat" && (
                   <FeatChooser customs={customs} abilities={ch.abilities} level={lvl + 1} caster={isCaster}
                     held={ch.feats || []} styles={ch.styles || []} skillsTaken={[...ch.skills, ...(mcSkill ? [mcSkill] : [])]}
-                    knownCantrips={allKnownCantrips(ch)} knownLangs={ch.languages || []} profSkills={ch.skills}
+                    knownCantrips={allKnownCantrips(ch, customs)} knownLangs={ch.languages || []} profSkills={ch.skills}
                     value={featSel} onChange={setFeatSel} />
                 )}
                 {asiMode === "asi" && (
