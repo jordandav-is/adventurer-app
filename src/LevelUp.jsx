@@ -1,5 +1,5 @@
 import { ABILITIES, ALL_SKILLS, CANTRIPS_KNOWN, CLASSES, FAVORED_ENEMIES, FIGHTING_STYLES, INVOCATIONS, INVOCATION_DATA, LAND_TERRAINS, LANGS, MC_PREREQ, MC_PROFS, MC_SKILL_GRANT, METAMAGIC, PACT_BOONS, SPELLS_KNOWN, STYLE_DESC, baseSubName } from "./data.js";
-import { allChoiceGroups, allFeats, allKnownCantrips, allSubFeats, allSubs, choiceCum, subclassProfsAt, choiceOptionsFor, featPickDone, featPickOf, fmtMod, groupMatches, hasStyle, isTechnique, maxSpellLevel, meetsPrereq, mod, profBonus, spellFitsClass, totalLevel } from "./rules.js";
+import { allChoiceGroups, allFeats, allKnownCantrips, allSubFeats, allSubs, choiceCum, gearProfsOf, subclassProfsAt, choiceOptionsFor, featPickDone, featPickOf, fmtMod, groupMatches, hasStyle, isTechnique, maxSpellLevel, meetsPrereq, mod, profBonus, spellFitsClass, totalLevel } from "./rules.js";
 import { isSourceEnabled, srcSpells } from "./compendium.js";
 import { useEffect, useRef, useState } from "react";
 import { ClassTag, FeatChooser, FeatureLine, Icon, SpellPickGrid, SubclassDetail, T, btn, card, lorePress } from "./ui.jsx";
@@ -388,7 +388,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                 </div>
                 {asiMode === "feat" && (
                   <FeatChooser customs={customs} abilities={ch.abilities} level={lvl + 1} caster={isCaster}
-                    held={ch.feats || []} styles={ch.styles || []} skillsTaken={[...ch.skills, ...(mcSkill ? [mcSkill] : [])]}
+                    held={ch.feats || []} styles={ch.styles || []} skillsTaken={[...ch.skills, ...(mcSkill ? [mcSkill] : [])]} gearProfs={gearProfsOf(ch, customs)}
                     knownCantrips={allKnownCantrips(ch, customs)} knownLangs={ch.languages || []} profSkills={ch.skills}
                     value={featSel} onChange={setFeatSel} />
                 )}

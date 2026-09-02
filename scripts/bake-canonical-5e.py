@@ -586,9 +586,50 @@ def with_grants(record: dict[str, Any], row: dict[str, Any], attached: Any = Non
     return {**record, "grants": grants} if grants else record
 
 
+ARMOR_KEY = {"light": "LA", "medium": "MA", "heavy": "HA", "shield": "S"}
+
+
+def structured_profs(row: dict[str, Any]) -> dict[str, Any]:
+    """The proficiencies a feat or race declares in 5etools' structured fields, in the app's shape:
+    armor codes, weapons (simple / martial / named / a pick), skills or a skill pick, tools."""
+    out: dict[str, Any] = {}
+    for blk in row.get("armorProficiencies") or []:
+        for k, v in blk.items():
+            if v is True and k in ARMOR_KEY: out.setdefault("armor", []).append(ARMOR_KEY[k])
+    for blk in row.get("weaponProficiencies") or []:
+        for k, v in blk.items():
+            if k in {"simple", "martial"} and v: out.setdefault("weapons", {})[k] = True
+            elif k == "choose" and isinstance(v, dict): out.setdefault("weapons", {})["choose"] = {"n": v.get("count", 1)}
+            elif v is True: out.setdefault("weapons", {}).setdefault("named", []).append(label(k.split("|")[0]))
+    for blk in row.get("skillProficiencies") or []:
+        for k, v in blk.items():
+            if k == "choose" and isinstance(v, dict): out.setdefault("skillChoice", []).append({"n": v.get("count", 1), "from": [label(x) for x in v.get("from", [])]})
+            elif k == "any" and isinstance(v, int): out.setdefault("skillChoice", []).append({"n": v, "from": []})
+            elif v is True: out.setdefault("skills", []).append(label(k))
+    for blk in row.get("toolProficiencies") or []:
+        for k, v in blk.items():
+            if k == "any" and isinstance(v, int): out.setdefault("toolChoice", []).append("Any Tool")
+            elif k in KEY_LABELS and isinstance(v, int): out.setdefault("toolChoice", []).append(label(k))
+            elif k == "choose" and isinstance(v, dict): out.setdefault("toolChoice", []).append("one of " + ", ".join(label(x.split("|")[0]) for x in v.get("from", [])))
+            elif v is True: out.setdefault("tools", []).append(label(k))
+    return out
+
+
+def feat_needs(row: dict[str, Any]) -> dict[str, Any]:
+    """A feat's proficiency prerequisite: {armor: 'MA'} for 'proficiency with medium armor', {weapon: 'martial'}."""
+    out: dict[str, Any] = {}
+    for pre in row.get("prerequisite") or []:
+        for req in pre.get("proficiency") or []:
+            if req.get("armor") in ARMOR_KEY: out["armor"] = ARMOR_KEY[req["armor"]]
+            if req.get("weapon") in {"simple", "martial"}: out["weapon"] = req["weapon"]
+    return out
+
+
 def convert_feat(row: dict[str, Any]) -> dict[str, Any]:
     body = render_text(row.get("entries", []))
-    return with_grants({
+    profs = structured_profs(row)
+    needs = feat_needs(row)
+    return with_grants({**({"profs": profs} if profs else {}), **({"needs": needs} if needs else {}),
         **provenance(row, "feat"), "name": row["name"], "cat": "Canonical",
         "desc": body.split("\n\n")[0] if "\n\n" in body else body, "prereq": prerequisite_text(row.get("prerequisite")), "bump": ability_bumps(row),
         "text": f"{body}\n\n{source_tail(row)}".strip(), "canonical": True,
@@ -1009,6 +1050,8 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
         if sub.get("darkvision"): merged["darkvision"] = sub["darkvision"]
         if sub.get("skillProficiencies"):
             merged["skillProficiencies"] = (base.get("skillProficiencies") or []) + sub["skillProficiencies"]
+        for key in ("armorProficiencies", "weaponProficiencies", "toolProficiencies"):
+            if sub.get(key): merged[key] = (base.get(key) or []) + sub[key]
         if sub.get("languageProficiencies"):
             merged["languageProficiencies"] = (base.get("languageProficiencies") or []) + sub["languageProficiencies"]
         full_races.append(merged)
@@ -1073,6 +1116,8 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
             **({"skillsFrom": [label(x) for x in skill_choose["from"]]} if skill_choose and skill_choose.get("from") else {}),
             **({"grantSkills": fixed_skills} if fixed_skills else {}),
         }
+        race_profs = {k: v for k, v in structured_profs(row).items() if k in {"armor", "weapons", "tools", "toolChoice"}}
+        if race_profs: race_entry["profs"] = race_profs
         race_entry = with_grants(race_entry, row)
         if row["name"] in {"Variant Human", "Custom Lineage"}:
             race_entry["optional"] = True
@@ -1411,6 +1456,8 @@ def merge_existing(canonical: list[dict[str, Any]], existing: list[dict[str, Any
     for legacy in existing:
         name = str(legacy.get("name", ""))
         if not name or slug(name) in canonical_names:
+            continue
+        if kind == "feat" and slug(re.sub(r"\s*\([^)]*\)$", "", name)) in canonical_names:
             continue
         code = legacy_source(legacy)
         if not code or (not allowed_source(code) and code != "SRD"):

@@ -372,7 +372,7 @@ function SpellPickGrid({ options, picks, cap, onChange, placeholder = "Search sp
     </div>
   );
 }
-function FeatChooser({ customs, abilities, level, caster, held = [], styles = [], skillsTaken = [], knownCantrips = [], knownLangs = [], profSkills = [], value, onChange, allowEpic = true, waiveLevel = false, note }) {
+function FeatChooser({ customs, abilities, level, caster, held = [], styles = [], skillsTaken = [], knownCantrips = [], knownLangs = [], profSkills = [], gearProfs, value, onChange, allowEpic = true, waiveLevel = false, note }) {
   const [cat, setCat] = useState("All");
   const [q, setQ] = useState("");
   const pool = allFeats(customs)
@@ -384,7 +384,7 @@ function FeatChooser({ customs, abilities, level, caster, held = [], styles = []
   const shown = pool.filter((f) =>
     (cat === "All" || f.cat === cat) &&
     (!needle || f.name.toLowerCase().includes(needle) || (f.desc || "").toLowerCase().includes(needle)));
-  const ctx = { abilities, level: waiveLevel ? Infinity : level, caster };
+  const ctx = { abilities, level: waiveLevel ? Infinity : level, caster, armor: gearProfs?.armor, martial: gearProfs ? gearProfs.martial : undefined };
 
   const set = (patch) => onChange({ ...(value || {}), ...patch });
   return (
