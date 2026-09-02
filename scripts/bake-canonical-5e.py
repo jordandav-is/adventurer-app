@@ -958,6 +958,36 @@ def race_bonus(row: dict[str, Any]) -> tuple[dict[str, int], dict[str, Any]]:
     return bonus, choice
 
 
+# Where a race's own fluff carries no art, or only its parent race's, the image mirror often still holds a
+# dedicated picture elsewhere (a later book, a subrace plate, the Monster Manual). Curated by hand.
+RACE_ART = {
+    "Drow": "bestiary/MM/Drow.webp",
+    "Eladrin Elf": "races/MPMM/Eladrin.webp",
+    "Shadar-kai Elf": "races/MPMM/Shadar-kai.webp",
+    "Pallid Elf": "races/EGW/Elf (Pallid).webp",
+    "Duergar Dwarf": "races/MPMM/Duergar.webp",
+    "Lotusden Halfling": "races/EGW/Halfling (Lotusden).webp",
+    "Deep/Svirfneblin Gnome": "races/MPMM/Deep Gnome.webp",
+    "Gnome (Deep)": "races/MPMM/Deep Gnome.webp",
+    "Tiefling (Variant: Devil's Tongue)": "races/SCAG/Feral Tiefling.webp",
+    "Tiefling (Variant: Hellfire)": "races/SCAG/Feral Tiefling.webp",
+    "Tiefling (Variant: Infernal Legacy)": "races/SCAG/Feral Tiefling.webp",
+    "Tiefling (Variant: Winged)": "races/SCAG/Feral Tiefling.webp",
+    "Wildhunt Shifter": "races/ERLW/Shifter (Wildhunt).webp",
+    "Bugbear": "races/VGM/Bugbear.webp",
+    "Hobgoblin": "races/VGM/Hobgoblin.webp",
+    "Goblin (Dankwood)": "races/VGM/Goblin.webp",
+    "Aven (Ibis-Headed)": "races/PSA/Aven (Ibis-Headed).webp",
+    "Bullywug": "bestiary/MM/Bullywug.webp",
+    "Gnoll": "bestiary/MM/Gnoll.webp",
+    "Grimlock": "bestiary/MM/Grimlock.webp",
+    "Kuo-Toa": "bestiary/MM/Kuo-toa.webp",
+    "Troglodyte": "bestiary/MM/Troglodyte.webp",
+    "Skeleton": "bestiary/MM/Skeleton.webp",
+    "Zombie": "bestiary/MM/Zombie.webp",
+}
+
+
 def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any], dict[str, Any]]:
     races_data = load(DATA / "races.json")
     fluff_races_raw = resolve_copies(load(DATA / "fluff-races.json").get("raceFluff", []))
@@ -972,7 +1002,11 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
         art = next((img["href"]["path"] for img in (fl.get("images") or []) if isinstance(img, dict) and isinstance(img.get("href"), dict) and img["href"].get("type") == "internal" and img["href"].get("path")), None)
         if fname and art:
             fluff_art[(fname, fsrc)] = art
-            fluff_art.setdefault(fname, art)
+            # Several books illustrate the same race; when no source matches, prefer the latest book we ship.
+            best = fluff_art.get(fname)
+            if best is None or (rank(fl) > rank(best[1]) and (allowed_source(fsrc) or not allowed_source(best[1].get("source")))):
+                fluff_art[fname] = (art, fl)
+    fluff_art = {k: (v[0] if isinstance(v, tuple) else v) for k, v in fluff_art.items()}
     raw_races = resolve_copies(races_data.get("race", []))
     raw_subraces = resolve_copies(races_data.get("subrace", []))
     allowed_races = latest([r for r in raw_races if allowed_source(r.get("source"))], lambda x: x.get("name", ""))
@@ -1113,7 +1147,7 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
         base_key = row.get("baseRace", row["name"]).lower()
         fluff_of = lambda table: table.get((row["name"].lower(), row.get("source", ""))) or table.get(row["name"].lower()) or table.get((base_key, row.get("source", ""))) or table.get(base_key)
         race_flavor = fluff_of(fluff_races) or ""
-        race_art = fluff_of(fluff_art)
+        race_art = RACE_ART.get(row["name"]) or fluff_of(fluff_art)
 
         race_entry = {
             "bonus": bonus,
@@ -1498,15 +1532,18 @@ def bundle_art(paths: list[str]) -> None:
     """Copy the referenced images out of the 5etools image mirror so the app ships them itself."""
     if not IMG_ROOT.exists():
         raise SystemExit(f"5etools image mirror not found: {IMG_ROOT}")
+    missing = [rel for rel in paths if not (IMG_ROOT / rel).exists()]
+    if missing:
+        raise SystemExit("race art missing from image mirror: " + ", ".join(missing))
     wanted = set(paths)
     for stale in (p for p in ART.rglob("*") if p.is_file() and str(p.relative_to(ART)) not in wanted):
         stale.unlink()
+    for empty in sorted((p for p in ART.rglob("*") if p.is_dir() and not any(p.iterdir())), reverse=True):
+        empty.rmdir()
     for rel in paths:
-        src, dst = IMG_ROOT / rel, ART / rel
-        if not src.exists():
-            raise SystemExit(f"race art missing from image mirror: {rel}")
+        dst = ART / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, dst)
+        shutil.copyfile(IMG_ROOT / rel, dst)
     print(f"Bundled {len(paths)} race images into {ART}")
 
 
