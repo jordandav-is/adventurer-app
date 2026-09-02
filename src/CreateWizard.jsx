@@ -1,5 +1,5 @@
 import { ABILITIES, ABIL_MAX, ABIL_MIN, ABIL_NAMES, ALIGNMENTS, ALL_SKILLS, ANCESTRIES, BACKGROUNDS, CANTRIPS_KNOWN, CLASSES, FAVORED_ENEMIES, FEAT_MECHANICS, FIGHTING_STYLES, GEAR_LISTS, ITEM_TYPES, LANGS, PB_COST, RACES, RACE_LANGS, STARTING_GEAR, START_GOLD, STD_ARRAY, STYLE_DESC } from "./data.js";
-import { allFeats, allSubs, featGrantedSpells, featPickDone, featPickOf, findItem, fmtMod, formatStandardRaceBonus, getDefaultRacialSlots, getRacialBonusPool, isArmorType, isWeaponType, mod, searchRank, spellCapacity, spellFitsClass } from "./rules.js";
+import { allFeats, allSubs, canEquip, featGrantedSpells, featPickDone, featPickOf, findItem, subclassProfsAt, fmtMod, formatStandardRaceBonus, getDefaultRacialSlots, getRacialBonusPool, isArmorType, isWeaponType, mod, searchRank, spellCapacity, spellFitsClass } from "./rules.js";
 import { isSourceEnabled, srcSpells, uid } from "./compendium.js";
 import { useEffect, useState } from "react";
 import { ClassDetail, ClassTag, FeatChooser, Icon, LazyList, Portrait, SubclassDetail, T, btn, card, lorePress, usePhotoUpload } from "./ui.jsx";
@@ -311,6 +311,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const [cls, setCls] = useState("Fighter");
   const [subclass, setSubclass] = useState(null);
   const [skills, setSkills] = useState([]);
+  const [subSkillPicks, setSubSkillPicks] = useState({});
   const [alignment, setAlignment] = useState("True Neutral");
   const [bg, setBg] = useState("Acolyte");
   const [bgSkills, setBgSkills] = useState([]);
@@ -378,7 +379,12 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const raceSkillNeed = (raceData.skills || 0) + (race === "Custom Lineage" && lineageTrait === "skill" ? 1 : 0);
   const raceSkillsEff = raceSkills.slice(0, raceSkillNeed);
   const bgGrantSkills = bgData ? bgData.skills : bgSkills;
-  const skillsElsewhere = [...bgGrantSkills, ...raceSkillsEff, ...featSkillsEff, ...(raceData.grantSkills || [])];
+  // A subclass chosen at level 1 may grant skills of its own (a Nature cleric's Acolyte of Nature, an Arcana cleric's Arcana).
+  const subProfs1 = clsData.subLvl === 1 && subclass ? subclassProfsAt(cls, subclass, 1, customs) : [];
+  const subFixedSkills = subProfs1.flatMap((p) => p.skills || []);
+  const subSkillChoices = subProfs1.flatMap((p) => (p.skillChoice || []).map((c, i) => ({ key: `${p.feature}:${i}`, feature: p.feature, n: c.n, from: c.from.length ? c.from : ALL_SKILLS })));
+  const subSkillsPicked = Object.values(subSkillPicks).flat();
+  const skillsElsewhere = [...bgGrantSkills, ...raceSkillsEff, ...featSkillsEff, ...(raceData.grantSkills || []), ...subFixedSkills, ...subSkillsPicked];
   let clsSkillOpts = clsData.skills.filter((s) => !skillsElsewhere.includes(s));
   if (clsSkillOpts.length < clsData.nSkills)
     clsSkillOpts = [...clsSkillOpts, ...ALL_SKILLS.filter((s) => !skillsElsewhere.includes(s) && !clsData.skills.includes(s))];
@@ -388,6 +394,8 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const spellCap1 = castsAt1 ? spellCapacity(cls, 1, finalScores).n : 0;
   const pool1 = srcSpells(customs?.spells || []).filter((x) => spellFitsClass(x, cls, subclass));
   const gearPlan = STARTING_GEAR[cls];
+  const gearProto = { classes: [{ name: cls, level: 1, subclass: clsData.subLvl === 1 ? subclass : null }] };
+  const gearUsable = (o) => [...(o.items || []), ...(o.extra || [])].every(([nm]) => { const it = findItem(nm, customs); return !it || !(isArmorType(it.type) || it.type === "S" || isWeaponType(it.type)) || canEquip(it, gearProto, customs); });
   const slotDone = (i) => {
     const gp = gearPicks[i];
     if (!gp) return false;
@@ -419,7 +427,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
     step === 0 ? name.trim().length > 0 :
     step === 1 ? (!raceData.lineageTrait || !!lineageTrait) :
     step === 2 ? langPicks.length === langNeed && (bg !== "Custom" || bgSkills.length === 2) && (race !== "Dragonborn" || ancestry) && raceSkills.length === raceSkillNeed && (race !== "High Elf" || heCantrip.trim()) :
-    step === 3 ? skills.length === clsData.nSkills && (clsData.subLvl > 1 || subclass) && (cls !== "Fighter" || style) && (cls !== "Rogue" || rogueExp.length === 2) && (cls !== "Ranger" || (favEnemy && (favEnemy !== "Two humanoid races" || favHumanoids.trim()) && favLang)) :
+    step === 3 ? skills.length === clsData.nSkills && (clsData.subLvl > 1 || subclass) && subSkillChoices.every((c) => (subSkillPicks[c.key] || []).length === c.n) && (cls !== "Fighter" || style) && (cls !== "Rogue" || rogueExp.length === 2) && (cls !== "Ranger" || (favEnemy && (favEnemy !== "Two humanoid races" || favHumanoids.trim()) && favLang)) :
     step === 4 ? customAsiReady && (!raceData.feat || featPickDone(raceFeatDef, raceFeat)) :
     step === 6 ? (gearMode === "standard" ? standardReady : gearMode === "gold" ? gold !== null : false) :
     true;
@@ -437,7 +445,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
       spells: castsAt1 && (spellPicks.cantrips.length || spellPicks.spells.length) ? { [cls]: spellPicks } : {},
       abilities: finalScores, method,
       classes: [{ name: cls, level: 1, subclass: clsData.subLvl === 1 ? subclass : null }],
-      skills: [...skills, ...raceSkillsEff, ...bgGrantSkills, ...featSkillsEff, ...(raceData.grantSkills || [])].filter((v, i, a) => a.indexOf(v) === i),
+      skills: [...skills, ...raceSkillsEff, ...bgGrantSkills, ...featSkillsEff, ...(raceData.grantSkills || []), ...subFixedSkills, ...subSkillsPicked].filter((v, i, a) => a.indexOf(v) === i),
       feats: raceFeat?.name ? [raceFeat.name] : [],
       featChoices: raceFeat?.name ? { [raceFeat.name]: {
         bump: raceFeat.bump || null, skills: raceFeat.skills || [], choice: raceFeat.choice || null,
@@ -707,9 +715,25 @@ function CreateWizard({ onDone, onCancel, customs }) {
               <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>{clsData.subName} (chosen at level 1)</div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {allSubs(cls, customs).map((s) => (
-                  <button key={s} {...lorePress(s)} style={{ ...btn(subclass === s), padding: "6px 14px" }} onClick={() => setSubclass(s)}>{s}</button>
+                  <button key={s} {...lorePress(s)} style={{ ...btn(subclass === s), padding: "6px 14px" }} onClick={() => { setSubclass(s); setSubSkillPicks({}); setSkills(skills.filter((x) => !subclassProfsAt(cls, s, 1, customs).flatMap((p) => p.skills || []).includes(x))); }}>{s}</button>
                 ))}
               </div>
+              {subFixedSkills.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>{subclass} grants proficiency in {subFixedSkills.join(" and ")}.</div>}
+              {subSkillChoices.map((c) => {
+                const picked = subSkillPicks[c.key] || [];
+                const taken = [...skillsElsewhere.filter((x) => !picked.includes(x)), ...skills];
+                return (
+                  <div key={c.key} style={{ marginTop: 10 }}>
+                    <div style={{ color: T.gold, fontSize: 13, marginBottom: 6 }}>{c.feature} — choose {c.n} skill{c.n > 1 ? "s" : ""} ({picked.length}/{c.n})</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {c.from.filter((sk) => !taken.includes(sk)).map((sk) => (
+                        <button key={sk} style={{ ...btn(picked.includes(sk)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
+                          onClick={() => setSubSkillPicks({ ...subSkillPicks, [c.key]: picked.includes(sk) ? picked.filter((x) => x !== sk) : picked.length < c.n ? [...picked, sk] : picked })}>{sk}</button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
               {subclass
                 ? <SubclassDetail name={subclass} cls={cls} customs={customs} nowLevel={1} />
                 : <div style={{ color: T.dim, fontSize: 12, marginTop: 8 }}>Select one to read everything it grants — now and at every level to come.</div>}
@@ -875,10 +899,14 @@ function CreateWizard({ onDone, onCancel, customs }) {
                   <div key={s.name} style={{ marginBottom: 12 }}>
                     <div style={{ color: T.gold, fontSize: 13, marginBottom: 6 }}>{s.name}{s.options.length > 1 ? " — choose one" : ""}</div>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {s.options.map((o, j) => (
-                        <button key={o.label} style={{ ...btn(gp?.opt === j), padding: "6px 12px", fontSize: 13 }}
-                          onClick={() => setGearPicks({ ...gearPicks, [i]: { opt: j, picks: [] } })}>{o.label}</button>
-                      ))}
+                      {s.options.map((o, j) => {
+                        const usable = gearUsable(o);
+                        return (
+                          <button key={o.label} style={{ ...btn(gp?.opt === j), padding: "6px 12px", fontSize: 13, opacity: usable ? 1 : 0.45 }} disabled={!usable}
+                            title={usable ? undefined : "Your class and subclass aren't proficient with this"}
+                            onClick={() => setGearPicks({ ...gearPicks, [i]: { opt: j, picks: [] } })}>{o.label.replace(/ \(if proficient\)$/, "")}{usable ? "" : " — not proficient"}</button>
+                        );
+                      })}
                     </div>
                     {chosen?.pick && (
                       <div style={{ marginTop: 8 }}>
