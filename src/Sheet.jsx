@@ -1789,7 +1789,7 @@ const SHEET_GUIDE = [
   {
     icon: "up", title: "The header",
     items: [
-      ["Portrait", "tap it to set a photo from your camera roll; tap again to drag and zoom the framing."],
+      ["Portrait", "click or tap it to choose a photo, then again to drag and zoom the framing."],
       ["Share (the arrow-in-a-box)", "seals a read-only snapshot of this sheet into a link your DM can open — no passphrase, no way to touch your ledger."],
       ["Sourcebooks (the gear)", "choose which books feed the pickers — a disabled book vanishes from spell lists and summon musters without touching what you already know."],
       ["Level Up", "advance a class — choose new features, take or roll HP, and the whole sheet re-derives itself."],

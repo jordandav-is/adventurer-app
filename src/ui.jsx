@@ -359,7 +359,7 @@ function PortraitEditor({ p: initial, onPick, onSave, onRemove, onClose }) {
           {url && <img ref={img} src={url} alt="" draggable={false} style={{ ...frameStyle(p, S), pointerEvents: "none" }} />}
         </div>
         <input type="range" min={1} max={4} step={0.01} value={p.z} aria-label="Zoom" onChange={(e) => setP((q) => clampFrame({ ...q, z: +e.target.value }))} style={{ width: "100%", marginTop: 14, accentColor: T.gold }} />
-        <div style={{ color: T.dim, fontSize: 12, textAlign: "center" }}>Drag to move · pinch or slide to zoom</div>
+        <div style={{ color: T.dim, fontSize: 12, textAlign: "center" }}>Drag to move · scroll, pinch, or slide to zoom</div>
         <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
           <label style={{ ...btn(false), display: "inline-block" }}>Change photo<input type="file" accept="image/*" onChange={onPick} style={{ display: "none" }} /></label>
           <button style={{ ...btn(false), borderColor: T.blood, color: T.blood }} onClick={onRemove}>Remove</button>
