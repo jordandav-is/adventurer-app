@@ -43,8 +43,8 @@ function featureBody(rawName, cls, customs) {
   const strip = baseSubName(name);
   const ft = customs?.featureTexts || {};
   if (cls === "Ranger" && TEXT_2024.has(strip)) return FEATURE_TEXT[strip] || FEATURE_TEXT[name] || ft[name] || ft[strip];
-  return ft[name] || ft[strip]
-    || (cls && (FEATURE_TEXT[`${cls}:${name}`] || FEATURE_TEXT[`${cls}:${strip}`]))
+  return (cls && (ft[`${cls}:${name}`] || ft[`${cls}:${strip}`] || FEATURE_TEXT[`${cls}:${name}`] || FEATURE_TEXT[`${cls}:${strip}`]))
+    || ft[name] || ft[strip]
     || FEATURE_TEXT[name] || FEATURE_TEXT[strip]
     || CORE_FEATURE_INFO[strip]
     || (/\bfeature\b$/i.test(strip) ? "Granted by your subclass at this level — read its entry for the details." : null);
