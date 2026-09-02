@@ -505,8 +505,9 @@ function CreateWizard({ onDone, onCancel, customs }) {
 
       {step === 1 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 10 }}>
+          <div style={{ gridColumn: "1 / -1", color: T.dim, fontSize: 11, marginBottom: -2 }}>Long-press or right-click a race for its lore, traits, and art.</div>
           {Object.entries(RACES).filter(([, d]) => !d.group && isSourceEnabled(d)).map(([r, d]) => (
-            <div key={r} onClick={() => {
+            <div key={r} {...lorePress(r)} onClick={() => {
               setRace(r); setRaceAbilPicks([]); setCustomAsiSlots([]); setRaceSkills([]); setHeCantrip(""); setAncestry(null);
               setRaceFeat(null); setLineageTrait(null);
               setLangPicks(langPicks.filter((l) => !RACE_LANGS[r].fixed.includes(l)));
@@ -531,7 +532,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
             <span style={{ color: T.dim, fontSize: 12 }}> · Tabaxi, Aasimar, Goliath, Genasi, and the rest of the wider world ({Object.values(RACES).filter((d) => d.group && isSourceEnabled(d)).length})</span>
           </div>
           {showExpanded && Object.entries(RACES).filter(([, d]) => d.group && isSourceEnabled(d)).map(([r, d]) => (
-            <div key={r} onClick={() => {
+            <div key={r} {...lorePress(r)} onClick={() => {
               setRace(r); setRaceAbilPicks([]); setCustomAsiSlots([]); setRaceSkills([]); setHeCantrip(""); setAncestry(null);
               setRaceFeat(null); setLineageTrait(null);
               setLangPicks(langPicks.filter((l) => !RACE_LANGS[r].fixed.includes(l)));

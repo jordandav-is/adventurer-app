@@ -273,13 +273,33 @@ function LoreSheet({ customs }) {
           <span style={{ color: T.dim, cursor: "pointer", fontSize: 20, lineHeight: 1 }} onClick={close}>✕</span>
         </div>
         {item.meta && <div style={{ color: "#b48ead", fontSize: 13, marginTop: 4, fontStyle: item.block ? "italic" : "normal" }}>{item.meta}</div>}
+        {item.art && (
+          <img key={item.art} src={item.art} alt="" loading="lazy" onError={(e) => { e.currentTarget.style.display = "none"; }}
+            style={{ display: "block", width: "100%", maxHeight: 280, objectFit: "cover", objectPosition: "top", borderRadius: 10, marginTop: 12, border: `1px solid ${T.edge}` }} />
+        )}
         <div style={{ color: T.ink, fontSize: 14, lineHeight: 1.7, marginTop: 12 }}>
           {item.block
             ? <StatBlock c={item.block} />
             : item.body
             ? item.body.split(/\n+/).map((p, i) => <p key={i} style={{ margin: "0 0 10px" }}>{p}</p>)
+            : item.traits
+            ? null
             : <span style={{ color: T.dim }}>No lore recorded for this yet. Import a compendium XML in the Homebrew Forge to fill the library — or consult your books.</span>}
         </div>
+        {item.traits && (
+          <div style={{ marginTop: 6 }}>
+            <div style={{ color: T.gold, fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase" }}>Racial traits</div>
+            {item.traits.split(/\n+/).map((line, i) => {
+              // Baked trait lines read "Name. Description" — the run-in heading style of the printed books.
+              const m = line.match(/^([^.•]{1,48})\.\s+(.+)$/);
+              return (
+                <p key={i} style={{ margin: "6px 0 0", color: T.ink, fontSize: 13.5, lineHeight: 1.6 }}>
+                  {m ? <><b style={{ color: T.gold }}>{m[1]}.</b> {m[2]}</> : line}
+                </p>
+              );
+            })}
+          </div>
+        )}
         {item.foot && <div style={{ color: T.dim, fontSize: 12, marginTop: 6 }}>{item.foot}</div>}
       </div>
     </div>
