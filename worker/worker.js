@@ -64,10 +64,11 @@ async function tripo(env, path, init) {
 const tripoTask = (env, body) => tripo(env, "/task", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((d) => d.task_id);
 // The next task in the chain, given the finished steps. Rigging failures fall back to the raw model.
 const FORGE_CHAIN = [
-  (steps, tok) => ({ type: "image_to_model", file: { type: "jpg", file_token: tok }, model_version: TRIPO_MODEL_VERSION, texture: true, pbr: true, texture_quality: "detailed", geometry_quality: "detailed", face_limit: 60000 }),
-  (steps) => ({ type: "animate_rig", original_model_task_id: steps[0].task, out_format: "glb" }),
-  (steps) => ({ type: "animate_retarget", original_model_task_id: steps[1].task, animation: "preset:idle", out_format: "glb" }),
+  { type: "image_to_model", body: (steps, tok) => ({ file: { type: "jpg", file_token: tok }, model_version: TRIPO_MODEL_VERSION, texture: true, pbr: true, texture_quality: "detailed", geometry_quality: "detailed", face_limit: 60000 }) },
+  { type: "animate_rig", body: (steps) => ({ original_model_task_id: steps[0].task, out_format: "glb" }) },
+  { type: "animate_retarget", body: (steps) => ({ original_model_task_id: steps[1].task, animation: "preset:idle", out_format: "glb" }) },
 ];
+const forgeTask = (env, step, steps, tok) => tripoTask(env, { type: step.type, ...step.body(steps, tok) });
 
 async function gemini(env, model, body) {
   const res = await fetch(`${GEMINI}${model}:generateContent`, {
@@ -225,7 +226,7 @@ export default {
           const form = new FormData();
           form.append("file", new Blob([await img.arrayBuffer()], { type: img.httpMetadata?.contentType || "image/jpeg" }), "portrait.jpg");
           const up = await tripo(env, "/upload/sts", { method: "POST", body: form });
-          job = { steps: [{ type: "image_to_model", task: await tripoTask(env, FORGE_CHAIN[0]([], up.image_token || up.file_token)) }] };
+          job = { steps: [{ type: FORGE_CHAIN[0].type, task: await forgeTask(env, FORGE_CHAIN[0], [], up.image_token || up.file_token) }] };
           await accountStub.state(jobKey, job);
           return reply();
         }
@@ -238,7 +239,7 @@ export default {
         if (failed && job.steps.length === 1) { await accountStub.state(jobKey, null); return err(502, `The forge failed while sculpting (${t.status}).`, origin); }
         const next = !failed && FORGE_CHAIN[job.steps.length];
         if (next) {
-          job.steps.push({ type: next([]).type, task: await tripoTask(env, next(job.steps)) });
+          job.steps.push({ type: next.type, task: await forgeTask(env, next, job.steps) });
           await accountStub.state(jobKey, job);
           return reply();
         }
