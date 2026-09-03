@@ -30,8 +30,10 @@ const ASSET_MAX_BYTES = 8 * 1024 * 1024;
 const GEMINI = "https://generativelanguage.googleapis.com/v1beta/models/";
 const CONJURE_TEXT_MODEL = "gemini-3.8-flash";
 const CONJURE_IMAGE_MODEL = "gemini-3.1-flash-image";
-const CONJURE_ROUNDS_PER_ACCOUNT = 4;
-const CONJURE_ROUNDS_GLOBAL = 60;
+// Round limits come from wrangler vars; 0 (or unset) means unmetered. CONJURE_UNMETERED lists
+// emails that are never metered, comma-separated.
+const roundLimit = (v) => Number(v) || Infinity;
+const unmetered = (env, email) => (env.CONJURE_UNMETERED || "").split(",").map((e) => e.trim().toLowerCase()).includes(email);
 const CONJURE_FRAME = `You are an art director writing a single, richly detailed image-generation prompt for Dungeons & Dragons 5e character art in the painterly Wizards of the Coast sourcebook style. You receive a character brief: the player's own description plus sheet facts (ancestry, classes, background, features, persona, notes). Write the prompt as labelled paragraphs, 300-450 words in total, in this order:
 
 Character: who this is in one dense sentence or two — ancestry, apparent age, build, station in life, and what they should NOT be mistaken for (e.g. "not a nobleman, not an adventuring superhero").
@@ -474,9 +476,11 @@ export default {
       const account = await identityStub.getAccountById(accountId);
       const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromName(accountId));
       if (!account || !(await accountStub.touchSession(token))) return err(401, "Unauthorized", origin);
-      if (!(await accountStub.takeQuota("conjure", CONJURE_ROUNDS_PER_ACCOUNT))) return err(429, `This account has used all ${CONJURE_ROUNDS_PER_ACCOUNT} conjuring rounds.`, origin);
-      if (!(await identityStub.takeQuota("conjure", CONJURE_ROUNDS_GLOBAL))) {
-        await accountStub.takeQuota("conjure", CONJURE_ROUNDS_PER_ACCOUNT, -1);
+      const perAccount = unmetered(env, account.email) ? Infinity : roundLimit(env.CONJURE_ROUNDS_PER_ACCOUNT);
+      const global = unmetered(env, account.email) ? Infinity : roundLimit(env.CONJURE_ROUNDS_GLOBAL);
+      if (!(await accountStub.takeQuota("conjure", perAccount))) return err(429, `This account has used all ${perAccount} conjuring rounds.`, origin);
+      if (!(await identityStub.takeQuota("conjure", global))) {
+        await accountStub.takeQuota("conjure", perAccount, -1);
         return err(429, "The conjuring well has run dry for now.", origin);
       }
       try {
@@ -494,7 +498,7 @@ export default {
         if (!images.length) throw new Error("no images");
         return json(200, { prompt, images }, origin);
       } catch (e) {
-        await Promise.all([accountStub.takeQuota("conjure", CONJURE_ROUNDS_PER_ACCOUNT, -1), identityStub.takeQuota("conjure", CONJURE_ROUNDS_GLOBAL, -1)]);
+        await Promise.all([accountStub.takeQuota("conjure", perAccount, -1), identityStub.takeQuota("conjure", global, -1)]);
         return err(502, `The muse did not answer: ${e.message}`, origin);
       }
     }

@@ -344,7 +344,7 @@ function PortraitButton({ photo, portrait, size, name, brief, onChange }) {
   );
 }
 // Describe the character, let the aether paint four, choose one — or add a note and get four more.
-const CONJURE_ROUNDS = 2;
+const CONJURE_ROUNDS = Infinity;
 function ConjureSheet({ brief, onPick, onClose }) {
   const [text, setText] = useState("");
   const [note, setNote] = useState("");
