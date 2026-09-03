@@ -365,7 +365,7 @@ function ConjureSheet({ brief, onPick, onClose }) {
         {out && (
           <>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              {out.urls.map((u, i) => <img key={u} src={u} alt={`Candidate ${i + 1}`} onClick={() => onPick(out.blobs[i])} style={{ width: "100%", aspectRatio: "3 / 4", objectFit: "cover", borderRadius: 10, border: `1px solid ${T.edge}`, cursor: "pointer" }} />)}
+              {out.urls.map((u, i) => <img key={u} src={u} alt={`Candidate ${i + 1}`} onClick={() => onPick(out.blobs[i])} style={{ width: "100%", aspectRatio: "9 / 16", objectFit: "cover", borderRadius: 10, border: `1px solid ${T.edge}`, cursor: "pointer" }} />)}
             </div>
             <div style={{ color: T.dim, fontSize: 12, marginTop: 8 }}>Tap one to frame it. The muse read: <i>{out.prompt}</i></div>
           </>

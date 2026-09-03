@@ -32,13 +32,18 @@ const CONJURE_TEXT_MODEL = "gemini-3.8-flash";
 const CONJURE_IMAGE_MODEL = "gemini-3.1-flash-image";
 const CONJURE_ROUNDS_PER_ACCOUNT = 4;
 const CONJURE_ROUNDS_GLOBAL = 60;
-const CONJURE_FRAME = `You craft a single image-generation prompt for Dungeons & Dragons 5e character art in the painterly Wizards of the Coast house style. You receive a character brief: the player's own description plus sheet facts (ancestry, classes, background, features, persona, notes). Weave them into one vivid prompt built from these blocks, in order:
-1. Role and ancestry — what kind of person this is (e.g. half-orc barbarian veteran).
-2. Permanent visual anchors — details that keep the character recognisable (e.g. chipped left tusk, ritual scars, broken nose).
-3. Gear and silhouette — armour, weapons, shape (e.g. dented scale armour, fur mantle, heavy greataxe).
-4. Mood and pose — acting direction (e.g. quiet rage, shoulders squared, looking past the viewer).
-5. Light and format — make the image usable (e.g. overcast battlefield light, chest-up fantasy portrait).
-Rules: one character only, chest-up portrait framing, painterly fantasy illustration, no text, no watermark, no border, no logos. The player's description outranks sheet facts when they conflict. Invent tasteful specifics where the brief is thin; never invent a different ancestry or class. Respond with JSON: {"prompt": "<the prompt, 60-140 words>"}.`;
+const CONJURE_FRAME = `You are an art director writing a single, richly detailed image-generation prompt for Dungeons & Dragons 5e character art in the painterly Wizards of the Coast sourcebook style. You receive a character brief: the player's own description plus sheet facts (ancestry, classes, background, features, persona, notes). Write the prompt as labelled paragraphs, 300-450 words in total, in this order:
+
+Character: who this is in one dense sentence or two — ancestry, apparent age, build, station in life, and what they should NOT be mistaken for (e.g. "not a nobleman, not an adventuring superhero").
+Permanent visual anchors: skin, horns/ears/tail or other ancestry features, eye colour, hair, face shape, distinguishing marks, and the overall impression of the face. Be concrete and recognisable; say what is absent as well as what is present.
+Gear and silhouette: clothing layers with named colours and materials, armour, the weapon in hand, pouches, tools, and how worn or repaired everything looks. Name the things that must not appear (no plate, no glowing weapon, etc.).
+Class cues: how the class shows through lived-in details rather than costume clichés. If the brief holds a secret (a hidden class, patron, past), the image must keep it: say plainly which imagery is forbidden so nothing reveals it.
+Mood and pose: acting direction — what they feel, what they have just heard, posture, hands, gaze.
+Setting: a specific, grounded place that supports the identity: terrain, plants, weather, distance cues. Not fantastical scenery.
+Light and format: "Painterly high-fantasy tabletop RPG character illustration reminiscent of premium modern Dungeons & Dragons sourcebook art: realistic anatomy and materials, expressive brushwork, restrained detail, textured traditional-media feel, sophisticated natural palette." Then the light (direction, time of day, atmosphere) and: full-body three-quarter character portrait, vertical composition, readable from head to boots, simple environmental background, no text, no watermark, no border.
+Avoid: a comma-separated list of everything that would spoil it — photorealism, anime, videogame concept-art armour, exaggerated proportions, generic evil imagery, glowing magic, and anything the brief's secrets forbid.
+
+Rules: one character only. The player's description outranks sheet facts when they conflict; never change the stated ancestry or class. Invent tasteful, specific detail wherever the brief is thin — named colours, named plants, one small living touch such as a bird or a tucked sprig. Prefer weathered and accumulated over pristine. Respond with JSON: {"prompt": "<the full prompt with the labelled paragraphs separated by newlines>"}.`;
 
 async function gemini(env, model, body) {
   const res = await fetch(`${GEMINI}${model}:generateContent`, {
@@ -482,7 +487,7 @@ export default {
         if (typeof prompt !== "string" || !prompt) throw new Error("no prompt");
         const images = (await Promise.all(Array.from({ length: 4 }, () => gemini(env, CONJURE_IMAGE_MODEL, {
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseModalities: ["IMAGE"], imageConfig: { aspectRatio: "3:4" } },
+          generationConfig: { responseModalities: ["IMAGE"], imageConfig: { aspectRatio: "9:16" } },
         })))).map((parts) => parts.find((p) => p.inlineData)?.inlineData).filter(Boolean).map((d) => ({ mime: d.mimeType, data: d.data }));
         if (!images.length) throw new Error("no images");
         return json(200, { prompt, images }, origin);
