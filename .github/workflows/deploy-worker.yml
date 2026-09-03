@@ -5,6 +5,12 @@ on:
     branches: [main]
     paths: ["worker/**", ".github/workflows/deploy-worker.yml"]
   workflow_dispatch:
+    inputs:
+      lane:
+        description: "Which Worker to deploy"
+        type: choice
+        default: prod
+        options: [prod, dev]
 
 permissions:
   contents: read
@@ -31,13 +37,14 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       - run: |
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "Missing required secret CLOUDFLARE_API_TOKEN" >&2; exit 1; }
-          npm run deploy
+          npm run deploy -- ${{ inputs.lane == 'dev' && '--env dev' || '' }}
         working-directory: worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       - run: |
           test -n "$WORKER_URL" || { echo "Missing required variable SYNC_URL" >&2; exit 1; }
+          [ "$LANE" = "dev" ] && WORKER_URL="${WORKER_URL/ledger-sync./ledger-sync-dev.}"
           RESP_FILE="${RUNNER_TEMP}/smoke-response.txt"
           HTTP_STATUS=$(curl -sS -o "$RESP_FILE" -w "%{http_code}" --max-time 15 \
             -H "Origin: https://jordandav-is.github.io" \
@@ -51,3 +58,4 @@ jobs:
           fi
         env:
           WORKER_URL: ${{ vars.SYNC_URL }}
+          LANE: ${{ inputs.lane || 'prod' }}
