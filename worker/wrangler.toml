@@ -1,6 +1,8 @@
 name = "ledger-sync"
 main = "worker.js"
 compatibility_date = "2026-08-01"
+# Dashboard-set variables and secrets survive CI deploys.
+keep_vars = true
 
 [vars]
 # Conjuring meters: 0 = unmetered. Re-enable with e.g. 4 per account and 60 global.
@@ -27,3 +29,29 @@ new_sqlite_classes = ["Account"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["Identity"]
+
+# ---- dev lane: a second Worker with its own Durable Objects and bucket, deployed from any branch
+# with `wrangler deploy --env dev`. Prod is untouched. Set GOOGLE_API_KEY / TRIPO_API_KEY on it once.
+[env.dev]
+name = "ledger-sync-dev"
+keep_vars = true
+
+[env.dev.vars]
+GATE_SALT = "edffce3ce9712cbd6f997900359f6dd9"
+GATE_HASH = "faf79b899def21c5e3f3cdce3ac6813f2ac2c01c8b4f9c6cce222cf84ad4aed1"
+GATE_ITERATIONS = 600000
+CONJURE_ROUNDS_PER_ACCOUNT = 0
+CONJURE_ROUNDS_GLOBAL = 0
+CONJURE_UNMETERED = "jordan@jordandav.is"
+
+[[env.dev.r2_buckets]]
+binding = "ASSETS"
+bucket_name = "ledger-assets-dev"
+
+[[env.dev.durable_objects.bindings]]
+name = "IDENTITY"
+class_name = "Identity"
+
+[[env.dev.durable_objects.bindings]]
+name = "ACCOUNT"
+class_name = "Account"
