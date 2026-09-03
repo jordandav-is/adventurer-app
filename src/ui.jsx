@@ -1,8 +1,9 @@
 import { ABILITIES, ALL_SKILLS, CLASSES, CLASS_BLURB, FEAT_CATS, FEAT_MECHANICS, LANGS, MANEUVERS, PROF_TEXT, SRD_FOOT, SUB_LORE, baseSubName } from "./data.js";
 import { allFeats, crShow, featBlockedBy, featGrantedSpells, featureBody, fmtMod, infoFor, mod, schoolName, searchRank, sourceOf, spellFitsClass, subSpellData } from "./rules.js";
 import { srcSpells } from "./compendium.js";
-import { useEffect, useRef, useState } from "react";
-import { clampFrame, conjure, flushAssets, frameRect, frameStyle, importPhoto, thumbOf, useAssetUrl } from "./portrait.js";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { clampFrame, conjure, flushAssets, forge, frameRect, frameStyle, importPhoto, thumbOf, useAssetUrl } from "./portrait.js";
+const Stage = lazy(() => import("./stage.jsx"));
 import { getAccount } from "./sync.js";
 const T = {
   bg: "#161219", panel: "#221c26", panel2: "#2b2330", ink: "#e8dfd0", dim: "#a2937f",
@@ -317,10 +318,10 @@ function LoreSheet({ customs }) {
 // given, is a function building the character brief the conjurer works from.
 const veil = { position: "fixed", inset: 0, background: "#000000c8", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", animation: "sheetVeil 200ms ease" };
 const pane = { ...card, padding: 20, width: "min(92vw, 360px)", boxSizing: "border-box" };
-function PortraitButton({ photo, portrait, size, name, brief, onChange }) {
-  const [mode, setMode] = useState(null); // null | "menu" | "conjure" | portrait record being framed
+function PortraitButton({ photo, portrait, model, size, name, brief, onChange }) {
+  const [mode, setMode] = useState(null); // null | "menu" | "conjure" | "forge" | "stage" | portrait record being framed
   const pick = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importPhoto(f).then(setMode).catch(() => {}); };
-  const canConjure = !!brief && !!getAccount();
+  const signedIn = !!getAccount();
   return (
     <>
       <div role="button" tabIndex={0} title="Portrait" style={{ cursor: "pointer" }} onClick={() => setMode("menu")}>
@@ -331,16 +332,72 @@ function PortraitButton({ photo, portrait, size, name, brief, onChange }) {
           <div style={{ ...pane, display: "flex", flexDirection: "column", gap: 8 }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold, marginBottom: 4 }}>Portrait</div>
             <label style={{ ...btn(true), textAlign: "center" }}>Upload a photo<input type="file" accept="image/*" onChange={pick} style={{ display: "none" }} /></label>
-            {canConjure && <button style={btn(false)} onClick={() => setMode("conjure")}>Conjure one from your sheet</button>}
+            {brief && signedIn && <button style={btn(false)} onClick={() => setMode("conjure")}>Conjure one from your sheet</button>}
+            {model && <button style={btn(false)} onClick={() => setMode("stage")}>View in 3D</button>}
+            {portrait && signedIn && <button style={btn(false)} onClick={() => setMode("forge")}>{model ? "Forge the figure anew" : "Forge a 3D figure"}</button>}
             {portrait && <button style={btn(false)} onClick={() => setMode(portrait)}>Reframe</button>}
             {portrait && <button style={{ ...btn(false), borderColor: T.blood, color: T.blood }} onClick={() => { onChange({ photo: null, portrait: null }); setMode(null); }}>Remove</button>}
           </div>
         </div>
       )}
       {mode === "conjure" && <ConjureSheet brief={brief} onPick={(blob) => importPhoto(blob).then(setMode)} onClose={() => setMode(null)} />}
+      {mode === "forge" && <ForgeSheet imageId={portrait.id} onDone={(id) => { onChange({ model: { id, env: model?.env || "dawn" } }); setMode("stage"); }} onClose={() => setMode(null)} />}
+      {mode === "stage" && <StageSheet model={model} name={name} onEnv={(env) => onChange({ model: { ...model, env } })} onPick={(blob) => importPhoto(blob).then(setMode)} onClose={() => setMode(null)} />}
       {mode && typeof mode === "object" && <PortraitEditor p={mode} onClose={() => setMode(null)}
         onSave={(img, p) => { onChange({ photo: thumbOf(img, p), portrait: p }); flushAssets([{ portrait: p }]); setMode(null); }} />}
     </>
+  );
+}
+// Sculpt, rig and animate the current portrait. The Worker drives Tripo; we watch the stages go by.
+const FORGE_STAGES = { image_to_model: "Sculpting the figure", animate_rig: "Setting the bones", animate_retarget: "Teaching it to breathe", deliver: "Carrying it home" };
+function ForgeSheet({ imageId, onDone, onClose }) {
+  const [stage, setStage] = useState("image_to_model");
+  const [err, setErr] = useState(null);
+  useEffect(() => { let on = true; forge(imageId, (s) => on && setStage(s)).then((id) => on && onDone(id)).catch((e) => on && setErr(e.message)); return () => { on = false; }; }, [imageId]);
+  return (
+    <div style={veil}>
+      <div style={{ ...pane, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold }}>Forging a figure</div>
+        {err ? <div style={{ color: T.error, fontSize: 13, marginTop: 12 }}>{err}</div> : (
+          <>
+            <div style={{ margin: "18px auto 8px", width: 72, height: 72, borderRadius: "50%", background: T.panel2, border: `2px solid ${T.gold}`, animation: "conjureBreathe 1.8s ease-in-out infinite" }} />
+            <div style={{ color: T.ink, fontSize: 14 }}>{FORGE_STAGES[stage] || stage}…</div>
+            <div style={{ color: T.dim, fontSize: 12, marginTop: 4 }}>A few minutes. You can close this; the forge keeps working and the menu will offer the figure when it's done.</div>
+          </>
+        )}
+        <div style={{ marginTop: 16 }}><button style={btn(false)} onClick={onClose}>{err ? "Close" : "Leave it working"}</button></div>
+      </div>
+    </div>
+  );
+}
+// Full-screen stage with the environment picker and a way to make the view the portrait.
+function StageSheet({ model, name, onEnv, onPick, onClose }) {
+  const url = useAssetUrl(model.id);
+  const [state, setState] = useState("loading"); // loading | ready | error
+  const [envs, setEnvs] = useState(null);
+  const handle = useRef(null);
+  const chip = (on) => ({ ...btn(false), padding: "6px 12px", minHeight: 0, fontSize: 12.5, background: on ? T.panel2 : "transparent", borderColor: on ? T.gold : T.edge, color: on ? T.gold : T.ink });
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 80, background: T.bg }}>
+      {url && (
+        <Suspense fallback={null}>
+          <Stage url={url} env={model.env} onHandle={(h) => { handle.current = h; import("./stage.jsx").then((m) => setEnvs(m.ENVS)); }} onReady={(e) => setState(e ? "error" : "ready")} />
+        </Suspense>
+      )}
+      {state !== "ready" && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: state === "error" ? T.error : T.dim, fontFamily: "Georgia, serif", fontSize: 18, pointerEvents: "none" }}>
+          {state === "error" ? "The figure would not load." : "Raising the stage…"}
+        </div>
+      )}
+      <div style={{ position: "absolute", top: "calc(12px + env(safe-area-inset-top))", left: 12, right: 12, display: "flex", justifyContent: "space-between", alignItems: "center", pointerEvents: "none" }}>
+        <div style={{ fontFamily: "Georgia, serif", fontSize: 22, color: T.gold, textShadow: "0 1px 6px #000" }}>{name}</div>
+        <button style={{ ...cornerBtn, pointerEvents: "auto" }} aria-label="Close" onClick={onClose}>✕</button>
+      </div>
+      <div style={{ position: "absolute", bottom: "calc(14px + env(safe-area-inset-bottom))", left: 12, right: 12, display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", alignItems: "center" }}>
+        {envs && Object.entries(envs).map(([k, e]) => <button key={k} style={chip(k === model.env)} onClick={() => onEnv(k)}>{e.name}</button>)}
+        {state === "ready" && <button style={{ ...btn(true), padding: "8px 14px", minHeight: 0, fontSize: 13 }} onClick={() => handle.current?.snapshot().then((b) => b && onPick(b))}>Use this view as portrait</button>}
+      </div>
+    </div>
   );
 }
 // Describe the character, let the aether paint four, choose one — or add a note and get four more.

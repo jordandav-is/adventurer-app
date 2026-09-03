@@ -85,6 +85,22 @@ export async function conjure(brief) {
   return { prompt: data.prompt, blobs: data.images.map((i) => new Blob([bytes(i.data)], { type: i.mime })) };
 }
 
+// Ask the Worker to sculpt, rig and animate a figure from an uploaded image. Resolves to the GLB's
+// asset id; `onStage` hears each stage name as the job advances.
+export async function forge(imageId, onStage) {
+  const a = getAccount();
+  if (!a || !SYNC_URL) throw new Error("Sign in to forge a figure.");
+  const call = (init) => fetch(`${SYNC_URL}/forge/${imageId}?account=${a.id}`, { ...init, headers: { authorization: `Bearer ${a.token}` } })
+    .then(async (r) => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || "The forge is cold."); return d; });
+  let job = await call({ method: "POST" });
+  while (!job.done) {
+    onStage?.(job.stage);
+    await new Promise((ok) => setTimeout(ok, 6000));
+    job = await call({ method: "GET" });
+  }
+  return job.done;
+}
+
 // ---- object URLs, local first, then the aether ----
 const urls = new Map();
 export function assetUrl(id) {

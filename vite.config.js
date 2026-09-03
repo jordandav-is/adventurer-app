@@ -9,6 +9,7 @@ export default defineConfig({
       output: {
         codeSplitting: {
           groups: [
+            { name: "three", test: /[\\/]node_modules[\\/]three[\\/]/ },
             {
               name: "vendor",
               test: /[\\/]node_modules[\\/]/,

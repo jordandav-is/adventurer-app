@@ -166,7 +166,7 @@ async function drawShareCard(ch, customs) {
   return cv;
 }
 async function encodeShare(ch, customs) {
-  const { photo, portrait, log, hpLog, ...soul } = ch;
+  const { photo, portrait, model, log, hpLog, ...soul } = ch;
   const payload = { v: 1, t: new Date().toISOString().slice(0, 10), c: soul, x: shareCustomsFor(ch, customs) };
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
   const canDeflate = typeof CompressionStream !== "undefined";
@@ -184,7 +184,7 @@ async function decodeShare(token) {
   if (!c?.name || !RACES[c.race] || !Array.isArray(c.classes) || !c.classes.length || c.classes.some((x) => !CLASSES[x?.name]) || ABILITIES.some((a) => typeof c.abilities?.[a] !== "number")) {
     throw new Error("not a shared character");
   }
-  payload.c = { ...c, photo: null, portrait: null, log: [], skills: Array.isArray(c.skills) ? c.skills : [], maxHp: typeof c.maxHp === "number" ? c.maxHp : 1 };
+  payload.c = { ...c, photo: null, portrait: null, model: null, log: [], skills: Array.isArray(c.skills) ? c.skills : [], maxHp: typeof c.maxHp === "number" ? c.maxHp : 1 };
   payload.x = { ...EMPTY_CUSTOM, ...(payload.x || {}) };
   return payload;
 }
@@ -2343,7 +2343,7 @@ function Sheet({ ch: storedCh, onBack, onLevelUp, onDelete, onSpells, onNotes, o
         {shared ? (
           <Portrait photo={ch.photo} portrait={ch.portrait} size={96} name={ch.name} />
         ) : (
-          <PortraitButton photo={ch.photo} portrait={ch.portrait} size={96} name={ch.name} brief={() => portraitBrief(ch, customs)} onChange={onUpdate} />
+          <PortraitButton photo={ch.photo} portrait={ch.portrait} model={ch.model} size={96} name={ch.name} brief={() => portraitBrief(ch, customs)} onChange={onUpdate} />
         )}
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontFamily: "Georgia, serif", fontSize: 28, color: T.gold }}>{ch.name}</div>

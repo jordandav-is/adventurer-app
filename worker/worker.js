@@ -22,8 +22,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 const HEX_64_RE = /^[0-9a-f]{64}$/i;
 const DATA_KEY = /^(c\/[\w-]{1,64}|m\/(custom|prefs))$/;
 const ASSET_PATH = /^\/asset\/([0-9a-f]{64})$/;
-const ASSET_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const ASSET_MAX_BYTES = 8 * 1024 * 1024;
+const ASSET_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "model/gltf-binary"]);
+const ASSET_MAX_BYTES = 48 * 1024 * 1024;
+const FORGE_PATH = /^\/forge\/([0-9a-f]{64})$/;
 
 // Portrait conjuring: Gemini writes the prompt, Gemini paints four candidates. Rounds are metered
 // per account and globally so a runaway client cannot drain the image budget.
@@ -48,6 +49,25 @@ Avoid: a comma-separated list of everything that would spoil it — photorealism
 Revision: if the brief carries previousPrompt and revision, the player has seen art from previousPrompt and wants changes. Rewrite previousPrompt applying the revision faithfully and keep everything else as it was, so the character stays the same person. An empty revision means "again, but different": vary pose, setting and light while keeping the anchors.
 
 Rules: one character only. The player's description outranks sheet facts when they conflict; never change the stated ancestry or class. Invent tasteful, specific detail wherever the brief is thin — named colours, named plants, one small living touch such as a bird or a tucked sprig. Prefer weathered and accumulated over pristine. Respond with JSON: {"prompt": "<the full prompt with the labelled paragraphs separated by newlines>"}.`;
+
+// Tripo: image -> mesh with PBR textures -> rig -> idle animation. Each step is a task; the job
+// record in the Account DO remembers the chain so a poll can advance it. Keyed by image hash, so
+// forging the same image twice costs nothing.
+const TRIPO = "https://api.tripo3d.ai/v2/openapi";
+const TRIPO_MODEL_VERSION = "v3.1-20260211";
+async function tripo(env, path, init) {
+  const res = await fetch(TRIPO + path, { ...init, headers: { authorization: `Bearer ${env.TRIPO_API_KEY}`, ...init?.headers } });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.code !== 0) throw new Error(data?.message || data?.error || `Tripo ${res.status}`);
+  return data.data;
+}
+const tripoTask = (env, body) => tripo(env, "/task", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((d) => d.task_id);
+// The next task in the chain, given the finished steps. Rigging failures fall back to the raw model.
+const FORGE_CHAIN = [
+  (steps, tok) => ({ type: "image_to_model", file: { type: "jpg", file_token: tok }, model_version: TRIPO_MODEL_VERSION, texture: true, pbr: true, texture_quality: "detailed", geometry_quality: "detailed", face_limit: 60000 }),
+  (steps) => ({ type: "animate_rig", original_model_task_id: steps[0].task, out_format: "glb" }),
+  (steps) => ({ type: "animate_retarget", original_model_task_id: steps[1].task, animation: "preset:idle", out_format: "glb" }),
+];
 
 async function gemini(env, model, body) {
   const res = await fetch(`${GEMINI}${model}:generateContent`, {
@@ -182,6 +202,58 @@ export default {
       if ((await sha256Hex(bytes)) !== asset[1]) return err(400, "Digest mismatch", origin);
       await env.ASSETS.put(key, bytes, { httpMetadata: { contentType: type } });
       return json(200, { ok: true }, origin);
+    }
+
+    const forgeM = path.match(FORGE_PATH);
+    if (forgeM) {
+      if (req.method !== "GET" && req.method !== "POST") return err(405, "Method not allowed", origin);
+      if (!env.ASSETS || !env.TRIPO_API_KEY) return err(503, "The forge is not configured", origin);
+      const accountId = url.searchParams.get("account") || "";
+      const token = (req.headers.get("authorization") || "").replace(/^Bearer /, "");
+      if (!UUID_RE.test(accountId) || !HEX_64_RE.test(token)) return err(400, "Bad request", origin);
+      const account = await identityStub.getAccountById(accountId);
+      const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromName(accountId));
+      if (!account || !(await accountStub.touchSession(token))) return err(401, "Unauthorized", origin);
+      const imageId = forgeM[1], jobKey = "forge:" + imageId;
+      let job = await accountStub.state(jobKey);
+      const reply = () => json(200, job.done ? { done: job.done } : { stage: job.steps[job.steps.length - 1].type }, origin);
+      try {
+        if (!job) {
+          if (req.method !== "POST") return err(404, "No such forging", origin);
+          const img = await env.ASSETS.get(`${accountId}/${imageId}`);
+          if (!img) return err(404, "Upload the portrait first", origin);
+          const form = new FormData();
+          form.append("file", new Blob([await img.arrayBuffer()], { type: img.httpMetadata?.contentType || "image/jpeg" }), "portrait.jpg");
+          const up = await tripo(env, "/upload/sts", { method: "POST", body: form });
+          job = { steps: [{ type: "image_to_model", task: await tripoTask(env, FORGE_CHAIN[0]([], up.image_token || up.file_token)) }] };
+          await accountStub.state(jobKey, job);
+          return reply();
+        }
+        if (job.done) return reply();
+        const cur = job.steps[job.steps.length - 1];
+        const t = await tripo(env, `/task/${cur.task}`);
+        if (t.status === "queued" || t.status === "running") return reply();
+        if (t.status === "success") cur.output = t.output?.pbr_model || t.output?.model || t.output?.base_model;
+        const failed = t.status !== "success" || !cur.output;
+        if (failed && job.steps.length === 1) { await accountStub.state(jobKey, null); return err(502, `The forge failed while sculpting (${t.status}).`, origin); }
+        const next = !failed && FORGE_CHAIN[job.steps.length];
+        if (next) {
+          job.steps.push({ type: next([]).type, task: await tripoTask(env, next(job.steps)) });
+          await accountStub.state(jobKey, job);
+          return reply();
+        }
+        // Finished, or rigging gave up: deliver the best output we have into R2 as an asset.
+        const best = [...job.steps].reverse().find((s) => s.output).output;
+        const bytes = await (await fetch(best)).arrayBuffer();
+        if (bytes.byteLength > ASSET_MAX_BYTES) throw new Error("the figure is too large to keep");
+        const id = await sha256Hex(bytes);
+        await env.ASSETS.put(`${accountId}/${id}`, bytes, { httpMetadata: { contentType: "model/gltf-binary" } });
+        job.done = id;
+        await accountStub.state(jobKey, job);
+        return reply();
+      } catch (e) {
+        return err(502, `The forge faltered: ${e.message}`, origin);
+      }
     }
 
     if (req.method !== "POST") {
@@ -683,6 +755,13 @@ export class Account extends DurableObject {
   }
   takeQuota(key, limit, n) {
     return takeQuota(this.ctx.storage.sql, "meter:" + key, limit, n);
+  }
+  // Small JSON state slot: read with one argument, write with two (null deletes).
+  state(key, value) {
+    if (value === undefined) { const row = [...this.ctx.storage.sql.exec("SELECT v FROM auth_state WHERE k = ?", key)][0]; return row ? JSON.parse(row.v) : null; }
+    if (value === null) this.ctx.storage.sql.exec("DELETE FROM auth_state WHERE k = ?", key);
+    else this.ctx.storage.sql.exec("INSERT INTO auth_state (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v", key, JSON.stringify(value));
+    return value;
   }
   async verifyGate({ passphrase, gateSalt, gateHash, gateIter }) {
     const computed = await hashGatePassphrase(passphrase, gateSalt, gateIter);

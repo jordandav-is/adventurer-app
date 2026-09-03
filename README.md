@@ -84,6 +84,14 @@ From a signed-in sheet, the portrait menu offers **Conjure one from your sheet**
 cd worker && npx wrangler secret put GOOGLE_API_KEY
 ```
 
+### Forging a 3D figure
+
+From a signed-in sheet with a portrait, the portrait menu offers **Forge a 3D figure**. The Worker's `/forge/<imageHash>` route uploads the portrait to Tripo and walks a task chain — image to model (PBR textures), auto-rig, idle animation — storing the chain in the Account Durable Object keyed by image hash so a repeat costs nothing. The finished GLB lands in R2 as an ordinary content-addressed asset and the character records `model: { id, env }`. If rigging fails the unrigged mesh is delivered instead. **View in 3D** opens the stage: a lazy-loaded three.js scene (its own chunk, never in the main bundle) with the figure on a plinth under a procedural sky. Environments are sky-shader presets in `src/stage.jsx`, and the same sky lights the figure through a PMREM map. **Use this view as portrait** snapshots the stage into the portrait framing editor. The Worker needs a Tripo key as a secret:
+
+```sh
+cd worker && npx wrangler secret put TRIPO_API_KEY
+```
+
 ## Share a sheet
 
 The share button (top right of a character sheet) encodes a read-only snapshot of the character and referenced homebrew into the URL hash fragment as compressed base64url data. The fragment is processed entirely client-side without reaching GitHub or the sync Worker, bypassing the passphrase gate for that single sheet. Dice rolling and rule lookups remain active while trackers and edits are locked. The share tray also generates a character card image containing portrait, stats, and badges.
