@@ -101,10 +101,6 @@ export async function dummyPasswordWork(password = "dummy-password") {
   return derivePbkdf2Sha256Hex(pwd, DUMMY_SALT, 600000);
 }
 
-export async function hashGatePassphrase(passphrase, saltStr, iterations = 600000) {
-  const enc = new TextEncoder();
-  return derivePbkdf2Sha256Hex(passphrase.trim(), enc.encode(saltStr), iterations);
-}
 
 export function generateRecoveryKey() {
   const bytes = new Uint8Array(32);

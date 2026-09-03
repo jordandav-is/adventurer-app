@@ -6,7 +6,6 @@ import {
   verifyPasswordRecord,
   isValidPasswordRecord,
   dummyPasswordWork,
-  hashGatePassphrase,
   timingSafeEqualStr,
   derivePbkdf2Sha256Hex,
   bytesToHex,
@@ -105,14 +104,6 @@ describe("password module", () => {
     assert.equal(timingSafeEqualStr("hello", 123), false);
   });
 
-  it("hashes gate passphrase correctly with salt and iterations", async () => {
-    const salt = "edffce3ce9712cbd6f997900359f6dd9";
-    const hash = await hashGatePassphrase("testpass", salt, 1000);
-    assert.match(hash, /^[0-9a-f]{64}$/i);
-
-    const expected = crypto.pbkdf2Sync("testpass", salt, 1000, 32, "sha256").toString("hex");
-    assert.equal(hash, expected);
-  });
 
   it("converts hex and bytes correctly", () => {
     const bytes = new Uint8Array([0xde, 0xad, 0xbe, 0xef]);

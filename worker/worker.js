@@ -4,7 +4,6 @@ import {
   verifyPasswordRecord,
   isValidPasswordRecord,
   dummyPasswordWork,
-  hashGatePassphrase,
   timingSafeEqualStr,
   generateRecoveryKey,
   normalizeRecoveryKey,
@@ -207,17 +206,14 @@ export default {
     }
 
     if (path === "/register") {
-      const { email, password, passphrase, registrationId } = body;
+      const { email, password, registrationId } = body;
       if (
         typeof email !== "string" ||
         typeof password !== "string" ||
-        typeof passphrase !== "string" ||
         typeof registrationId !== "string" ||
         email.length > 254 ||
         password.length < 8 ||
         password.length > 256 ||
-        passphrase.length < 1 ||
-        passphrase.length > 256 ||
         !HEX_64_RE.test(registrationId)
       ) {
         return err(400, "Bad request", origin);
@@ -226,22 +222,6 @@ export default {
       const normEmail = email.trim().toLowerCase();
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normEmail)) {
         return err(400, "Bad request", origin);
-      }
-
-      const gateSalt = env.GATE_SALT || "edffce3ce9712cbd6f997900359f6dd9";
-      const gateHash = env.GATE_HASH || "faf79b899def21c5e3f3cdce3ac6813f2ac2c01c8b4f9c6cce222cf84ad4aed1";
-      const gateIter = Number(env.GATE_ITERATIONS || 600000);
-
-      const authWorkStub = await getAuthWorkStub(env, normEmail);
-      const gateRes = await authWorkStub.verifyGate({
-        passphrase,
-        gateSalt,
-        gateHash,
-        gateIter,
-      });
-
-      if (!gateRes.ok) {
-        return err(403, "The gate does not yield.", origin);
       }
       const regDigest = await sha256Hex(registrationId);
       const prepRes = await identityStub.prepareRegistration({
@@ -683,10 +663,6 @@ export class Account extends DurableObject {
   }
   takeQuota(key, limit, n) {
     return takeQuota(this.ctx.storage.sql, "meter:" + key, limit, n);
-  }
-  async verifyGate({ passphrase, gateSalt, gateHash, gateIter }) {
-    const computed = await hashGatePassphrase(passphrase, gateSalt, gateIter);
-    return { ok: timingSafeEqualStr(computed, gateHash) };
   }
 
   async runDummyPassword(password) {

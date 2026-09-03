@@ -74,9 +74,12 @@ async function authPost(path, body) {
   return data;
 }
 
-export async function registerPassword(email, password, passphrase, registrationId) {
+export async function registerPassword(email, password, registrationId) {
+  if (arguments.length === 4) {
+    registrationId = arguments[3];
+  }
   email = (email || "").trim().toLowerCase();
-  const data = await authPost("/register", { email, password, passphrase, registrationId });
+  const data = await authPost("/register", { email, password, registrationId });
   setAccount({
     id: data.account.id,
     email: data.account.email,

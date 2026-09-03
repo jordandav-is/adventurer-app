@@ -3,9 +3,6 @@ main = "worker.js"
 compatibility_date = "2026-08-01"
 
 [vars]
-GATE_SALT = "edffce3ce9712cbd6f997900359f6dd9"
-GATE_HASH = "faf79b899def21c5e3f3cdce3ac6813f2ac2c01c8b4f9c6cce222cf84ad4aed1"
-GATE_ITERATIONS = 600000
 # Conjuring meters: 0 = unmetered. Re-enable with e.g. 4 per account and 60 global.
 CONJURE_ROUNDS_PER_ACCOUNT = 0
 CONJURE_ROUNDS_GLOBAL = 0

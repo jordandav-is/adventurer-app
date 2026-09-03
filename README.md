@@ -21,7 +21,7 @@ npm run dev
 
 The deployed web application is protected by a client-side passphrase gate (`src/gate.jsx`). It computes a PBKDF2-SHA256 hash (600,000 iterations) from the entered passphrase and checks it against public parameters in `src/gate-config.js`.
 
-The gate is a client-side filter for static hosting, not cryptographic backend authorization. Local character data remains in the browser (IndexedDB with localStorage fallback), so unauthenticated visitors see only their own empty local state. During account registration, the raw passphrase is submitted over TLS and verified server-side using the committed gate parameters.
+The gate is a client-side filter for static hosting, not cryptographic backend authorization. Local character data remains in the browser (IndexedDB with localStorage fallback), so unauthenticated visitors see only their own empty local state.
 
 ## Account sync architecture
 
@@ -34,7 +34,7 @@ When configured, sync runs on a Cloudflare Worker backed by SQLite Durable Objec
 
 ## Authentication and credentials
 
-- **Email/password registration**: Account registration (`/register`) requires an email, password, the ledger gate passphrase, and a client-generated registration ID. The Worker validates input lengths, verifies the raw passphrase server-side against committed gate parameters (the public gate hash is never accepted as an authorization bearer), idempotently provisions the account via the Identity singleton, and returns a 256-bit single-use recovery key.
+- **Email/password registration**: Account registration (`/register`) requires an email, password, and a client-generated registration ID. The Worker validates input lengths, idempotently provisions the account via the Identity singleton, and returns a 256-bit single-use recovery key.
 - **Unverified login identifier and user-held recovery keys**: Email serves solely as an unverified login identifier to namespace accounts. There is deliberately no email verification, transactional email provider, or administrative backdoor. Instead, users are issued a cryptographically random, 256-bit one-time recovery key upon account creation (`/register`). Stored on the server strictly as a SHA-256 digest, this key allows resetting forgotten passwords (`/recover`) without relying on an external email service.
 - **Password reset and key rotation**: Account recovery (`/recover`) verifies the recovery key against its stored hash, updates the password, revokes all existing sessions, tickets, and active WebSockets, and automatically issues a fresh replacement recovery key. Signed-in users can also update their password (`/password`) or rotate their recovery key (`/recovery-key`) with their current password. Losing both password and recovery key makes the synchronized account unrecoverable.
 - **Password storage and verification**: Passwords cross TLS to the Worker and are stored exclusively on the Account DO as versioned PBKDF2-SHA256 hashes with random 16-byte salts and 600,000 iterations. Derivation is computed via the exact-pinned, independently audited, zero-runtime-dependency `@noble/hashes` implementation inside Account Durable Objects (deployed workerd caps native WebCrypto PBKDF2 at 100,000 iterations, while Durable Objects provide the 30-second CPU budget). Passwords and plaintext recovery keys are never stored client-side. To prevent user enumeration and timing attacks, failed logins and invalid recovery attempts perform uniform KDF work and return a fixed delay and response. Correct credentials always succeed with no account lockout.
