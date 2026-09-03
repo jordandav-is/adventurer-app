@@ -1,7 +1,8 @@
 import { ABILITIES, ALL_SKILLS, CLASSES, CLASS_BLURB, FEAT_CATS, FEAT_MECHANICS, LANGS, MANEUVERS, PROF_TEXT, SRD_FOOT, SUB_LORE, baseSubName } from "./data.js";
 import { allFeats, crShow, featBlockedBy, featGrantedSpells, featureBody, fmtMod, infoFor, mod, schoolName, searchRank, sourceOf, spellFitsClass, subSpellData } from "./rules.js";
 import { srcSpells } from "./compendium.js";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { clampFrame, flushAssets, frameRect, frameStyle, importPhoto, thumbOf, useAssetUrl } from "./portrait.js";
 const T = {
   bg: "#161219", panel: "#221c26", panel2: "#2b2330", ink: "#e8dfd0", dim: "#a2937f",
   gold: "#c9a44c", blood: "#8e3b46", edge: "#3a3040", green: "#7da05f", error: "#d76a76",
@@ -309,32 +310,76 @@ function LoreSheet({ customs }) {
     </div>
   );
 }
-function usePhotoUpload(onPhoto) {
-  return useCallback((e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const img = new Image();
-    const reader = new FileReader();
-    reader.onload = () => {
-      img.onload = () => {
-        const c = document.createElement("canvas");
-        const s = 220;
-        c.width = s; c.height = s;
-        const ctx = c.getContext("2d");
-        const min = Math.min(img.width, img.height);
-        ctx.drawImage(img, (img.width - min) / 2, (img.height - min) / 2, min, min, 0, 0, s, s);
-        onPhoto(c.toDataURL("image/jpeg", 0.82));
-      };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  }, [onPhoto]);
+// Portrait button: tap to pick a photo (or reframe the one you have). onChange receives the full
+// patch { photo, portrait } — thumb plus framing record — or nulls on removal.
+function PortraitButton({ photo, portrait, size, name, onChange }) {
+  const [edit, setEdit] = useState(null);
+  const pick = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importPhoto(f).then(setEdit).catch(() => {}); };
+  return (
+    <>
+      {portrait ? (
+        <div role="button" tabIndex={0} title="Reframe or change portrait" style={{ cursor: "pointer" }} onClick={() => setEdit(portrait)}>
+          <Portrait photo={photo} portrait={portrait} size={size} name={name} />
+        </div>
+      ) : (
+        <label style={{ cursor: "pointer" }} title="Set a portrait">
+          <Portrait photo={photo} size={size} name={name} />
+          <input type="file" accept="image/*" onChange={pick} style={{ display: "none" }} />
+        </label>
+      )}
+      {edit && <PortraitEditor p={edit} onPick={pick} onClose={() => setEdit(null)}
+        onSave={(img, p) => { onChange({ photo: thumbOf(img, p), portrait: p }); flushAssets([{ portrait: p }]); setEdit(null); }}
+        onRemove={() => { onChange({ photo: null, portrait: null }); setEdit(null); }} />}
+    </>
+  );
 }
-function Portrait({ photo, size = 72, name }) {
+function PortraitEditor({ p: initial, onPick, onSave, onRemove, onClose }) {
+  const S = 260;
+  const [p, setP] = useState(initial);
+  useEffect(() => setP(initial), [initial]);
+  const url = useAssetUrl(p.id);
+  const img = useRef(null), pts = useRef(new Map());
+  const k = S / frameRect(p).side;
+  const nudge = (dx, dy, dz = 1) => setP((q) => clampFrame({ ...q, x: q.x - dx / (k * q.w), y: q.y - dy / (k * q.h), z: q.z * dz }));
+  const down = (e) => { e.currentTarget.setPointerCapture(e.pointerId); pts.current.set(e.pointerId, [e.clientX, e.clientY]); };
+  const up = (e) => pts.current.delete(e.pointerId);
+  const move = (e) => {
+    const m = pts.current; if (!m.has(e.pointerId)) return;
+    const [ox, oy] = m.get(e.pointerId), other = [...m].find(([id]) => id !== e.pointerId)?.[1];
+    if (!other) nudge(e.clientX - ox, e.clientY - oy);
+    else nudge((e.clientX - ox) / 2, (e.clientY - oy) / 2, Math.hypot(e.clientX - other[0], e.clientY - other[1]) / Math.hypot(ox - other[0], oy - other[1]));
+    m.set(e.pointerId, [e.clientX, e.clientY]);
+  };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", animation: "sheetVeil 200ms ease" }} onClick={onClose}>
+      <div style={{ ...card, padding: 20, width: "min(92vw, 360px)", boxSizing: "border-box" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold, marginBottom: 12 }}>Frame the portrait</div>
+        <div onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onWheel={(e) => nudge(0, 0, 1 - e.deltaY / 600)}
+          style={{ position: "relative", width: S, height: S, margin: "0 auto", borderRadius: "50%", overflow: "hidden", border: `2px solid ${T.gold}`, background: T.panel2, touchAction: "none", cursor: "grab", userSelect: "none" }}>
+          {url && <img ref={img} src={url} alt="" draggable={false} style={{ ...frameStyle(p, S), pointerEvents: "none" }} />}
+        </div>
+        <input type="range" min={1} max={4} step={0.01} value={p.z} aria-label="Zoom" onChange={(e) => setP((q) => clampFrame({ ...q, z: +e.target.value }))} style={{ width: "100%", marginTop: 14, accentColor: T.gold }} />
+        <div style={{ color: T.dim, fontSize: 12, textAlign: "center" }}>Drag to move · scroll, pinch, or slide to zoom</div>
+        <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+          <label style={{ ...btn(false), display: "inline-block" }}>Change photo<input type="file" accept="image/*" onChange={onPick} style={{ display: "none" }} /></label>
+          <button style={{ ...btn(false), borderColor: T.blood, color: T.blood }} onClick={onRemove}>Remove</button>
+          <span style={{ flex: 1 }} />
+          <button style={btn(false)} onClick={onClose}>Cancel</button>
+          <button style={{ ...btn(true), opacity: url ? 1 : 0.4 }} disabled={!url} onClick={() => onSave(img.current, p)}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+// Small circles use the 220px thumb; when the full-resolution original is at hand, frame that instead.
+function Portrait({ photo, portrait, size = 72, name }) {
+  const url = useAssetUrl(portrait?.id);
+  const ring = { width: size, height: size, borderRadius: "50%", border: `2px solid ${T.gold}` };
+  if (url && portrait) return <div style={{ ...ring, position: "relative", overflow: "hidden" }}><img src={url} alt={name} style={frameStyle(portrait, size)} /></div>;
   return photo ? (
-    <img src={photo} alt={name} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", border: `2px solid ${T.gold}` }} />
+    <img src={photo} alt={name} style={{ ...ring, objectFit: "cover" }} />
   ) : (
-    <div style={{ width: size, height: size, borderRadius: "50%", background: T.panel2, border: `2px solid ${T.edge}`, display: "flex", alignItems: "center", justifyContent: "center", color: T.gold, fontFamily: "Georgia, serif", fontSize: size * 0.4 }}>
+    <div style={{ ...ring, borderColor: T.edge, background: T.panel2, display: "flex", alignItems: "center", justifyContent: "center", color: T.gold, fontFamily: "Georgia, serif", fontSize: size * 0.4 }}>
       {(name || "?")[0].toUpperCase()}
     </div>
   );
@@ -535,4 +580,4 @@ function FeatPickPanel({ pick: pk, value, set, customs, level = 20, skillsTaken,
     </div>
   );
 }
-export { T, card, btn, cornerBtn, SHELL_STYLE, GLOBAL_CSS, ICON_PATHS, Icon, CLASS_THEMES, ClassTag, FeatureLine, SubclassDetail, ClassDetail, __showLore, lorePress, LoreSheet, usePhotoUpload, Portrait, LazyList, SpellPickGrid, FeatChooser };
+export { T, card, btn, cornerBtn, SHELL_STYLE, GLOBAL_CSS, ICON_PATHS, Icon, CLASS_THEMES, ClassTag, FeatureLine, SubclassDetail, ClassDetail, __showLore, lorePress, LoreSheet, PortraitButton, Portrait, LazyList, SpellPickGrid, FeatChooser };

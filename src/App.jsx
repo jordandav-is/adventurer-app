@@ -1,6 +1,7 @@
 import { AccountPanel } from "./account.jsx";
 import { EMPTY_CUSTOM, __BASE, exportLedger, fetchBaseCompendium, loadChars, loadCustom, loadSrcPrefs, mergeCompendium, mergeLedger, saveChars, saveCustom, saveSrcPrefs, setSourceExclusions, stripBase, unionCustoms } from "./compendium.js";
 import { SYNC_URL } from "./sync-config.js";
+import { flushAssets } from "./portrait.js";
 import { effMaxHp, effectsOf, foldStarredSpells, totalLevel } from "./rules.js";
 import { useEffect, useRef, useState } from "react";
 import { ClassTag, GLOBAL_CSS, Icon, LoreSheet, Portrait, SHELL_STYLE, T, card } from "./ui.jsx";
@@ -100,11 +101,7 @@ export default function App() {
         if (first) cloud.pushCustom(s);
       },
       prefs: (off) => { const s = new Set(off); stateRef.current.srcOff = s; setSourceExclusions(s); setSrcOff(s); saveSrcPrefs(s); },
-      photo: (id, p) => {
-        const next = (stateRef.current.chars || []).map((c) => (c.id === id ? { ...c, photo: p } : c));
-        stateRef.current.chars = next; setChars(next); saveChars(next);
-      },
-      status: setSyncState,
+      status: (s) => { setSyncState(s); if (s === "live") flushAssets(stateRef.current.chars || []); },
       error: setIoMsg,
       signedOut: () => setAccount(null),
     });
@@ -237,7 +234,6 @@ export default function App() {
           onNotes={(n) => persist(chars.map((c) => (c.id === active.id ? { ...c, notes: n } : c)))}
           onInvocations={(inv) => persist(chars.map((c) => (c.id === active.id ? { ...c, invocations: inv } : c)))} onLevelUp={() => setLeveling(true)}
           onDelete={() => { cloud ? cloud.deleteChar(active.id) : (preload.current = { ...preload.current, del: [...(preload.current?.del || []), active.id] }); persist(chars.filter((c) => c.id !== active.id)); setView("roster"); }}
-          onPhoto={(p) => persist(chars.map((c) => (c.id === active.id ? { ...c, photo: p } : c)))}
           onSources={() => setSourcesOpen(true)} />
       )}
 

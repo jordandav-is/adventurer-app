@@ -2,7 +2,7 @@ import { ABILITIES, ABIL_NAMES, ALL_SKILLS, ANCESTRIES, ARCANUM_UNLOCK, ASI, CAN
 import { EFFECT_BY_KEY, EFFECT_LIB, SUMMON_LIB, allKnownCantrips, allSubFeats, ammoRowFor, applyEffectPatch, armorClass, attuneBlocker, attunedRows, attunementCap, b64uFromBytes, bladeRiderTier, bytesFromB64u, canEquip, characterChoiceGroups, classLevel, consumableEffectKey, crShow, creatureByName, describeCustomFx, effDefOf, effEnds, effMaxHp, effectiveAbilities, effectsOf, equippedOf, featChoiceOf, featChoiceSummary, featEffects, featureBuckets, featHpBonus, findItem, fmtMod, fxMods, gearMods, hasEffect, hasStyle, hasSub, healingDiceFor, grantAbilityFor, grantLabel, grantTrackerFor, grantsFor, instMaxHp, isArmorType, isEquippable, isBladeCantrip, isConcDef, isConcInst, isConsumableRow, isWeaponType, knownSpellNames, maxSpellLevel, minionApplyHp, minionAttackRolls, minionHp, minionSaves, minionSkills, minionsOf, mod, pipeBytes, profBonus, profSummary, round2, schoolName, searchRank, shareCustomsFor, sourceOf, speedOf, spellCapacity, spellFitsClass, spellGrantsOf, spellSlots, spiritAc, spiritDefFromSpell, spiritHp, strikeProfile, subSpellData, bonusProfsOf, summonDefFor, summonFormsFor, summonerSpellAtk, totalLevel, useRecipe, useTrackersFor, usesAmmo } from "./rules.js";
 import { EMPTY_CUSTOM, SRD_SRC, __BESTIARY, __SOURCES, creatureSrcOf, isSourceEnabled, sourceCodesOf, sourceLabelOf, spellSrcOf, srcSpells, uid } from "./compendium.js";
 import React, { useEffect, useState } from "react";
-import { CLASS_THEMES, ClassTag, ICON_PATHS, Icon, LazyList, Portrait, SpellPickGrid, T, __showLore, btn, card, cornerBtn, lorePress, usePhotoUpload } from "./ui.jsx";
+import { CLASS_THEMES, ClassTag, ICON_PATHS, Icon, LazyList, Portrait, SpellPickGrid, PortraitButton, T, __showLore, btn, card, cornerBtn, lorePress } from "./ui.jsx";
 import { DiceTray, RollTray, roll, rollFeatures, rollNotes } from "./dice.jsx";
 const SHARE_W = 1200, SHARE_H = 630;
 const CARD_SERIF = 'Georgia, "Liberation Serif", "Times New Roman", serif';
@@ -149,7 +149,7 @@ async function drawShareCard(ch, customs) {
   return cv;
 }
 async function encodeShare(ch, customs) {
-  const { photo, log, hpLog, ...soul } = ch;
+  const { photo, portrait, log, hpLog, ...soul } = ch;
   const payload = { v: 1, t: new Date().toISOString().slice(0, 10), c: soul, x: shareCustomsFor(ch, customs) };
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
   const canDeflate = typeof CompressionStream !== "undefined";
@@ -167,7 +167,7 @@ async function decodeShare(token) {
   if (!c?.name || !RACES[c.race] || !Array.isArray(c.classes) || !c.classes.length || c.classes.some((x) => !CLASSES[x?.name]) || ABILITIES.some((a) => typeof c.abilities?.[a] !== "number")) {
     throw new Error("not a shared character");
   }
-  payload.c = { ...c, photo: null, log: [], skills: Array.isArray(c.skills) ? c.skills : [], maxHp: typeof c.maxHp === "number" ? c.maxHp : 1 };
+  payload.c = { ...c, photo: null, portrait: null, log: [], skills: Array.isArray(c.skills) ? c.skills : [], maxHp: typeof c.maxHp === "number" ? c.maxHp : 1 };
   payload.x = { ...EMPTY_CUSTOM, ...(payload.x || {}) };
   return payload;
 }
@@ -1789,7 +1789,7 @@ const SHEET_GUIDE = [
   {
     icon: "up", title: "The header",
     items: [
-      ["Portrait", "tap it to set a photo from your camera roll."],
+      ["Portrait", "click or tap it to choose a photo, then again to drag and zoom the framing."],
       ["Share (the arrow-in-a-box)", "seals a read-only snapshot of this sheet into a link your DM can open — no passphrase, no way to touch your ledger."],
       ["Sourcebooks (the gear)", "choose which books feed the pickers — a disabled book vanishes from spell lists and summon musters without touching what you already know."],
       ["Level Up", "advance a class — choose new features, take or roll HP, and the whole sheet re-derives itself."],
@@ -2022,7 +2022,7 @@ function ShareSheet({ ch, customs, onClose }) {
     </div>
   );
 }
-function Sheet({ ch: storedCh, onBack, onLevelUp, onDelete, onPhoto, onSpells, onNotes, onInvocations, onUpdate, onSources, customs, shared }) {
+function Sheet({ ch: storedCh, onBack, onLevelUp, onDelete, onSpells, onNotes, onInvocations, onUpdate, onSources, customs, shared }) {
   const gearAbilities = effectiveAbilities(storedCh, customs);
   const ch = { ...storedCh, abilities: gearAbilities.abilities };
   const lvl = totalLevel(ch);
@@ -2030,7 +2030,6 @@ function Sheet({ ch: storedCh, onBack, onLevelUp, onDelete, onPhoto, onSpells, o
   const slots = spellSlots(ch.classes);
   const wl = ch.classes.find((c) => c.name === "Warlock");
   const pact = wl ? PACT(wl.level) : null;
-  const photoUpload = usePhotoUpload(onPhoto);
   const [confirmDel, setConfirmDel] = useState(false);
 
   const fx = fxMods(ch);
@@ -2325,12 +2324,9 @@ function Sheet({ ch: storedCh, onBack, onLevelUp, onDelete, onPhoto, onSpells, o
 
       <div style={{ ...card, padding: 20, display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
         {shared ? (
-          <Portrait photo={ch.photo} size={96} name={ch.name} />
+          <Portrait photo={ch.photo} portrait={ch.portrait} size={96} name={ch.name} />
         ) : (
-          <label style={{ cursor: "pointer" }} title="Click to change portrait">
-            <Portrait photo={ch.photo} size={96} name={ch.name} />
-            <input type="file" accept="image/*" onChange={photoUpload} style={{ display: "none" }} />
-          </label>
+          <PortraitButton photo={ch.photo} portrait={ch.portrait} size={96} name={ch.name} onChange={onUpdate} />
         )}
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontFamily: "Georgia, serif", fontSize: 28, color: T.gold }}>{ch.name}</div>
