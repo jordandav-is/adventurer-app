@@ -37,6 +37,7 @@ const GLOBAL_CSS = `
   @keyframes diceTumbleA { from { transform: rotate3d(1, 0.7, 0.35, -1620deg); } to { transform: rotate3d(1, 0.7, 0.35, 0deg); } }
   @keyframes diceTumbleB { from { transform: rotate3d(0.6, 1, 0.45, 1440deg); } to { transform: rotate3d(0.6, 1, 0.45, 0deg); } }
   @keyframes sheetVeil { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes conjureBreathe { 0%, 100% { filter: brightness(0.75); box-shadow: 0 0 0 0 #c9a44c00; } 50% { filter: brightness(1.3); box-shadow: 0 0 22px 3px #c9a44c80; } }
   @keyframes sheetRise { from { transform: translateY(100%); } to { transform: translateY(0); } }
   .sheet-tall { height: min(82vh, 700px); height: min(82dvh, 700px); }
   .sheet-cap { max-height: min(88vh, 700px); max-height: min(88dvh, 700px); }
@@ -342,38 +343,48 @@ function PortraitButton({ photo, portrait, size, name, brief, onChange }) {
     </>
   );
 }
-// Describe the character, let the aether paint four, choose one.
+// Describe the character, let the aether paint four, choose one — or add a note and get four more.
+const CONJURE_ROUNDS = 2;
 function ConjureSheet({ brief, onPick, onClose }) {
   const [text, setText] = useState("");
+  const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
-  const [out, setOut] = useState(null); // { prompt, urls, blobs }
-  useEffect(() => () => out?.urls.forEach(URL.revokeObjectURL), [out]);
+  const [rounds, setRounds] = useState([]); // [{ prompt, urls, blobs }]
+  useEffect(() => () => rounds.forEach((r) => r.urls.forEach(URL.revokeObjectURL)), [rounds]);
+  const last = rounds[rounds.length - 1];
   const go = () => {
     setBusy(true); setErr(null);
-    conjure({ ...brief(), description: text.trim() })
-      .then((r) => setOut({ ...r, urls: r.blobs.map((b) => URL.createObjectURL(b)) }))
+    conjure({ ...brief(), description: text.trim(), ...(last ? { previousPrompt: last.prompt, revision: note.trim() } : {}) })
+      .then((r) => { setRounds((rs) => [...rs, { ...r, urls: r.blobs.map((b) => URL.createObjectURL(b)) }]); setNote(""); })
       .catch((e) => setErr(e.message)).finally(() => setBusy(false));
   };
+  const field = { width: "100%", boxSizing: "border-box", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 15, resize: "vertical", fontFamily: "inherit" };
+  const tile = { width: "100%", aspectRatio: "9 / 16", borderRadius: 10, border: `1px solid ${T.edge}` };
   return (
     <div style={veil} onClick={busy ? undefined : onClose}>
       <div style={{ ...pane, width: "min(92vw, 420px)", maxHeight: "90vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold }}>Conjure a portrait</div>
         <div style={{ color: T.dim, fontSize: 12.5, margin: "4px 0 10px" }}>Your sheet — ancestry, classes, features, persona, notes — goes in with whatever you add here.</div>
-        {!out && <textarea value={text} rows={4} maxLength={800} disabled={busy} onChange={(e) => setText(e.target.value)} placeholder="Scar over the left eye, hair braided with copper rings, a grin that says the tavern is already on fire…"
-          style={{ width: "100%", boxSizing: "border-box", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 15, resize: "vertical", fontFamily: "inherit" }} />}
-        {out && (
-          <>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              {out.urls.map((u, i) => <img key={u} src={u} alt={`Candidate ${i + 1}`} onClick={() => onPick(out.blobs[i])} style={{ width: "100%", aspectRatio: "9 / 16", objectFit: "cover", borderRadius: 10, border: `1px solid ${T.edge}`, cursor: "pointer" }} />)}
-            </div>
-            <div style={{ color: T.dim, fontSize: 12, marginTop: 8 }}>Tap one to frame it. The muse read: <i>{out.prompt}</i></div>
-          </>
+        {!last && <textarea value={text} rows={4} maxLength={800} disabled={busy} onChange={(e) => setText(e.target.value)} style={field}
+          placeholder="Scar over the left eye, hair braided with copper rings, a grin that says the tavern is already on fire…" />}
+        {(last || busy) && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {rounds.flatMap((r, ri) => r.urls.map((u, i) => <img key={u} src={u} alt={`Candidate ${ri * 4 + i + 1}`} onClick={() => onPick(r.blobs[i])} style={{ ...tile, objectFit: "cover", cursor: "pointer" }} />))}
+            {busy && Array.from({ length: 4 }, (_, i) => <div key={i} style={{ ...tile, background: T.panel2, animation: `conjureBreathe 1.8s ease-in-out ${i * 0.2}s infinite` }} />)}
+          </div>
         )}
+        {last && <div style={{ color: T.dim, fontSize: 12, marginTop: 8 }}>Tap one to frame it. The muse read: <i>{last.prompt}</i></div>}
+        {last && rounds.length < CONJURE_ROUNDS && !busy && <textarea value={note} rows={2} maxLength={800} onChange={(e) => setNote(e.target.value)} style={{ ...field, marginTop: 10 }}
+          placeholder="Not quite? Say what to change — older, darker cloak, lose the hat — and conjure four more." />}
         {err && <div style={{ color: T.error, fontSize: 13, marginTop: 8 }}>{err}</div>}
         <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
-          <button style={btn(false)} disabled={busy} onClick={onClose}>Cancel</button>
-          <button style={{ ...btn(true), opacity: busy ? 0.5 : 1 }} disabled={busy} onClick={go}>{busy ? "Conjuring…" : out ? "Conjure again" : "Conjure"}</button>
+          <button style={btn(false)} disabled={busy} onClick={onClose}>{last ? "Close" : "Cancel"}</button>
+          {(!last || rounds.length < CONJURE_ROUNDS) && (
+            <button style={{ ...btn(true), animation: busy ? "conjureBreathe 1.8s ease-in-out infinite" : "none" }} disabled={busy} onClick={go}>
+              {busy ? "Conjuring…" : last ? "Conjure four more" : "Conjure"}
+            </button>
+          )}
         </div>
       </div>
     </div>

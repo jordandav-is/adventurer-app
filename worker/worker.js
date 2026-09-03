@@ -43,6 +43,8 @@ Setting: a specific, grounded place that supports the identity: terrain, plants,
 Light and format: "Painterly high-fantasy tabletop RPG character illustration reminiscent of premium modern Dungeons & Dragons sourcebook art: realistic anatomy and materials, expressive brushwork, restrained detail, textured traditional-media feel, sophisticated natural palette." Then the light (direction, time of day, atmosphere) and: full-body three-quarter character portrait, vertical composition, readable from head to boots, simple environmental background, no text, no watermark, no border.
 Avoid: a comma-separated list of everything that would spoil it — photorealism, anime, videogame concept-art armour, exaggerated proportions, generic evil imagery, glowing magic, and anything the brief's secrets forbid.
 
+Revision: if the brief carries previousPrompt and revision, the player has seen art from previousPrompt and wants changes. Rewrite previousPrompt applying the revision faithfully and keep everything else as it was, so the character stays the same person. An empty revision means "again, but different": vary pose, setting and light while keeping the anchors.
+
 Rules: one character only. The player's description outranks sheet facts when they conflict; never change the stated ancestry or class. Invent tasteful, specific detail wherever the brief is thin — named colours, named plants, one small living touch such as a bird or a tucked sprig. Prefer weathered and accumulated over pristine. Respond with JSON: {"prompt": "<the full prompt with the labelled paragraphs separated by newlines>"}.`;
 
 async function gemini(env, model, body) {
@@ -465,7 +467,7 @@ export default {
 
     if (path === "/conjure") {
       const { accountId, token, brief } = body;
-      if (typeof accountId !== "string" || typeof token !== "string" || !UUID_RE.test(accountId) || !HEX_64_RE.test(token) || !brief || typeof brief !== "object" || typeof brief.description !== "string" || brief.description.length > 800) {
+      if (typeof accountId !== "string" || typeof token !== "string" || !UUID_RE.test(accountId) || !HEX_64_RE.test(token) || !brief || typeof brief !== "object" || typeof brief.description !== "string" || brief.description.length > 800 || (brief.revision != null && (typeof brief.revision !== "string" || brief.revision.length > 800 || typeof brief.previousPrompt !== "string" || brief.previousPrompt.length > 6000))) {
         return err(400, "Bad request", origin);
       }
       if (!env.GOOGLE_API_KEY) return err(503, "Conjuring is not configured", origin);
