@@ -74,6 +74,17 @@ export function flushAssets(chars) {
   }
 }
 
+// Ask the Worker to write a prompt from the brief and paint four candidates. Returns Blobs.
+export async function conjure(brief) {
+  const a = getAccount();
+  if (!a || !SYNC_URL) throw new Error("Sign in to conjure a portrait.");
+  const res = await fetch(`${SYNC_URL}/conjure`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ accountId: a.id, token: a.token, brief }) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "The muse did not answer.");
+  const bytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  return { prompt: data.prompt, blobs: data.images.map((i) => new Blob([bytes(i.data)], { type: i.mime })) };
+}
+
 // ---- object URLs, local first, then the aether ----
 const urls = new Map();
 export function assetUrl(id) {

@@ -76,6 +76,14 @@ A portrait is imported once at up to 2048px, hashed (SHA-256), and kept as a con
 
 When an account is signed in, originals upload to R2 through the Worker (`PUT /asset/<sha256>?account=<id>` with a `Bearer` session token) and other devices fetch them lazily (`GET`) the first time a sheet needs full resolution. Objects live under `<account>/<sha256>`, are verified against their digest on upload, and are immutable. Without R2 configured the Worker answers 503 and the app simply keeps originals device-local, with thumbs still syncing.
 
+### Conjuring a portrait
+
+From a signed-in sheet, the portrait menu offers **Conjure one from your sheet**. The player adds a short description; the app sends it with a compact brief (ancestry, classes, features, persona, notes) to the Worker's `/conjure` route. Gemini 3.8 Flash turns the brief into an art prompt under a fixed WotC-style prompt frame, Gemini 3.1 Flash Image paints four candidates, and the player frames the one they like, which then flows through the ordinary portrait asset path. Rounds are metered by `CONJURE_ROUNDS_PER_ACCOUNT` and `CONJURE_ROUNDS_GLOBAL` in `worker/wrangler.toml` (0 = unmetered; refunded when generation fails), and `CONJURE_UNMETERED` lists emails that are never metered. The Worker needs a Google AI Studio key as a secret:
+
+```sh
+cd worker && npx wrangler secret put GOOGLE_API_KEY
+```
+
 ## Share a sheet
 
 The share button (top right of a character sheet) encodes a read-only snapshot of the character and referenced homebrew into the URL hash fragment as compressed base64url data. The fragment is processed entirely client-side without reaching GitHub or the sync Worker, bypassing the passphrase gate for that single sheet. Dice rolling and rule lookups remain active while trackers and edits are locked. The share tray also generates a character card image containing portrait, stats, and badges.

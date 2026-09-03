@@ -2,7 +2,8 @@ import { ABILITIES, ALL_SKILLS, CLASSES, CLASS_BLURB, FEAT_CATS, FEAT_MECHANICS,
 import { allFeats, crShow, featBlockedBy, featGrantedSpells, featureBody, fmtMod, infoFor, mod, schoolName, searchRank, sourceOf, spellFitsClass, subSpellData } from "./rules.js";
 import { srcSpells } from "./compendium.js";
 import { useEffect, useRef, useState } from "react";
-import { clampFrame, flushAssets, frameRect, frameStyle, importPhoto, thumbOf, useAssetUrl } from "./portrait.js";
+import { clampFrame, conjure, flushAssets, frameRect, frameStyle, importPhoto, thumbOf, useAssetUrl } from "./portrait.js";
+import { getAccount } from "./sync.js";
 const T = {
   bg: "#161219", panel: "#221c26", panel2: "#2b2330", ink: "#e8dfd0", dim: "#a2937f",
   gold: "#c9a44c", blood: "#8e3b46", edge: "#3a3040", green: "#7da05f", error: "#d76a76",
@@ -36,6 +37,7 @@ const GLOBAL_CSS = `
   @keyframes diceTumbleA { from { transform: rotate3d(1, 0.7, 0.35, -1620deg); } to { transform: rotate3d(1, 0.7, 0.35, 0deg); } }
   @keyframes diceTumbleB { from { transform: rotate3d(0.6, 1, 0.45, 1440deg); } to { transform: rotate3d(0.6, 1, 0.45, 0deg); } }
   @keyframes sheetVeil { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes conjureBreathe { 0%, 100% { filter: brightness(0.75); box-shadow: 0 0 0 0 #c9a44c00; } 50% { filter: brightness(1.3); box-shadow: 0 0 22px 3px #c9a44c80; } }
   @keyframes sheetRise { from { transform: translateY(100%); } to { transform: translateY(0); } }
   .sheet-tall { height: min(82vh, 700px); height: min(82dvh, 700px); }
   .sheet-cap { max-height: min(88vh, 700px); max-height: min(88dvh, 700px); }
@@ -310,30 +312,85 @@ function LoreSheet({ customs }) {
     </div>
   );
 }
-// Portrait button: tap to pick a photo (or reframe the one you have). onChange receives the full
-// patch { photo, portrait } — thumb plus framing record — or nulls on removal.
-function PortraitButton({ photo, portrait, size, name, onChange }) {
-  const [edit, setEdit] = useState(null);
-  const pick = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importPhoto(f).then(setEdit).catch(() => {}); };
+// Portrait button: tap for the portrait menu — upload, conjure, reframe, remove. onChange receives
+// the full patch { photo, portrait } (thumb plus framing record) or nulls on removal. `brief`, when
+// given, is a function building the character brief the conjurer works from.
+const veil = { position: "fixed", inset: 0, background: "#000000c8", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", animation: "sheetVeil 200ms ease" };
+const pane = { ...card, padding: 20, width: "min(92vw, 360px)", boxSizing: "border-box" };
+function PortraitButton({ photo, portrait, size, name, brief, onChange }) {
+  const [mode, setMode] = useState(null); // null | "menu" | "conjure" | portrait record being framed
+  const pick = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importPhoto(f).then(setMode).catch(() => {}); };
+  const canConjure = !!brief && !!getAccount();
   return (
     <>
-      {portrait ? (
-        <div role="button" tabIndex={0} title="Reframe or change portrait" style={{ cursor: "pointer" }} onClick={() => setEdit(portrait)}>
-          <Portrait photo={photo} portrait={portrait} size={size} name={name} />
+      <div role="button" tabIndex={0} title="Portrait" style={{ cursor: "pointer" }} onClick={() => setMode("menu")}>
+        <Portrait photo={photo} portrait={portrait} size={size} name={name} />
+      </div>
+      {mode === "menu" && (
+        <div style={veil} onClick={() => setMode(null)}>
+          <div style={{ ...pane, display: "flex", flexDirection: "column", gap: 8 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold, marginBottom: 4 }}>Portrait</div>
+            <label style={{ ...btn(true), textAlign: "center" }}>Upload a photo<input type="file" accept="image/*" onChange={pick} style={{ display: "none" }} /></label>
+            {canConjure && <button style={btn(false)} onClick={() => setMode("conjure")}>Conjure one from your sheet</button>}
+            {portrait && <button style={btn(false)} onClick={() => setMode(portrait)}>Reframe</button>}
+            {portrait && <button style={{ ...btn(false), borderColor: T.blood, color: T.blood }} onClick={() => { onChange({ photo: null, portrait: null }); setMode(null); }}>Remove</button>}
+          </div>
         </div>
-      ) : (
-        <label style={{ cursor: "pointer" }} title="Set a portrait">
-          <Portrait photo={photo} size={size} name={name} />
-          <input type="file" accept="image/*" onChange={pick} style={{ display: "none" }} />
-        </label>
       )}
-      {edit && <PortraitEditor p={edit} onPick={pick} onClose={() => setEdit(null)}
-        onSave={(img, p) => { onChange({ photo: thumbOf(img, p), portrait: p }); flushAssets([{ portrait: p }]); setEdit(null); }}
-        onRemove={() => { onChange({ photo: null, portrait: null }); setEdit(null); }} />}
+      {mode === "conjure" && <ConjureSheet brief={brief} onPick={(blob) => importPhoto(blob).then(setMode)} onClose={() => setMode(null)} />}
+      {mode && typeof mode === "object" && <PortraitEditor p={mode} onClose={() => setMode(null)}
+        onSave={(img, p) => { onChange({ photo: thumbOf(img, p), portrait: p }); flushAssets([{ portrait: p }]); setMode(null); }} />}
     </>
   );
 }
-function PortraitEditor({ p: initial, onPick, onSave, onRemove, onClose }) {
+// Describe the character, let the aether paint four, choose one — or add a note and get four more.
+const CONJURE_ROUNDS = Infinity;
+function ConjureSheet({ brief, onPick, onClose }) {
+  const [text, setText] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [rounds, setRounds] = useState([]); // [{ prompt, urls, blobs }]
+  useEffect(() => () => rounds.forEach((r) => r.urls.forEach(URL.revokeObjectURL)), [rounds]);
+  const last = rounds[rounds.length - 1];
+  const go = () => {
+    setBusy(true); setErr(null);
+    conjure({ ...brief(), description: text.trim(), ...(last ? { previousPrompt: last.prompt, revision: note.trim() } : {}) })
+      .then((r) => { setRounds((rs) => [...rs, { ...r, urls: r.blobs.map((b) => URL.createObjectURL(b)) }]); setNote(""); })
+      .catch((e) => setErr(e.message)).finally(() => setBusy(false));
+  };
+  const field = { width: "100%", boxSizing: "border-box", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 10, padding: 12, fontSize: 15, resize: "vertical", fontFamily: "inherit" };
+  const tile = { width: "100%", aspectRatio: "9 / 16", borderRadius: 10, border: `1px solid ${T.edge}` };
+  return (
+    <div style={veil} onClick={busy ? undefined : onClose}>
+      <div style={{ ...pane, width: "min(92vw, 420px)", maxHeight: "90vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold }}>Conjure a portrait</div>
+        <div style={{ color: T.dim, fontSize: 12.5, margin: "4px 0 10px" }}>Your sheet — ancestry, classes, features, persona, notes — goes in with whatever you add here.</div>
+        {!last && <textarea value={text} rows={4} maxLength={800} disabled={busy} onChange={(e) => setText(e.target.value)} style={field}
+          placeholder="Scar over the left eye, hair braided with copper rings, a grin that says the tavern is already on fire…" />}
+        {(last || busy) && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {rounds.flatMap((r, ri) => r.urls.map((u, i) => <img key={u} src={u} alt={`Candidate ${ri * 4 + i + 1}`} onClick={() => onPick(r.blobs[i])} style={{ ...tile, objectFit: "cover", cursor: "pointer" }} />))}
+            {busy && Array.from({ length: 4 }, (_, i) => <div key={i} style={{ ...tile, background: T.panel2, animation: `conjureBreathe 1.8s ease-in-out ${i * 0.2}s infinite` }} />)}
+          </div>
+        )}
+        {last && <div style={{ color: T.dim, fontSize: 12, marginTop: 8 }}>Tap one to frame it. The muse read: <i>{last.prompt}</i></div>}
+        {last && rounds.length < CONJURE_ROUNDS && !busy && <textarea value={note} rows={2} maxLength={800} onChange={(e) => setNote(e.target.value)} style={{ ...field, marginTop: 10 }}
+          placeholder="Not quite? Say what to change — older, darker cloak, lose the hat — and conjure four more." />}
+        {err && <div style={{ color: T.error, fontSize: 13, marginTop: 8 }}>{err}</div>}
+        <div style={{ display: "flex", gap: 8, marginTop: 14, justifyContent: "flex-end" }}>
+          <button style={btn(false)} disabled={busy} onClick={onClose}>{last ? "Close" : "Cancel"}</button>
+          {(!last || rounds.length < CONJURE_ROUNDS) && (
+            <button style={{ ...btn(true), animation: busy ? "conjureBreathe 1.8s ease-in-out infinite" : "none" }} disabled={busy} onClick={go}>
+              {busy ? "Conjuring…" : last ? "Conjure four more" : "Conjure"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+function PortraitEditor({ p: initial, onSave, onClose }) {
   const S = 260;
   const [p, setP] = useState(initial);
   useEffect(() => setP(initial), [initial]);
@@ -351,8 +408,8 @@ function PortraitEditor({ p: initial, onPick, onSave, onRemove, onClose }) {
     m.set(e.pointerId, [e.clientX, e.clientY]);
   };
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", animation: "sheetVeil 200ms ease" }} onClick={onClose}>
-      <div style={{ ...card, padding: 20, width: "min(92vw, 360px)", boxSizing: "border-box" }} onClick={(e) => e.stopPropagation()}>
+    <div style={veil} onClick={onClose}>
+      <div style={pane} onClick={(e) => e.stopPropagation()}>
         <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold, marginBottom: 12 }}>Frame the portrait</div>
         <div onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onWheel={(e) => nudge(0, 0, 1 - e.deltaY / 600)}
           style={{ position: "relative", width: S, height: S, margin: "0 auto", borderRadius: "50%", overflow: "hidden", border: `2px solid ${T.gold}`, background: T.panel2, touchAction: "none", cursor: "grab", userSelect: "none" }}>
@@ -360,10 +417,7 @@ function PortraitEditor({ p: initial, onPick, onSave, onRemove, onClose }) {
         </div>
         <input type="range" min={1} max={4} step={0.01} value={p.z} aria-label="Zoom" onChange={(e) => setP((q) => clampFrame({ ...q, z: +e.target.value }))} style={{ width: "100%", marginTop: 14, accentColor: T.gold }} />
         <div style={{ color: T.dim, fontSize: 12, textAlign: "center" }}>Drag to move · scroll, pinch, or slide to zoom</div>
-        <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
-          <label style={{ ...btn(false), display: "inline-block" }}>Change photo<input type="file" accept="image/*" onChange={onPick} style={{ display: "none" }} /></label>
-          <button style={{ ...btn(false), borderColor: T.blood, color: T.blood }} onClick={onRemove}>Remove</button>
-          <span style={{ flex: 1 }} />
+        <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "flex-end" }}>
           <button style={btn(false)} onClick={onClose}>Cancel</button>
           <button style={{ ...btn(true), opacity: url ? 1 : 0.4 }} disabled={!url} onClick={() => onSave(img.current, p)}>Save</button>
         </div>
