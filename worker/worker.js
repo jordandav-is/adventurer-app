@@ -25,6 +25,40 @@ const ASSET_PATH = /^\/asset\/([0-9a-f]{64})$/;
 const ASSET_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const ASSET_MAX_BYTES = 8 * 1024 * 1024;
 
+// Portrait conjuring: Gemini writes the prompt, Gemini paints four candidates. Rounds are metered
+// per account and globally so a runaway client cannot drain the image budget.
+const GEMINI = "https://generativelanguage.googleapis.com/v1beta/models/";
+const CONJURE_TEXT_MODEL = "gemini-3.8-flash";
+const CONJURE_IMAGE_MODEL = "gemini-3.1-flash-image";
+const CONJURE_ROUNDS_PER_ACCOUNT = 4;
+const CONJURE_ROUNDS_GLOBAL = 60;
+const CONJURE_FRAME = `You craft a single image-generation prompt for Dungeons & Dragons 5e character art in the painterly Wizards of the Coast house style. You receive a character brief: the player's own description plus sheet facts (ancestry, classes, background, features, persona, notes). Weave them into one vivid prompt built from these blocks, in order:
+1. Role and ancestry — what kind of person this is (e.g. half-orc barbarian veteran).
+2. Permanent visual anchors — details that keep the character recognisable (e.g. chipped left tusk, ritual scars, broken nose).
+3. Gear and silhouette — armour, weapons, shape (e.g. dented scale armour, fur mantle, heavy greataxe).
+4. Mood and pose — acting direction (e.g. quiet rage, shoulders squared, looking past the viewer).
+5. Light and format — make the image usable (e.g. overcast battlefield light, chest-up fantasy portrait).
+Rules: one character only, chest-up portrait framing, painterly fantasy illustration, no text, no watermark, no border, no logos. The player's description outranks sheet facts when they conflict. Invent tasteful specifics where the brief is thin; never invent a different ancestry or class. Respond with JSON: {"prompt": "<the prompt, 60-140 words>"}.`;
+
+async function gemini(env, model, body) {
+  const res = await fetch(`${GEMINI}${model}:generateContent`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-goog-api-key": env.GOOGLE_API_KEY },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error?.message || `Gemini ${res.status}`);
+  return data?.candidates?.[0]?.content?.parts || [];
+}
+
+// Counts a round against a limit inside one SQLite kv table. Negative n refunds.
+function takeQuota(sql, key, limit, n = 1) {
+  const used = Number([...sql.exec("SELECT v FROM auth_state WHERE k = ?", key)][0]?.v || 0);
+  if (n > 0 && used + n > limit) return false;
+  sql.exec("INSERT INTO auth_state (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v", key, String(used + n));
+  return true;
+}
+
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 const FIVE_MINUTES_MS = 5 * 60 * 1000;
@@ -424,6 +458,40 @@ export default {
       return json(200, { ok: true }, origin);
     }
 
+    if (path === "/conjure") {
+      const { accountId, token, brief } = body;
+      if (typeof accountId !== "string" || typeof token !== "string" || !UUID_RE.test(accountId) || !HEX_64_RE.test(token) || !brief || typeof brief !== "object" || typeof brief.description !== "string" || brief.description.length > 800) {
+        return err(400, "Bad request", origin);
+      }
+      if (!env.GOOGLE_API_KEY) return err(503, "Conjuring is not configured", origin);
+      const account = await identityStub.getAccountById(accountId);
+      const accountStub = env.ACCOUNT.get(env.ACCOUNT.idFromName(accountId));
+      if (!account || !(await accountStub.touchSession(token))) return err(401, "Unauthorized", origin);
+      if (!(await accountStub.takeQuota("conjure", CONJURE_ROUNDS_PER_ACCOUNT))) return err(429, `This account has used all ${CONJURE_ROUNDS_PER_ACCOUNT} conjuring rounds.`, origin);
+      if (!(await identityStub.takeQuota("conjure", CONJURE_ROUNDS_GLOBAL))) {
+        await accountStub.takeQuota("conjure", CONJURE_ROUNDS_PER_ACCOUNT, -1);
+        return err(429, "The conjuring well has run dry for now.", origin);
+      }
+      try {
+        const [textPart] = await gemini(env, CONJURE_TEXT_MODEL, {
+          systemInstruction: { parts: [{ text: CONJURE_FRAME }] },
+          contents: [{ parts: [{ text: JSON.stringify(brief) }] }],
+          generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { prompt: { type: "STRING" } }, required: ["prompt"] } },
+        });
+        const prompt = JSON.parse(textPart?.text || "{}").prompt;
+        if (typeof prompt !== "string" || !prompt) throw new Error("no prompt");
+        const images = (await Promise.all(Array.from({ length: 4 }, () => gemini(env, CONJURE_IMAGE_MODEL, {
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseModalities: ["IMAGE"], imageConfig: { aspectRatio: "3:4" } },
+        })))).map((parts) => parts.find((p) => p.inlineData)?.inlineData).filter(Boolean).map((d) => ({ mime: d.mimeType, data: d.data }));
+        if (!images.length) throw new Error("no images");
+        return json(200, { prompt, images }, origin);
+      } catch (e) {
+        await Promise.all([accountStub.takeQuota("conjure", CONJURE_ROUNDS_PER_ACCOUNT, -1), identityStub.takeQuota("conjure", CONJURE_ROUNDS_GLOBAL, -1)]);
+        return err(502, `The muse did not answer: ${e.message}`, origin);
+      }
+    }
+
     if (path === "/ws-ticket") {
       const { accountId, token } = body;
       if (
@@ -467,7 +535,11 @@ export class Identity extends DurableObject {
         digest TEXT NOT NULL,
         expires_at INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS auth_state (k TEXT PRIMARY KEY, v TEXT);
     `);
+  }
+  takeQuota(key, limit, n) {
+    return takeQuota(this.ctx.storage.sql, "meter:" + key, limit, n);
     const cols = new Set([...this.ctx.storage.sql.exec("PRAGMA table_info(accounts)")].map((r) => r.name));
     if (!cols.has("reg_digest")) {
       this.ctx.storage.sql.exec("ALTER TABLE accounts ADD COLUMN reg_digest TEXT");
@@ -597,6 +669,9 @@ export class Account extends DurableObject {
       CREATE TABLE IF NOT EXISTS ws_tickets (digest TEXT PRIMARY KEY, session_digest TEXT NOT NULL, expires_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS auth_state (k TEXT PRIMARY KEY, v TEXT);
     `);
+  }
+  takeQuota(key, limit, n) {
+    return takeQuota(this.ctx.storage.sql, "meter:" + key, limit, n);
   }
   async verifyGate({ passphrase, gateSalt, gateHash, gateIter }) {
     const computed = await hashGatePassphrase(passphrase, gateSalt, gateIter);

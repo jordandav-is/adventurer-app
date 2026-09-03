@@ -493,7 +493,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
           </select>
           <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 18 }}>
             <PortraitButton {...photo} size={84} name={name} onChange={setPhoto} />
-            <div style={{ color: T.dim, fontSize: 13 }}>{photo.portrait ? "Click or tap the portrait to reframe or change it." : "Click or tap the circle to add a portrait."}</div>
+            <div style={{ color: T.dim, fontSize: 13 }}>{photo.portrait ? "Click or tap the portrait to reframe or change it." : "Click or tap the circle to add a portrait. You can also conjure one from the finished sheet."}</div>
           </div>
         </div>
       )}

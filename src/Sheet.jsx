@@ -44,6 +44,23 @@ const shareLine = (ch, customs) => {
   const cur = Math.max(0, max - Math.max(0, ch.dmg || 0));
   return `${ch.name} — ${ch.race} ${ch.classes.map((c) => `${c.name} ${c.level}`).join(" / ")} · HP ${cur}/${max} · AC ${armorClass(ch, customs).ac}`;
 };
+// Every class feature a character has, by the level it arrived — the sheet's feature chips and the
+// portrait brief both read from here.
+const featureItems = (c, customs) => Array.from({ length: c.level }, (_, i) => i + 1)
+  .flatMap((l) => (CLASSES[c.name].feats[l] || [])
+    .filter((f) => !(c.subclass && /\bfeature\b$/i.test(f)))
+    .concat(allSubFeats(c.subclass, l, customs))
+    .concat(CLASSES[c.name].asi.includes(l) && !(CLASSES[c.name].feats[l] || []).includes(ASI) ? [ASI] : [])
+    .map((f) => ({ l, f })));
+// What the conjurer is told: sheet facts, never the whole record. Kept small on purpose.
+const portraitBrief = (ch, customs) => ({
+  name: ch.name, race: ch.race, background: ch.background, alignment: ch.alignment,
+  classes: ch.classes.map((c) => `${c.name} ${c.level}${c.subclass ? ` (${c.subclass})` : ""}`),
+  traits: RACES[ch.race]?.traits || [],
+  features: ch.classes.flatMap((c) => featureItems(c, customs).map(({ f }) => f)).filter((f) => f !== ASI),
+  feats: ch.feats || [], styles: ch.styles || [], persona: ch.persona || {},
+  notes: (ch.notes || "").slice(0, 800),
+});
 async function drawShareCard(ch, customs) {
   const cv = document.createElement("canvas");
   cv.width = SHARE_W; cv.height = SHARE_H;
@@ -1789,7 +1806,7 @@ const SHEET_GUIDE = [
   {
     icon: "up", title: "The header",
     items: [
-      ["Portrait", "click or tap it to choose a photo, then again to drag and zoom the framing."],
+      ["Portrait", "click or tap it to upload a photo, conjure one from your sheet, or reframe what you have."],
       ["Share (the arrow-in-a-box)", "seals a read-only snapshot of this sheet into a link your DM can open — no passphrase, no way to touch your ledger."],
       ["Sourcebooks (the gear)", "choose which books feed the pickers — a disabled book vanishes from spell lists and summon musters without touching what you already know."],
       ["Level Up", "advance a class — choose new features, take or roll HP, and the whole sheet re-derives itself."],
@@ -2326,7 +2343,7 @@ function Sheet({ ch: storedCh, onBack, onLevelUp, onDelete, onSpells, onNotes, o
         {shared ? (
           <Portrait photo={ch.photo} portrait={ch.portrait} size={96} name={ch.name} />
         ) : (
-          <PortraitButton photo={ch.photo} portrait={ch.portrait} size={96} name={ch.name} onChange={onUpdate} />
+          <PortraitButton photo={ch.photo} portrait={ch.portrait} size={96} name={ch.name} brief={() => portraitBrief(ch, customs)} onChange={onUpdate} />
         )}
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontFamily: "Georgia, serif", fontSize: 28, color: T.gold }}>{ch.name}</div>
@@ -2592,12 +2609,7 @@ function Sheet({ ch: storedCh, onBack, onLevelUp, onDelete, onSpells, onNotes, o
             <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6 }}>
               {(() => {
                 const themed = (CLASS_THEMES[c.name] || {}).color || T.gold;
-                const items = Array.from({ length: c.level }, (_, i) => i + 1)
-                  .flatMap((l) => (CLASSES[c.name].feats[l] || [])
-                    .filter((f) => !(c.subclass && /\bfeature\b$/i.test(f)))
-                    .concat(allSubFeats(c.subclass, l, customs))
-                    .concat(CLASSES[c.name].asi.includes(l) && !(CLASSES[c.name].feats[l] || []).includes(ASI) ? [ASI] : [])
-                    .map((f) => ({ l, f })));
+                const items = featureItems(c, customs);
                 return items.length ? items.map(({ l, f }, i) => (
                   <span key={i} {...lorePress(f)} onClick={() => openUse(f)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: T.panel2, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "3px 9px", fontSize: 12.5, color: T.ink, cursor: "pointer", opacity: featureSpent(f) ? 0.45 : 1 }}>
                     <span style={{ color: themed, fontSize: 10.5, fontWeight: 700, opacity: 0.9 }}>{l}</span>{f}{featureSpent(f) ? <span style={{ color: T.dim, fontSize: 10.5 }}>◇ spent</span> : ""}
