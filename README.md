@@ -74,7 +74,7 @@ cd worker && npx wrangler r2 bucket create ledger-assets
 
 A portrait is imported once at up to 2048px, hashed (SHA-256), and kept as a content-addressed Blob in IndexedDB. The character record stores only `portrait: { id, w, h, x, y, z }` (asset hash, pixel size, and a framing: normalized centre plus zoom) alongside `photo`, a 220px thumb rendered from that framing. Tapping a portrait opens the framing editor (drag, pinch, or slide to zoom). Roster, share cards, and exports use the thumb, so they never need the original.
 
-When an account is signed in, originals upload to R2 through the Worker (`PUT /asset/<sha256>?account=<id>` with a `Bearer` session token) and other devices fetch them lazily (`GET`) the first time a sheet needs full resolution. Objects live under `<account>/<sha256>`, are verified against their digest on upload, and are immutable. Without R2 configured the Worker answers 503 and the app simply keeps originals device-local, with thumbs still syncing.
+When an account is signed in, originals upload to R2 through the Worker (`PUT /asset/<sha256>?account=<id>` with a `Bearer` session token). Originals are content-addressed by SHA-256 and immutable: other devices and shared sheets fetch them lazily (`GET /asset/<sha256>`), allowing read-only snapshots to display portraits without embedding bulky image blobs in the share URL. Without R2 configured the Worker answers 503 and the app simply keeps originals device-local, with thumbs still syncing.
 
 ### Conjuring a portrait
 
@@ -86,7 +86,7 @@ cd worker && npx wrangler secret put GOOGLE_API_KEY
 
 ## Share a sheet
 
-The share button (top right of a character sheet) encodes a read-only snapshot of the character and referenced homebrew into the URL hash fragment as compressed base64url data. The fragment is processed entirely client-side without reaching GitHub or the sync Worker, bypassing the passphrase gate for that single sheet. Dice rolling and rule lookups remain active while trackers and edits are locked. The share tray also generates a character card image containing portrait, stats, and badges.
+The share button (top right of a character sheet) encodes a read-only snapshot of the character and referenced homebrew into the URL hash fragment as compressed base64url data. The fragment is processed entirely client-side without reaching GitHub or the sync Worker, bypassing the passphrase gate for that single sheet. Dice rolling and rule lookups remain active while trackers and edits are locked. Portrait framing metadata is preserved in the link while the large thumbnail is omitted, so shared sheets load the portrait from R2 using its content hash. The share tray also generates a character card image containing portrait, stats, and badges.
 
 ## Install on iOS
 

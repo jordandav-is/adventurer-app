@@ -58,8 +58,14 @@ export async function importPhoto(file) {
 
 // ---- remote (R2 via the sync Worker), content-addressed and immutable ----
 const remote = (id, init) => {
+  if (!SYNC_URL) return Promise.reject(new Error("No sync URL configured"));
   const a = getAccount();
-  return a && SYNC_URL ? fetch(`${SYNC_URL}/asset/${id}?account=${a.id}`, { ...init, headers: { authorization: `Bearer ${a.token}`, ...init?.headers } }) : Promise.reject();
+  if (init?.method === "PUT") {
+    return a ? fetch(`${SYNC_URL}/asset/${id}?account=${a.id}`, { ...init, headers: { authorization: `Bearer ${a.token}`, ...init?.headers } }) : Promise.reject(new Error("Sign in required to upload"));
+  }
+  const query = a?.id ? `?account=${a.id}` : "";
+  const headers = a?.token ? { authorization: `Bearer ${a.token}`, ...init?.headers } : { ...init?.headers };
+  return fetch(`${SYNC_URL}/asset/${id}${query}`, { ...init, headers });
 };
 const SENT = () => "ledger-assets-sent:" + getAccount()?.id;
 const sent = () => { try { return new Set(JSON.parse(localStorage.getItem(SENT())) || []); } catch { return new Set(); } };

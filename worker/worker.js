@@ -124,20 +124,28 @@ async function getAuthWorkStub(env, key) {
 export default {
   async fetch(req, env) {
     const origin = req.headers.get("origin");
-    if (origin && !ALLOWED_ORIGINS.has(origin)) {
+    const url = new URL(req.url);
+    const path = url.pathname;
+    const isAssetRoute = ASSET_PATH.test(path);
+    const isPublicAssetGet = req.method === "GET" && isAssetRoute;
+
+    if (origin && !ALLOWED_ORIGINS.has(origin) && !isPublicAssetGet) {
       return new Response("Origin not allowed", { status: 403, headers: getCorsHeaders(origin) });
     }
 
     if (req.method === "OPTIONS") {
+      const headers = getCorsHeaders(origin);
+      if (isAssetRoute && origin && !ALLOWED_ORIGINS.has(origin)) {
+        headers["access-control-allow-origin"] = "*";
+        headers["access-control-allow-methods"] = "POST, GET, PUT, OPTIONS";
+        headers["access-control-allow-headers"] = "content-type, authorization";
+      }
       return new Response(null, {
         status: 204,
-        headers: getCorsHeaders(origin),
+        headers,
       });
     }
-
-    const url = new URL(req.url);
-    const path = url.pathname;
-    const identityStub = env.IDENTITY.get(env.IDENTITY.idFromName("singleton"));
+    const identityStub = env.IDENTITY ? env.IDENTITY.get(env.IDENTITY.idFromName("singleton")) : null;
 
     if (path === "/ws") {
       if (req.method !== "GET") return err(405, "Method not allowed", origin);
@@ -155,30 +163,100 @@ export default {
 
     const asset = path.match(ASSET_PATH);
     if (asset) {
-      // Content-addressed originals in R2 under <account>/<sha256>: immutable, so cache forever.
+      // Content-addressed originals in R2: immutable, so cache forever.
       if (req.method !== "GET" && req.method !== "PUT") return err(405, "Method not allowed", origin);
       if (!env.ASSETS) return err(503, "Assets not configured", origin);
+
+      const sha = asset[1];
+      const corsOrigin = origin && ALLOWED_ORIGINS.has(origin) ? origin : "*";
+
+      if (req.method === "GET") {
+        const accountId = url.searchParams.get("account") || "";
+        let obj = await env.ASSETS.get(sha);
+
+        if (!obj && accountId && UUID_RE.test(accountId)) {
+          obj = await env.ASSETS.get(`${accountId}/${sha}`);
+          if (obj) {
+            try {
+              const b = await obj.arrayBuffer();
+              await env.ASSETS.put(sha, b, { httpMetadata: obj.httpMetadata });
+              return new Response(b, {
+                headers: {
+                  ...getCorsHeaders(origin),
+                  "access-control-allow-origin": corsOrigin,
+                  "content-type": obj.httpMetadata?.contentType || "application/octet-stream",
+                  "cache-control": "public, max-age=31536000, immutable",
+                },
+              });
+            } catch {}
+          }
+        }
+
+        if (!obj) {
+          let cursor;
+          do {
+            const list = await env.ASSETS.list({ cursor, limit: 1000 });
+            const match = list.objects.find((o) => o.key === sha || o.key.endsWith("/" + sha));
+            if (match) {
+              obj = await env.ASSETS.get(match.key);
+              if (obj) {
+                try {
+                  const b = await obj.arrayBuffer();
+                  await env.ASSETS.put(sha, b, { httpMetadata: obj.httpMetadata });
+                  return new Response(b, {
+                    headers: {
+                      ...getCorsHeaders(origin),
+                      "access-control-allow-origin": corsOrigin,
+                      "content-type": obj.httpMetadata?.contentType || "application/octet-stream",
+                      "cache-control": "public, max-age=31536000, immutable",
+                    },
+                  });
+                } catch {}
+              }
+              break;
+            }
+            cursor = list.truncated ? list.cursor : undefined;
+          } while (cursor);
+        }
+
+        if (!obj) return err(404, "Not found", origin);
+        return new Response(obj.body, {
+          headers: {
+            ...getCorsHeaders(origin),
+            "access-control-allow-origin": corsOrigin,
+            "content-type": obj.httpMetadata?.contentType || "application/octet-stream",
+            "cache-control": "public, max-age=31536000, immutable",
+          },
+        });
+      }
+
+      // PUT: requires authenticated account
       const accountId = url.searchParams.get("account") || "";
       const token = (req.headers.get("authorization") || "").replace(/^Bearer /, "");
       if (!UUID_RE.test(accountId) || !HEX_64_RE.test(token)) return err(400, "Bad request", origin);
       const account = await identityStub.getAccountById(accountId);
       const live = account && (await env.ACCOUNT.get(env.ACCOUNT.idFromName(accountId)).touchSession(token));
       if (!live) return err(401, "Unauthorized", origin);
-      const key = `${accountId}/${asset[1]}`;
-      if (req.method === "GET") {
-        const obj = await env.ASSETS.get(key);
-        if (!obj) return err(404, "Not found", origin);
-        return new Response(obj.body, {
-          headers: { ...getCorsHeaders(origin), "content-type": obj.httpMetadata?.contentType || "application/octet-stream", "cache-control": "private, max-age=31536000, immutable" },
-        });
+
+      const key = `${accountId}/${sha}`;
+      if (await env.ASSETS.head(sha)) return json(200, { ok: true }, origin);
+      if (await env.ASSETS.head(key)) {
+        const existing = await env.ASSETS.get(key);
+        if (existing) {
+          const b = await existing.arrayBuffer();
+          await env.ASSETS.put(sha, b, { httpMetadata: existing.httpMetadata });
+          return json(200, { ok: true }, origin);
+        }
       }
-      if (await env.ASSETS.head(key)) return json(200, { ok: true }, origin);
+
       const type = req.headers.get("content-type") || "";
       if (!ASSET_TYPES.has(type)) return err(415, "Unsupported media type", origin);
       if (parseInt(req.headers.get("content-length") || "0", 10) > ASSET_MAX_BYTES) return err(413, "Payload too large", origin);
       const bytes = await req.arrayBuffer();
       if (bytes.byteLength > ASSET_MAX_BYTES) return err(413, "Payload too large", origin);
-      if ((await sha256Hex(bytes)) !== asset[1]) return err(400, "Digest mismatch", origin);
+      if ((await sha256Hex(bytes)) !== sha) return err(400, "Digest mismatch", origin);
+
+      await env.ASSETS.put(sha, bytes, { httpMetadata: { contentType: type } });
       await env.ASSETS.put(key, bytes, { httpMetadata: { contentType: type } });
       return json(200, { ok: true }, origin);
     }

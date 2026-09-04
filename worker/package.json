@@ -5,7 +5,7 @@
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
-    "test": "node --test password.test.js"
+    "test": "node --test password.test.js asset.test.js"
   },
   "dependencies": {
     "@noble/hashes": "2.4.0"

@@ -4,6 +4,7 @@ import { EMPTY_CUSTOM, SRD_SRC, __BESTIARY, __SOURCES, creatureSrcOf, isSourceEn
 import React, { useEffect, useState } from "react";
 import { CLASS_THEMES, ClassTag, ICON_PATHS, Icon, LazyList, Portrait, SpellPickGrid, PortraitButton, T, __showLore, btn, card, cornerBtn, lorePress } from "./ui.jsx";
 import { DiceTray, RollTray, roll, rollFeatures, rollNotes } from "./dice.jsx";
+import { assetUrl, frameRect } from "./portrait.js";
 const SHARE_W = 1200, SHARE_H = 630;
 const CARD_SERIF = 'Georgia, "Liberation Serif", "Times New Roman", serif';
 const CARD_SANS = '-apple-system, "SF Pro Text", "DejaVu Sans", system-ui, sans-serif';
@@ -68,7 +69,9 @@ async function drawShareCard(ch, customs) {
   const maxHp = effMaxHp(ch), curHp = Math.max(0, maxHp - Math.max(0, ch.dmg || 0));
   const hpRatio = maxHp ? curHp / maxHp : 0;
   const hpColor = hpRatio > 0.5 ? T.green : hpRatio > 0.25 ? T.gold : "#d76a76";
-  const lvl = totalLevel(ch), photo = ch.photo ? await loadImg(ch.photo).catch(() => null) : null;
+  const lvl = totalLevel(ch);
+  const photoUrl = ch.photo || (ch.portrait?.id ? await assetUrl(ch.portrait.id).catch(() => null) : null);
+  const photo = photoUrl ? await loadImg(photoUrl).catch(() => null) : null;
 
   ctx.fillStyle = T.bg;
   ctx.fillRect(0, 0, SHARE_W, SHARE_H);
@@ -102,8 +105,13 @@ async function drawShareCard(ch, customs) {
     const R = 92, cx = SHARE_W - X - R, cy = 168;
     ctx.save();
     ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
-    const pscale = Math.max((R * 2) / photo.width, (R * 2) / photo.height);
-    ctx.drawImage(photo, cx - (photo.width * pscale) / 2, cy - (photo.height * pscale) / 2, photo.width * pscale, photo.height * pscale);
+    if (ch.portrait && !ch.photo) {
+      const { sx, sy, side } = frameRect(ch.portrait);
+      ctx.drawImage(photo, sx, sy, side, side, cx - R, cy - R, R * 2, R * 2);
+    } else {
+      const pscale = Math.max((R * 2) / photo.width, (R * 2) / photo.height);
+      ctx.drawImage(photo, cx - (photo.width * pscale) / 2, cy - (photo.height * pscale) / 2, photo.width * pscale, photo.height * pscale);
+    }
     ctx.restore();
     ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
     ctx.strokeStyle = T.gold; ctx.lineWidth = 4; ctx.stroke();
@@ -166,7 +174,17 @@ async function drawShareCard(ch, customs) {
   return cv;
 }
 async function encodeShare(ch, customs) {
-  const { photo, portrait, log, hpLog, ...soul } = ch;
+  const { photo, log, hpLog, ...soul } = ch;
+  if (soul.portrait) {
+    soul.portrait = {
+      id: String(soul.portrait.id || ""),
+      w: Number(soul.portrait.w) || 0,
+      h: Number(soul.portrait.h) || 0,
+      x: typeof soul.portrait.x === "number" ? soul.portrait.x : 0.5,
+      y: typeof soul.portrait.y === "number" ? soul.portrait.y : 0.5,
+      z: typeof soul.portrait.z === "number" ? soul.portrait.z : 1,
+    };
+  }
   const payload = { v: 1, t: new Date().toISOString().slice(0, 10), c: soul, x: shareCustomsFor(ch, customs) };
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
   const canDeflate = typeof CompressionStream !== "undefined";
@@ -184,7 +202,15 @@ async function decodeShare(token) {
   if (!c?.name || !RACES[c.race] || !Array.isArray(c.classes) || !c.classes.length || c.classes.some((x) => !CLASSES[x?.name]) || ABILITIES.some((a) => typeof c.abilities?.[a] !== "number")) {
     throw new Error("not a shared character");
   }
-  payload.c = { ...c, photo: null, portrait: null, log: [], skills: Array.isArray(c.skills) ? c.skills : [], maxHp: typeof c.maxHp === "number" ? c.maxHp : 1 };
+  const portrait = c.portrait && typeof c.portrait.id === "string" && c.portrait.id.length === 64 ? {
+    id: c.portrait.id,
+    w: Number(c.portrait.w) || 0,
+    h: Number(c.portrait.h) || 0,
+    x: typeof c.portrait.x === "number" ? c.portrait.x : 0.5,
+    y: typeof c.portrait.y === "number" ? c.portrait.y : 0.5,
+    z: typeof c.portrait.z === "number" ? c.portrait.z : 1,
+  } : null;
+  payload.c = { ...c, photo: null, portrait, log: [], skills: Array.isArray(c.skills) ? c.skills : [], maxHp: typeof c.maxHp === "number" ? c.maxHp : 1 };
   payload.x = { ...EMPTY_CUSTOM, ...(payload.x || {}) };
   return payload;
 }
