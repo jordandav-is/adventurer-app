@@ -53,6 +53,8 @@ const GLOBAL_CSS = `
   @keyframes campfireFlicker { 0%, 100% { opacity: 0.65; transform: scaleY(1); } 50% { opacity: 0.9; transform: scaleY(1.08); } }
   @keyframes emberRise { 0% { transform: translate(0, 0) scale(0.6); opacity: 0; } 25% { opacity: 0.95; } 75% { opacity: 0.7; } 100% { transform: translate(var(--dx, 15px), -140px) scale(0.2); opacity: 0; } }
   @keyframes headerShine { 0%, 100% { filter: drop-shadow(0 0 0 rgba(201,164,76,0)); } 50% { filter: drop-shadow(0 0 14px rgba(201,164,76,0.85)) drop-shadow(0 0 4px rgba(247,230,181,0.9)); } }
+  @keyframes starTwinkle { 0%, 100% { opacity: 0.2; transform: scale(0.7); } 50% { opacity: 0.95; transform: scale(1.3); } }
+  @keyframes critPulse { 0% { box-shadow: 0 0 0 0 rgba(201,164,76,0.6); } 70% { box-shadow: 0 0 0 16px rgba(201,164,76,0); } 100% { box-shadow: 0 0 0 0 rgba(201,164,76,0); } }
   @media (hover: none) and (pointer: coarse) {
     [data-lore] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
     .lore-lock, .lore-lock * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
@@ -674,52 +676,4 @@ function FeatPickPanel({ pick: pk, value, set, customs, level = 20, skillsTaken,
     </div>
   );
 }
-const STATIC_EMBERS = [
-  { left: "38%", bottom: "12%", size: 3, delay: "0.2s", dur: "2.6s", dx: "12px", color: "#f0a04b" },
-  { left: "44%", bottom: "16%", size: 2.5, delay: "0.9s", dur: "3.2s", dx: "-18px", color: "#c9a44c" },
-  { left: "50%", bottom: "8%", size: 4, delay: "0s", dur: "2.4s", dx: "8px", color: "#e27d3c" },
-  { left: "53%", bottom: "20%", size: 2, delay: "1.4s", dur: "2.9s", dx: "-12px", color: "#f0a04b" },
-  { left: "47%", bottom: "14%", size: 3.5, delay: "0.6s", dur: "3.5s", dx: "20px", color: "#c9a44c" },
-  { left: "56%", bottom: "11%", size: 2, delay: "1.8s", dur: "2.8s", dx: "14px", color: "#f7e6b5" },
-  { left: "41%", bottom: "22%", size: 2.5, delay: "1.1s", dur: "3.1s", dx: "-10px", color: "#e27d3c" },
-  { left: "48%", bottom: "18%", size: 3, delay: "2.1s", dur: "2.5s", dx: "-15px", color: "#f0a04b" },
-  { left: "52%", bottom: "15%", size: 2, delay: "0.4s", dur: "3.4s", dx: "16px", color: "#c9a44c" },
-  { left: "45%", bottom: "25%", size: 2.5, delay: "1.6s", dur: "3.0s", dx: "6px", color: "#f7e6b5" },
-  { left: "58%", bottom: "17%", size: 2, delay: "0.8s", dur: "2.7s", dx: "-8px", color: "#e27d3c" },
-  { left: "36%", bottom: "19%", size: 3, delay: "2.3s", dur: "3.3s", dx: "10px", color: "#f0a04b" },
-];
-
-function NightAmbience({ onDismiss }) {
-  return (
-    <div
-      onClick={onDismiss}
-      style={{
-        position: "fixed", inset: 0, pointerEvents: "none", zIndex: 50,
-        animation: "nightSkyIn 700ms ease-out both",
-      }}>
-      <div style={{
-        position: "absolute", inset: 0,
-        background: "radial-gradient(ellipse at 50% 100%, #2b171777 0%, #15101add 50%, #0d0a10f5 85%)",
-      }} />
-      <div style={{
-        position: "absolute", left: 0, right: 0, bottom: 0, height: "48vh",
-        background: "radial-gradient(ellipse at 50% 100%, #e27d3c33 0%, #c9a44c18 35%, transparent 70%)",
-        animation: "campfireFlicker 2.8s ease-in-out infinite",
-      }} />
-      {STATIC_EMBERS.map((e, i) => (
-        <div
-          key={i}
-          style={{
-            position: "absolute", left: e.left, bottom: e.bottom,
-            width: e.size, height: e.size, borderRadius: "50%",
-            background: e.color,
-            boxShadow: `0 0 8px ${e.color}`,
-            "--dx": e.dx,
-            animation: `emberRise ${e.dur} ease-out ${e.delay} infinite`,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-export { T, card, btn, cornerBtn, SHELL_STYLE, GLOBAL_CSS, ICON_PATHS, Icon, CLASS_THEMES, ClassTag, FeatureLine, SubclassDetail, ClassDetail, __showLore, lorePress, LoreSheet, PortraitButton, Portrait, LazyList, SpellPickGrid, FeatChooser, NightAmbience };
+export { T, card, btn, cornerBtn, SHELL_STYLE, GLOBAL_CSS, ICON_PATHS, Icon, CLASS_THEMES, ClassTag, FeatureLine, SubclassDetail, ClassDetail, __showLore, lorePress, LoreSheet, PortraitButton, Portrait, LazyList, SpellPickGrid, FeatChooser };

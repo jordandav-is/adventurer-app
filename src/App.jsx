@@ -4,8 +4,8 @@ import { SYNC_URL } from "./sync-config.js";
 import { flushAssets } from "./portrait.js";
 import { effMaxHp, effectsOf, foldStarredSpells, totalLevel } from "./rules.js";
 import { useEffect, useRef, useState } from "react";
-import { ClassTag, GLOBAL_CSS, Icon, LoreSheet, NightAmbience, Portrait, SHELL_STYLE, T, card } from "./ui.jsx";
-import { DiceTray, roll } from "./dice.jsx";
+import { ClassTag, GLOBAL_CSS, Icon, LoreSheet, Portrait, SHELL_STYLE, T, card } from "./ui.jsx";
+import { InitiativeOverlay, roll } from "./InitiativeEasterEgg.jsx";
 import { CreateWizard, HorizonArt } from "./CreateWizard.jsx";
 import { HomebrewForge } from "./HomebrewForge.jsx";
 import { LevelUp } from "./LevelUp.jsx";
@@ -275,25 +275,12 @@ export default function App() {
 
       <LoreSheet customs={customs} />
 
-      {initiativeEgg && <NightAmbience onDismiss={() => setInitiativeEgg(null)} />}
       {initiativeEgg && (
-        <DiceTray
-          title="Roll for Initiative"
-          dice={[{ sides: 20, value: initiativeEgg.value }]}
+        <InitiativeOverlay
+          value={initiativeEgg.value}
           rollId={initiativeEgg.rollId}
-          acceptLabel="Stand Ready"
-          note={(done) => {
-            if (!done) return "The tavern falls silent. The Dungeon Master clears their throat.";
-            if (initiativeEgg.value === 20) {
-              return <span style={{ color: T.gold, fontWeight: 700 }}>Natural 20! You strike first. Take your turn, adventurer.</span>;
-            }
-            if (initiativeEgg.value === 1) {
-              return <span style={{ color: "#d76a76", fontWeight: 700 }}>Natural 1! Caught completely flat-footed. At least you're not surprised… or are you?</span>;
-            }
-            return <span>Initiative {initiativeEgg.value}. Weapons drawn. What do you do?</span>;
-          }}
           onReroll={() => setInitiativeEgg({ rollId: Date.now(), value: roll(20) })}
-          onAccept={() => setInitiativeEgg(null)}
+          onClose={() => setInitiativeEgg(null)}
         />
       )}
     </div>

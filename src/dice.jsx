@@ -291,4 +291,4 @@ function RollTray({ title, mode, parts, kind, abil, proficient, extra, ch, minio
     </div>
   );
 }
-export { DiceTray, roll, rollFeatures, rollNotes, RollTray };
+export { DiceTray, roll, rollFeatures, rollNotes, RollTray, Die };
