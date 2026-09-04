@@ -1,5 +1,5 @@
 import { ABILITIES, ABIL_NAMES, ALL_SKILLS, ANCESTRIES, ARCANUM_UNLOCK, ASI, CANTRIPS_KNOWN, CHOICE_KEYS, CLASSES, DMG_TYPES, INVOCATIONS, INVOCATION_DATA, ITEM_TYPES, PACT, PREP_ALL_CLASSES, PROF_TEXT, RACES, SKILL_ABIL, SPELL_ABILITY, SPELL_LVL_HINT, STYLE_DESC, baseSubName } from "./data.js";
-import { EFFECT_BY_KEY, EFFECT_LIB, SUMMON_LIB, allKnownCantrips, allSubFeats, ammoRowFor, applyEffectPatch, armorClass, attuneBlocker, attunedRows, attunementCap, b64uFromBytes, bladeRiderTier, bytesFromB64u, canEquip, characterChoiceGroups, classLevel, consumableEffectKey, crShow, creatureByName, describeCustomFx, effDefOf, effEnds, effMaxHp, effectiveAbilities, effectsOf, equippedOf, featChoiceOf, featChoiceSummary, featEffects, featureBuckets, featHpBonus, findItem, fmtMod, fxMods, gearMods, hasEffect, hasStyle, hasSub, healingDiceFor, grantAbilityFor, grantLabel, grantTrackerFor, grantsFor, instMaxHp, isArmorType, isEquippable, isBladeCantrip, isConcDef, isConcInst, isConsumableRow, isWeaponType, knownSpellNames, maxSpellLevel, minionApplyHp, minionAttackRolls, minionHp, minionSaves, minionSkills, minionsOf, mod, pipeBytes, profBonus, profSummary, round2, schoolName, searchRank, shareCustomsFor, sourceOf, speedOf, spellCapacity, spellFitsClass, spellGrantsOf, spellSlots, spiritAc, spiritDefFromSpell, spiritHp, strikeProfile, subSpellData, bonusProfsOf, summonDefFor, summonFormsFor, summonerSpellAtk, totalLevel, useRecipe, useTrackersFor, usesAmmo } from "./rules.js";
+import { EFFECT_BY_KEY, EFFECT_LIB, SUMMON_LIB, allKnownCantrips, allSubFeats, ammoRowFor, applyEffectPatch, armorClass, attuneBlocker, attunedRows, attunementCap, b64uFromBytes, bladeRiderTier, bytesFromB64u, canEquip, characterChoiceGroups, classLevel, consumableEffectKey, crShow, creatureByName, describeCustomFx, effDefOf, effEnds, effMaxHp, effectiveAbilities, effectsOf, equippedOf, featChoiceOf, featChoiceSummary, featEffects, featureBuckets, featureItems, featHpBonus, findItem, fmtMod, fxMods, gearMods, hasEffect, hasStyle, hasSub, healingDiceFor, grantAbilityFor, grantLabel, grantTrackerFor, grantsFor, instMaxHp, isArmorType, isEquippable, isBladeCantrip, isConcDef, isConcInst, isConsumableRow, isWeaponType, knownSpellNames, maxSpellLevel, minionApplyHp, minionAttackRolls, minionHp, minionSaves, minionSkills, minionsOf, mod, pipeBytes, portraitBrief, profBonus, profSummary, round2, schoolName, searchRank, shareCustomsFor, sourceOf, speedOf, spellCapacity, spellFitsClass, spellGrantsOf, spellSlots, spiritAc, spiritDefFromSpell, spiritHp, strikeProfile, subSpellData, bonusProfsOf, summonDefFor, summonFormsFor, summonerSpellAtk, totalLevel, useRecipe, useTrackersFor, usesAmmo } from "./rules.js";
 import { EMPTY_CUSTOM, SRD_SRC, __BESTIARY, __SOURCES, creatureSrcOf, isSourceEnabled, sourceCodesOf, sourceLabelOf, spellSrcOf, srcSpells, uid } from "./compendium.js";
 import React, { useEffect, useState } from "react";
 import { CLASS_THEMES, ClassTag, ICON_PATHS, Icon, LazyList, Portrait, SpellPickGrid, PortraitButton, T, __showLore, btn, card, cornerBtn, lorePress } from "./ui.jsx";
@@ -45,23 +45,6 @@ const shareLine = (ch, customs) => {
   const cur = Math.max(0, max - Math.max(0, ch.dmg || 0));
   return `${ch.name} — ${ch.race} ${ch.classes.map((c) => `${c.name} ${c.level}`).join(" / ")} · HP ${cur}/${max} · AC ${armorClass(ch, customs).ac}`;
 };
-// Every class feature a character has, by the level it arrived — the sheet's feature chips and the
-// portrait brief both read from here.
-const featureItems = (c, customs) => Array.from({ length: c.level }, (_, i) => i + 1)
-  .flatMap((l) => (CLASSES[c.name].feats[l] || [])
-    .filter((f) => !(c.subclass && /\bfeature\b$/i.test(f)))
-    .concat(allSubFeats(c.subclass, l, customs))
-    .concat(CLASSES[c.name].asi.includes(l) && !(CLASSES[c.name].feats[l] || []).includes(ASI) ? [ASI] : [])
-    .map((f) => ({ l, f })));
-// What the conjurer is told: sheet facts, never the whole record. Kept small on purpose.
-const portraitBrief = (ch, customs) => ({
-  name: ch.name, race: ch.race, background: ch.background, alignment: ch.alignment,
-  classes: ch.classes.map((c) => `${c.name} ${c.level}${c.subclass ? ` (${c.subclass})` : ""}`),
-  traits: RACES[ch.race]?.traits || [],
-  features: ch.classes.flatMap((c) => featureItems(c, customs).map(({ f }) => f)).filter((f) => f !== ASI),
-  feats: ch.feats || [], styles: ch.styles || [], persona: ch.persona || {},
-  notes: (ch.notes || "").slice(0, 800),
-});
 async function drawShareCard(ch, customs) {
   const cv = document.createElement("canvas");
   cv.width = SHARE_W; cv.height = SHARE_H;

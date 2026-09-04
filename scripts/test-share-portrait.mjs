@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { b64uFromBytes, bytesFromB64u } from "../src/rules.js";
+import { b64uFromBytes, bytesFromB64u, portraitBrief } from "../src/rules.js";
 import { RACES, CLASSES, ABILITIES } from "../src/data.js";
 import { EMPTY_CUSTOM } from "../src/compendium.js";
 
@@ -112,6 +112,50 @@ async function run() {
   assert.equal(decodedLegacy.c.name, "Lorne Elderwood");
   assert.equal(decodedLegacy.c.portrait, null, "legacy share token without portrait gracefully decodes with null portrait");
 
+
+  // Test portraitBrief gear extraction
+  const testCustoms = {
+    items: [
+      { name: "Plate Armor", type: "HA", isEnabled: true },
+      { name: "Shield", type: "S", isEnabled: true },
+      { name: "Longsword", type: "M", isEnabled: true },
+      { name: "Shortbow", type: "R", isEnabled: true },
+      { name: "Cloak of Protection", type: "W", attune: true, isEnabled: true },
+      { name: "Wand of Magic Missiles", type: "WD", isEnabled: true },
+    ],
+  };
+  const armoredChar = {
+    name: "Theron",
+    race: "Human",
+    classes: [{ name: "Paladin", level: 3, subclass: "Oath of Devotion" }],
+    inventory: [
+      { name: "Plate Armor", equipped: true },
+      { name: "Shield", equipped: true },
+      { name: "Longsword", equipped: true },
+      { name: "Cloak of Protection", equipped: false, attuned: true },
+    ],
+  };
+  const briefArmored = portraitBrief(armoredChar, testCustoms);
+  assert.equal(briefArmored.gear.armor, "Plate Armor");
+  assert.equal(briefArmored.gear.shield, "Shield");
+  assert.deepEqual(briefArmored.gear.weapons, ["Longsword"]);
+  assert.deepEqual(briefArmored.gear.attuned, ["Cloak of Protection"]);
+
+  const casterChar = {
+    name: "Lyra",
+    race: "Elf (High)",
+    classes: [{ name: "Wizard", level: 2 }],
+    inventory: [
+      { name: "Quarterstaff", equipped: true },
+      { name: "Wand of Magic Missiles", equipped: false },
+    ],
+  };
+  const briefCaster = portraitBrief(casterChar, testCustoms);
+  assert.equal(briefCaster.gear.armor, "None (unarmored)");
+  assert.equal(briefCaster.gear.shield, null);
+  assert.deepEqual(briefCaster.gear.weapons, ["Quarterstaff"]);
+  assert.deepEqual(briefCaster.gear.notable, ["Wand of Magic Missiles"]);
+  console.log("portraitBrief gear tests passed successfully!");
   console.log("All share encode/decode tests passed successfully!");
 }
 

@@ -1389,4 +1389,46 @@ const searchRank = (name, q) => {
 };
 const schoolName = (s) => SCHOOL_NAMES[(s || "").toUpperCase()] || s;
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-export { mod, fmtMod, profBonus, subSpellData, meetsPrereq, featureBody, featChoiceOf, featEffects, hasStyle, featHpBonus, featBlockedBy, featPickOf, featGrantedSpells, spellGrantsOf, grantsFor, grantAbilityFor, grantLabel, grantTrackerKey, grantTrackerFor, featPickDone, spellCapacity, maxSpellLevel, foldStarredSpells, spellFitsClass, spellSlots, totalLevel, isTechnique, choiceCum, groupMatches, choiceOptionsFor, allChoiceGroups, characterChoiceGroups, allKnownCantrips, sourceOf, findItem, isArmorType, isWeaponType, equippedOf, canEquip, bonusProfsOf, gearProfsOf, attunementCap, isEquippable, itemActive, attunedRows, attuneBlocker, effectiveAbilities, gearMods, subclassProfsOf, subclassProfsAt, profSummary, armorClass, classLevel, hasSub, hasFeat, effectsOf, knownSpellNames, EFFECT_LIB, EFFECT_BY_KEY, hasEffect, effDefOf, isConcDef, isConcInst, effEnds, instMaxHp, describeCustomFx, applyEffectPatch, fxMods, effMaxHp, speedOf, useTrackersFor, minionsOf, crShow, creatureByName, summonFormsFor, SUMMON_LIB, summonDefFor, spiritHp, spiritAc, spiritDefFromSpell, minionAttackRolls, summonerSpellAtk, minionSaves, minionSkills, minionHp, minionApplyHp, isBladeCantrip, bladeRiderTier, strikeProfile, useRecipe, usesAmmo, ammoRowFor, isConsumableRow, healingDiceFor, consumableEffectKey, allSubs, allSubFeats, allFeats, b64uFromBytes, bytesFromB64u, pipeBytes, shareCustomsFor, getRacialBonusPool, getDefaultRacialSlots, formatStandardRaceBonus, searchRank, schoolName, round2, infoFor, featChoiceSummary, featureBuckets };
+const featureItems = (c, customs) => Array.from({ length: c.level }, (_, i) => i + 1)
+  .flatMap((l) => (CLASSES[c.name]?.feats[l] || [])
+    .filter((f) => !(c.subclass && /\bfeature\b$/i.test(f)))
+    .concat(allSubFeats(c.subclass, l, customs))
+    .concat(CLASSES[c.name]?.asi.includes(l) && !(CLASSES[c.name]?.feats[l] || []).includes(ASI) ? [ASI] : [])
+    .map((f) => ({ l, f })));
+
+const portraitBrief = (ch, customs) => {
+  const inv = ch.inventory || [];
+  const equipped = inv.filter((r) => r.equipped);
+  const gearItems = equipped.map((r) => ({ ...r, it: findItem(r.name, customs) }));
+  const armor = gearItems.find((x) => x.it && isArmorType(x.it.type)) ||
+    gearItems.find((x) => /armor|mail|plate|hide|leather|padded/i.test(x.name));
+  const shield = gearItems.find((x) => x.it?.type === "S") ||
+    gearItems.find((x) => x !== armor && /shield/i.test(x.name));
+  const weapons = gearItems
+    .filter((x) => x !== armor && x !== shield)
+    .map((x) => x.name);
+  const attuned = inv.filter((r) => r.attuned).map((r) => r.name);
+  const notable = inv
+    .filter((r) => !r.equipped && !r.attuned)
+    .map((r) => ({ name: r.name, it: findItem(r.name, customs) }))
+    .filter(({ name, it }) => (it && ["W", "WD", "ST", "RD", "RG"].includes(it.type)) || /symbol|focus|amulet|cloak|robe|boots|helm|circlet|instrument|lute|flute|horn|spellbook/i.test(name))
+    .map(({ name }) => name)
+    .slice(0, 5);
+
+  return {
+    name: ch.name, race: ch.race, background: ch.background, alignment: ch.alignment,
+    classes: (ch.classes || []).map((c) => `${c.name} ${c.level}${c.subclass ? ` (${c.subclass})` : ""}`),
+    traits: RACES[ch.race]?.traits || [],
+    features: (ch.classes || []).flatMap((c) => featureItems(c, customs).map(({ f }) => f)).filter((f) => f !== ASI),
+    feats: ch.feats || [], styles: ch.styles || [], persona: ch.persona || {},
+    gear: {
+      armor: armor ? armor.name : "None (unarmored)",
+      shield: shield ? shield.name : null,
+      weapons,
+      ...(attuned.length ? { attuned } : {}),
+      ...(notable.length ? { notable } : {}),
+    },
+    notes: (ch.notes || "").slice(0, 800),
+  };
+};
+export { mod, fmtMod, profBonus, subSpellData, meetsPrereq, featureBody, featChoiceOf, featEffects, hasStyle, featHpBonus, featBlockedBy, featPickOf, featGrantedSpells, spellGrantsOf, grantsFor, grantAbilityFor, grantLabel, grantTrackerKey, grantTrackerFor, featPickDone, spellCapacity, maxSpellLevel, foldStarredSpells, spellFitsClass, spellSlots, totalLevel, isTechnique, choiceCum, groupMatches, choiceOptionsFor, allChoiceGroups, characterChoiceGroups, allKnownCantrips, sourceOf, findItem, isArmorType, isWeaponType, equippedOf, canEquip, bonusProfsOf, gearProfsOf, attunementCap, isEquippable, itemActive, attunedRows, attuneBlocker, effectiveAbilities, gearMods, subclassProfsOf, subclassProfsAt, profSummary, armorClass, classLevel, hasSub, hasFeat, effectsOf, knownSpellNames, EFFECT_LIB, EFFECT_BY_KEY, hasEffect, effDefOf, isConcDef, isConcInst, effEnds, instMaxHp, describeCustomFx, applyEffectPatch, fxMods, effMaxHp, speedOf, useTrackersFor, minionsOf, crShow, creatureByName, summonFormsFor, SUMMON_LIB, summonDefFor, spiritHp, spiritAc, spiritDefFromSpell, minionAttackRolls, summonerSpellAtk, minionSaves, minionSkills, minionHp, minionApplyHp, isBladeCantrip, bladeRiderTier, strikeProfile, useRecipe, usesAmmo, ammoRowFor, isConsumableRow, healingDiceFor, consumableEffectKey, allSubs, allSubFeats, allFeats, b64uFromBytes, bytesFromB64u, pipeBytes, shareCustomsFor, getRacialBonusPool, getDefaultRacialSlots, formatStandardRaceBonus, searchRank, schoolName, round2, infoFor, featChoiceSummary, featureBuckets, featureItems, portraitBrief };

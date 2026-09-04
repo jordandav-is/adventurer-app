@@ -365,7 +365,7 @@ function ConjureSheet({ brief, onPick, onClose }) {
     <div style={veil} onClick={busy ? undefined : onClose}>
       <div style={{ ...pane, width: "min(92vw, 420px)", maxHeight: "90vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold }}>Conjure a portrait</div>
-        <div style={{ color: T.dim, fontSize: 12.5, margin: "4px 0 10px" }}>Your sheet — ancestry, classes, features, persona, notes — goes in with whatever you add here.</div>
+        <div style={{ color: T.dim, fontSize: 12.5, margin: "4px 0 10px" }}>Your sheet — ancestry, classes, gear, features, persona, notes — goes in with whatever you add here.</div>
         {!last && <textarea value={text} rows={4} maxLength={800} disabled={busy} onChange={(e) => setText(e.target.value)} style={field}
           placeholder="Scar over the left eye, hair braided with copper rings, a grin that says the tavern is already on fire…" />}
         {(last || busy) && (
