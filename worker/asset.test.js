@@ -184,3 +184,59 @@ describe("worker asset endpoint", () => {
     assert.equal(env.ASSETS._map.has(`${accountId}/${sha}`), true);
   });
 });
+
+describe("worker conjure endpoint validation", () => {
+  it("rejects conjure request with invalid referenceImage", async () => {
+    const env = createMockEnv({});
+    const accountId = "11111111-2222-4333-8444-555555555555";
+    const token = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const req = new Request("https://example.com/conjure", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        accountId,
+        token,
+        brief: { description: "A warrior" },
+        referenceImage: "not-an-object",
+      }),
+    });
+    const res = await worker.fetch(req, env);
+    assert.equal(res.status, 400);
+  });
+
+  it("rejects conjure request with malformed referenceImage data", async () => {
+    const env = createMockEnv({});
+    const accountId = "11111111-2222-4333-8444-555555555555";
+    const token = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const req = new Request("https://example.com/conjure", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        accountId,
+        token,
+        brief: { description: "A warrior" },
+        referenceImage: { data: 12345 },
+      }),
+    });
+    const res = await worker.fetch(req, env);
+    assert.equal(res.status, 400);
+  });
+
+  it("rejects conjure request with oversized body", async () => {
+    const env = createMockEnv({});
+    const accountId = "11111111-2222-4333-8444-555555555555";
+    const token = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const req = new Request("https://example.com/conjure", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        accountId,
+        token,
+        brief: { description: "A warrior" },
+        referenceImage: { data: "x".repeat(3 * 1024 * 1024) },
+      }),
+    });
+    const res = await worker.fetch(req, env);
+    assert.equal(res.status, 413);
+  });
+});

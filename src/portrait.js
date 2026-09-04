@@ -80,11 +80,48 @@ export function flushAssets(chars) {
   }
 }
 
+// Prepares a scaled-down base64 JPEG reference payload from an existing portrait/photo for the vision model.
+export async function referenceImagePayload({ photo, portrait } = {}, maxDim = 768) {
+  const url = portrait?.id ? await assetUrl(portrait.id).catch(() => null) : null;
+  const src = url || photo;
+  if (!src) return null;
+  return new Promise((res) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const nw = img.naturalWidth || img.width || 1;
+      const nh = img.naturalHeight || img.height || 1;
+      const scale = Math.min(1, maxDim / Math.max(nw, nh));
+      const w = Math.max(1, Math.round(nw * scale));
+      const h = Math.max(1, Math.round(nh * scale));
+      const c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      const ctx = c.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+      const dataUrl = c.toDataURL("image/jpeg", 0.85);
+      const base64 = dataUrl.split(",")[1];
+      res(base64 ? { mimeType: "image/jpeg", data: base64 } : null);
+    };
+    img.onerror = () => {
+      if (photo && photo.startsWith("data:")) {
+        const [meta, data] = photo.split(",");
+        const mimeType = meta.match(/:(.*?);/)?.[1] || "image/jpeg";
+        res(data ? { mimeType, data } : null);
+      } else {
+        res(null);
+      }
+    };
+    img.src = src;
+  });
+}
+
 // Ask the Worker to write a prompt from the brief and paint four candidates. Returns Blobs.
-export async function conjure(brief) {
+export async function conjure(brief, referenceImage) {
   const a = getAccount();
   if (!a || !SYNC_URL) throw new Error("Sign in to conjure a portrait.");
-  const res = await fetch(`${SYNC_URL}/conjure`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ accountId: a.id, token: a.token, brief }) });
+  const payload = { accountId: a.id, token: a.token, brief };
+  if (referenceImage?.data) payload.referenceImage = referenceImage;
+  const res = await fetch(`${SYNC_URL}/conjure`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || "The muse did not answer.");
   const bytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));

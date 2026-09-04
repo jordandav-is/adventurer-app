@@ -48,6 +48,25 @@ Revision: if the brief carries previousPrompt and revision, the player has seen 
 
 Rules: one character only. Ground the depiction in the character's sheet gear (armor, weapons, shield, attuned items) in a class-appropriate, lived-in style. However, the player's own description and revision notes ALWAYS outrank sheet facts and gear: if the player types specific clothing, weapons, an unarmored appearance, colors, or visual flavoring, lean decisively into their stated desires. Never change the stated ancestry or class. Invent tasteful, specific detail wherever the brief is thin — named colours, named plants, one small living touch such as a bird or a tucked sprig. Prefer weathered and accumulated over pristine. Respond with JSON: {"prompt": "<the full prompt with the labelled paragraphs separated by newlines>"}.`;
 
+const EVOLVE_FRAME = `You are an art director writing a single, richly detailed image-generation prompt for Dungeons & Dragons 5e character art in the painterly Wizards of the Coast sourcebook style. You receive an attached reference image of the character's existing portrait, plus an updated character brief: player description and notes, along with current sheet facts (ancestry, classes, background, gear, features, persona).
+
+Your job is to "level up" and evolve this character: maintain strong visual continuity with the reference image so they are clearly the same person, while evolving their gear, attire, physical presence, and adventuring wear to reflect their progression, new equipment, and higher level.
+
+Write the prompt as labelled paragraphs, 300-450 words in total, in this order:
+
+Character: who this is in one dense sentence or two — carry forward the character's ancestry, age, facial identity, and build from the reference image, reflecting their growth in station, experience, or confidence.
+Permanent visual anchors: meticulously transcribe the character's visual DNA from the reference image — face shape, skin tone and undertones, eye colour and shape, hair color, texture, and style, nose shape, jawline, ears/horns/tail, and any scars, beauty marks, or distinctive features. They must be instantly recognizable as the same individual seen in the reference.
+Gear and silhouette: level up their gear. Compare the reference image against the sheet's current equipment (equipped armor or unarmored clothing, weapons in hand or at side, shield, attuned magic items, foci, pouches). Replace or upgrade outdated equipment from the reference with their current sheet gear, styled authentically for their class and background (e.g. upgraded armor, finer weapon craft, attuned cloaks or rings, battle-tested leather). Detail clothing layers with named colours and materials, and show accumulated signs of adventure (scuffs, stitching, weather-wear). If the player's description specifies clothing, gear, weapons, or aesthetic styling, lean decisively into the player's desires over the reference or sheet items. Name the things that must not appear (no plate if unarmored or light armor, no glowing weapon unless noted, etc.).
+Class cues: how their advanced class mastery and experience show through lived-in details rather than costume clichés — seasoned hands, arcane ink or focus wear, holy symbols, martial discipline. If the brief holds a secret (a hidden class, patron, past), the image must keep it: say plainly which imagery is forbidden so nothing reveals it.
+Mood and pose: acting direction — what they feel, posture, hands, gaze, reflecting their seasoned growth since their earlier portrait.
+Setting: a specific, grounded place that supports their current journey: terrain, plants, weather, distance cues. Not fantastical scenery.
+Light and format: "Painterly high-fantasy tabletop RPG character illustration reminiscent of premium modern Dungeons & Dragons sourcebook art: realistic anatomy and materials, expressive brushwork, restrained detail, textured traditional-media feel, sophisticated natural palette." Then the light (direction, time of day, atmosphere) and: full-body three-quarter character portrait, vertical composition, readable from head to boots, simple environmental background, no text, no watermark, no border.
+Avoid: a comma-separated list of everything that would spoil it — photorealism, anime, videogame concept-art armour, exaggerated proportions, generic evil imagery, glowing magic, and anything the brief's secrets forbid.
+
+Revision: if the brief carries previousPrompt and revision, the player has seen art from previousPrompt and wants changes. Rewrite previousPrompt applying the revision faithfully while keeping the reference anchors and character identity intact. An empty revision means "again, but different": vary pose, setting and light while keeping the anchors.
+
+Rules: one character only. Preserve the person's identity and visual DNA from the reference image while progressing their equipment and presence to match their sheet and level. However, the player's own description and revision notes ALWAYS outrank reference imagery and sheet facts: if the player requests changes (e.g. a new scar, dyed hair, an alternate outfit, different weapon, or specific visual flavoring), lean decisively into their stated desires. Never change the stated ancestry or class. Respond with JSON: {"prompt": "<the full prompt with the labelled paragraphs separated by newlines>"}.`;
+
 async function gemini(env, model, body) {
   const res = await fetch(`${GEMINI}${model}:generateContent`, {
     method: "POST",
@@ -265,12 +284,13 @@ export default {
       return err(405, "Method not allowed", origin);
     }
 
+    const maxPostBytes = path === "/conjure" ? 2 * 1024 * 1024 : 65536;
     const contentLength = parseInt(req.headers.get("content-length") || "0", 10);
-    if (contentLength > 65536) {
+    if (contentLength > maxPostBytes) {
       return err(413, "Payload too large", origin);
     }
     const rawText = await req.text();
-    if (rawText.length > 65536) {
+    if (rawText.length > maxPostBytes) {
       return err(413, "Payload too large", origin);
     }
     let body;
@@ -526,9 +546,14 @@ export default {
     }
 
     if (path === "/conjure") {
-      const { accountId, token, brief } = body;
+      const { accountId, token, brief, referenceImage } = body;
       if (typeof accountId !== "string" || typeof token !== "string" || !UUID_RE.test(accountId) || !HEX_64_RE.test(token) || !brief || typeof brief !== "object" || typeof brief.description !== "string" || brief.description.length > 800 || (brief.revision != null && (typeof brief.revision !== "string" || brief.revision.length > 800 || typeof brief.previousPrompt !== "string" || brief.previousPrompt.length > 6000))) {
         return err(400, "Bad request", origin);
+      }
+      if (referenceImage != null) {
+        if (typeof referenceImage !== "object" || typeof referenceImage.data !== "string" || referenceImage.data.length > 2 * 1024 * 1024 || (referenceImage.mimeType != null && typeof referenceImage.mimeType !== "string")) {
+          return err(400, "Invalid reference image", origin);
+        }
       }
       if (!env.GOOGLE_API_KEY) return err(503, "Conjuring is not configured", origin);
       const account = await identityStub.getAccountById(accountId);
@@ -542,9 +567,21 @@ export default {
         return err(429, "The conjuring well has run dry for now.", origin);
       }
       try {
+        const hasRef = !!referenceImage?.data;
+        const frame = hasRef ? EVOLVE_FRAME : CONJURE_FRAME;
+        const parts = [];
+        if (hasRef) {
+          parts.push({
+            inlineData: {
+              mimeType: referenceImage.mimeType || "image/jpeg",
+              data: referenceImage.data,
+            },
+          });
+        }
+        parts.push({ text: JSON.stringify(brief) });
         const [textPart] = await gemini(env, CONJURE_TEXT_MODEL, {
-          systemInstruction: { parts: [{ text: CONJURE_FRAME }] },
-          contents: [{ parts: [{ text: JSON.stringify(brief) }] }],
+          systemInstruction: { parts: [{ text: frame }] },
+          contents: [{ parts }],
           generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { prompt: { type: "STRING" } }, required: ["prompt"] } },
         });
         const prompt = JSON.parse(textPart?.text || "{}").prompt;
