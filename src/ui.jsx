@@ -331,7 +331,7 @@ function PortraitButton({ photo, portrait, size, name, brief, onChange }) {
         <div style={veil} onClick={() => setMode(null)}>
           <div style={{ ...pane, display: "flex", flexDirection: "column", gap: 8 }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold, marginBottom: 4 }}>Portrait</div>
-            <label style={{ ...btn(true), textAlign: "center" }}>Upload a photo<input type="file" accept="image/*" onChange={pick} style={{ display: "none" }} /></label>
+            <label style={{ ...btn(false), display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>Upload a photo<input type="file" accept="image/*" onChange={pick} style={{ display: "none" }} /></label>
             {canConjure && hasPortrait && <button style={btn(false)} onClick={() => setMode("evolve")}>Evolve from current portrait</button>}
             {canConjure && <button style={btn(false)} onClick={() => setMode("conjure")}>{hasPortrait ? "Conjure a fresh portrait" : "Conjure one from your sheet"}</button>}
             {portrait && <button style={btn(false)} onClick={() => setMode(portrait)}>Reframe</button>}
