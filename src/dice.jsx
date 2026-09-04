@@ -142,7 +142,7 @@ function DiceTray({ title, dice, dropLowest, onAccept, onReroll, acceptLabel = "
     <div style={{ position: "fixed", inset: 0, background: "#000000c8", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}>
       <div style={{ ...card, padding: 28, textAlign: "center", minWidth: 320, maxWidth: "92vw" }}>
         <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold, marginBottom: 6 }}>{title}</div>
-        {note && <div style={{ color: T.dim, fontSize: 13, marginBottom: 10 }}>{note}</div>}
+        {note && <div style={{ color: T.dim, fontSize: 13, marginBottom: 10 }}>{typeof note === "function" ? note(revealDone) : note}</div>}
         {tally && tally.length > 0 && (
           <div style={{ color: T.dim, fontSize: 13 }}>Kept so far: <span style={{ color: T.gold, fontWeight: 700 }}>{tally.join(" · ")}</span></div>
         )}

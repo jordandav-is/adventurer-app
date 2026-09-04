@@ -4,7 +4,8 @@ import { SYNC_URL } from "./sync-config.js";
 import { flushAssets } from "./portrait.js";
 import { effMaxHp, effectsOf, foldStarredSpells, totalLevel } from "./rules.js";
 import { useEffect, useRef, useState } from "react";
-import { ClassTag, GLOBAL_CSS, Icon, LoreSheet, Portrait, SHELL_STYLE, T, card } from "./ui.jsx";
+import { ClassTag, GLOBAL_CSS, Icon, LoreSheet, NightAmbience, Portrait, SHELL_STYLE, T, card } from "./ui.jsx";
+import { DiceTray, roll } from "./dice.jsx";
 import { CreateWizard, HorizonArt } from "./CreateWizard.jsx";
 import { HomebrewForge } from "./HomebrewForge.jsx";
 import { LevelUp } from "./LevelUp.jsx";
@@ -22,6 +23,17 @@ export default function App() {
   const [cloud, setCloud] = useState(null);
   const [account, setAccount] = useState(null);
   const [syncState, setSyncState] = useState("offline");
+  const [initiativeEgg, setInitiativeEgg] = useState(null); // null | { rollId, value }
+  const lastTitleTap = useRef(0);
+  const handleTitleTap = () => {
+    const now = Date.now();
+    if (now - lastTitleTap.current < 450) {
+      lastTitleTap.current = 0;
+      setInitiativeEgg({ rollId: Date.now(), value: roll(20) });
+    } else {
+      lastTitleTap.current = now;
+    }
+  };
   const stateRef = useRef({});
   stateRef.current = { chars, customs, srcOff };
   const preload = useRef(null);
@@ -129,8 +141,22 @@ export default function App() {
     <div style={SHELL_STYLE}>
       <style>{GLOBAL_CSS}</style>
       <div style={{ textAlign: "center", padding: "26px 14px 6px", position: "relative", zIndex: 1 }}>
-        <div style={{ fontFamily: "Georgia, serif", fontSize: 30, color: T.gold, letterSpacing: 1 }}>The Adventurer's Ledger</div>
-        <div style={{ color: T.dim, fontSize: 13 }}>5e SRD character forge · full multiclass rules</div>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={handleTitleTap}
+          title="The Adventurer's Ledger"
+          style={{
+            fontFamily: "Georgia, serif", fontSize: 30, color: T.gold, letterSpacing: 1,
+            cursor: "pointer", userSelect: "none", display: "inline-block",
+            transition: "filter 300ms ease",
+            ...(initiativeEgg ? { animation: "headerShine 2.4s ease-in-out infinite" } : {}),
+          }}>
+          The Adventurer's Ledger
+        </div>
+        <div style={{ color: initiativeEgg ? T.gold : T.dim, fontSize: 13, userSelect: "none", transition: "color 300ms ease" }}>
+          {initiativeEgg ? "⚔ Roll for Initiative ⚔" : "5e SRD character forge · full multiclass rules"}
+        </div>
       </div>
 
       {view === "roster" && (
@@ -248,6 +274,28 @@ export default function App() {
       )}
 
       <LoreSheet customs={customs} />
+
+      {initiativeEgg && <NightAmbience onDismiss={() => setInitiativeEgg(null)} />}
+      {initiativeEgg && (
+        <DiceTray
+          title="Roll for Initiative"
+          dice={[{ sides: 20, value: initiativeEgg.value }]}
+          rollId={initiativeEgg.rollId}
+          acceptLabel="Stand Ready"
+          note={(done) => {
+            if (!done) return "The tavern falls silent. The Dungeon Master clears their throat.";
+            if (initiativeEgg.value === 20) {
+              return <span style={{ color: T.gold, fontWeight: 700 }}>Natural 20! You strike first. Take your turn, adventurer.</span>;
+            }
+            if (initiativeEgg.value === 1) {
+              return <span style={{ color: "#d76a76", fontWeight: 700 }}>Natural 1! Caught completely flat-footed. At least you're not surprised… or are you?</span>;
+            }
+            return <span>Initiative {initiativeEgg.value}. Weapons drawn. What do you do?</span>;
+          }}
+          onReroll={() => setInitiativeEgg({ rollId: Date.now(), value: roll(20) })}
+          onAccept={() => setInitiativeEgg(null)}
+        />
+      )}
     </div>
   );
 }
