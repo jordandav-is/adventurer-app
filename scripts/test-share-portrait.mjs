@@ -22,6 +22,14 @@ async function encodeShare(ch, customs) {
       z: typeof soul.portrait.z === "number" ? soul.portrait.z : 1,
     };
   }
+  if (soul.model && typeof soul.model.id === "string" && soul.model.id.length === 64) {
+    soul.model = {
+      id: soul.model.id,
+      env: typeof soul.model.env === "string" ? soul.model.env : "dawn",
+    };
+  } else {
+    delete soul.model;
+  }
   const payload = { v: 1, t: new Date().toISOString().slice(0, 10), c: soul, x: shareCustomsFor(ch, customs) };
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
   const canDeflate = typeof CompressionStream !== "undefined";
@@ -48,7 +56,11 @@ async function decodeShare(token) {
     y: typeof c.portrait.y === "number" ? c.portrait.y : 0.5,
     z: typeof c.portrait.z === "number" ? c.portrait.z : 1,
   } : null;
-  payload.c = { ...c, photo: null, portrait, log: [], skills: Array.isArray(c.skills) ? c.skills : [], maxHp: typeof c.maxHp === "number" ? c.maxHp : 1 };
+  const model = c.model && typeof c.model.id === "string" && c.model.id.length === 64 ? {
+    id: c.model.id,
+    env: typeof c.model.env === "string" ? c.model.env : "dawn",
+  } : null;
+  payload.c = { ...c, photo: null, portrait, model, log: [], skills: Array.isArray(c.skills) ? c.skills : [], maxHp: typeof c.maxHp === "number" ? c.maxHp : 1 };
   payload.x = { ...EMPTY_CUSTOM, ...(payload.x || {}) };
   return payload;
 }
@@ -93,6 +105,19 @@ async function run() {
   assert.equal(decoded.c.portrait.y, 0.35);
   assert.equal(decoded.c.portrait.z, 1.5);
 
+  // Test model preservation in share token
+  const modelChar = { ...mockChar, model: { id: sha, env: "noon" } };
+  const urlModel = await encodeShare(modelChar, {});
+  const decodedModel = await decodeShare(urlModel.match(/#share=([0-9A-Za-z_-]+)/)[1]);
+  assert.ok(decodedModel.c.model, "model must be preserved in share token");
+  assert.equal(decodedModel.c.model.id, sha);
+  assert.equal(decodedModel.c.model.env, "noon");
+
+  // Test malformed model is safely dropped
+  const badModelChar = { ...mockChar, model: { id: "short" } };
+  const urlBadModel = await encodeShare(badModelChar, {});
+  const decodedBadModel = await decodeShare(urlBadModel.match(/#share=([0-9A-Za-z_-]+)/)[1]);
+  assert.equal(decodedBadModel.c.model, null, "malformed model id must decode as null");
   // Test character without portrait
   const noPortraitChar = { ...mockChar, photo: null, portrait: null };
   const url2 = await encodeShare(noPortraitChar, {});

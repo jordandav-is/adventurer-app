@@ -324,7 +324,7 @@ function LoreSheet({ customs }) {
 // given, is a function building the character brief the conjurer works from.
 const veil = { position: "fixed", inset: 0, background: "#000000c8", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", animation: "sheetVeil 200ms ease" };
 const pane = { ...card, padding: 20, width: "min(92vw, 360px)", boxSizing: "border-box" };
-function PortraitButton({ photo, portrait, model, size, name, classes, brief, onChange }) {
+function PortraitButton({ photo, portrait, model, size, name, classes, brief, readOnly, onChange }) {
   const [mode, setMode] = useState(null); // null | "menu" | "forge-modal" | "forge" | "stage" | "conjure" | "evolve" | portrait record
   const [uploadError, setUploadError] = useState(null);
   const [forgeImageId, setForgeImageId] = useState(null);
@@ -347,7 +347,18 @@ function PortraitButton({ photo, portrait, model, size, name, classes, brief, on
   const canForge = hasPortrait && signedIn;
   return (
     <>
-      <div role="button" tabIndex={0} title="Portrait" style={{ cursor: "pointer" }} onClick={() => setMode("menu")}>
+      <div
+        role="button"
+        tabIndex={0}
+        title={model?.id ? "View in 3D" : readOnly ? (name || "Portrait") : "Portrait"}
+        style={{ cursor: model?.id || !readOnly ? "pointer" : "default" }}
+        onClick={() => {
+          if (readOnly) {
+            if (model?.id) setMode("stage");
+            return;
+          }
+          setMode("menu");
+        }}>
         <Portrait photo={photo} portrait={portrait} size={size} name={name} />
       </div>
       {mode === "menu" && (

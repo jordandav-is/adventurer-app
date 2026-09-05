@@ -157,7 +157,7 @@ async function drawShareCard(ch, customs) {
   return cv;
 }
 async function encodeShare(ch, customs) {
-  const { photo, model, log, hpLog, ...soul } = ch;
+  const { photo, log, hpLog, ...soul } = ch;
   if (soul.portrait) {
     soul.portrait = {
       id: String(soul.portrait.id || ""),
@@ -167,6 +167,14 @@ async function encodeShare(ch, customs) {
       y: typeof soul.portrait.y === "number" ? soul.portrait.y : 0.5,
       z: typeof soul.portrait.z === "number" ? soul.portrait.z : 1,
     };
+  }
+  if (soul.model && typeof soul.model.id === "string" && soul.model.id.length === 64) {
+    soul.model = {
+      id: soul.model.id,
+      env: typeof soul.model.env === "string" ? soul.model.env : "dawn",
+    };
+  } else {
+    delete soul.model;
   }
   const payload = { v: 1, t: new Date().toISOString().slice(0, 10), c: soul, x: shareCustomsFor(ch, customs) };
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
@@ -193,7 +201,11 @@ async function decodeShare(token) {
     y: typeof c.portrait.y === "number" ? c.portrait.y : 0.5,
     z: typeof c.portrait.z === "number" ? c.portrait.z : 1,
   } : null;
-  payload.c = { ...c, photo: null, portrait, model: null, log: [], skills: Array.isArray(c.skills) ? c.skills : [], maxHp: typeof c.maxHp === "number" ? c.maxHp : 1 };
+  const model = c.model && typeof c.model.id === "string" && c.model.id.length === 64 ? {
+    id: c.model.id,
+    env: typeof c.model.env === "string" ? c.model.env : "dawn",
+  } : null;
+  payload.c = { ...c, photo: null, portrait, model, log: [], skills: Array.isArray(c.skills) ? c.skills : [], maxHp: typeof c.maxHp === "number" ? c.maxHp : 1 };
   payload.x = { ...EMPTY_CUSTOM, ...(payload.x || {}) };
   return payload;
 }
@@ -2349,11 +2361,7 @@ function Sheet({ ch: storedCh, onBack, onLevelUp, onDelete, onSpells, onNotes, o
       </div>
 
       <div style={{ ...card, padding: 20, display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
-        {shared ? (
-          <Portrait photo={ch.photo} portrait={ch.portrait} size={96} name={ch.name} />
-        ) : (
-          <PortraitButton photo={ch.photo} portrait={ch.portrait} model={ch.model} size={96} name={ch.name} classes={ch.classes} brief={() => portraitBrief(ch, customs)} onChange={onUpdate} />
-        )}
+        <PortraitButton photo={ch.photo} portrait={ch.portrait} model={ch.model} size={96} name={ch.name} classes={ch.classes} readOnly={shared} brief={shared ? undefined : () => portraitBrief(ch, customs)} onChange={shared ? undefined : onUpdate} />
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontFamily: "Georgia, serif", fontSize: 28, color: T.gold }}>{ch.name}</div>
           <div style={{ color: T.ink }}>{ch.race} · {ch.classes.map((c, i) => <span key={c.name}>{i > 0 ? " / " : ""}<ClassTag name={c.name} /> {c.level}{c.subclass ? <span style={{ color: T.dim }}> (<span {...lorePress(c.subclass)}>{c.subclass}</span>)</span> : ""}</span>)}</div>
