@@ -68,9 +68,8 @@ Revision: if the brief carries previousPrompt and revision, the player has seen 
 
 Rules: one character only. Preserve the person's identity and visual DNA from the reference image while progressing their equipment and presence to match their sheet and level. However, the player's own description and revision notes ALWAYS outrank reference imagery and sheet facts: if the player requests changes (e.g. a new scar, dyed hair, an alternate outfit, different weapon, or specific visual flavoring), lean decisively into their stated desires. Never change the stated ancestry or class. Respond with JSON: {"prompt": "<the full prompt with the labelled paragraphs separated by newlines>"}.`;
 
-// Tripo: image -> mesh with PBR textures -> rig -> idle animation. Each step is a task; the job
-// record in the Account DO remembers the chain so a poll can advance it. Keyed by image hash, so
-// forging the same image twice costs nothing.
+// Tripo: image -> static mesh with PBR textures. Single task, fast and reliable.
+// Stored in the Account DO so repeat requests for the same image cost nothing.
 const TRIPO = "https://api.tripo3d.ai/v2/openapi";
 const TRIPO_MODEL_VERSION = "v3.1-20260211";
 async function tripo(env, path, init) {
@@ -86,11 +85,8 @@ async function tripo(env, path, init) {
   return data.data;
 }
 const tripoTask = (env, body) => tripo(env, "/task", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((d) => d.task_id);
-// The next task in the chain, given the finished steps. Rigging failures fall back to the raw model.
 const FORGE_CHAIN = [
   { type: "image_to_model", body: (steps, tok) => ({ file: { type: "jpg", file_token: tok }, model_version: TRIPO_MODEL_VERSION, texture: true, pbr: true, texture_quality: "detailed", geometry_quality: "detailed", face_limit: 60000 }) },
-  { type: "animate_rig", body: (steps) => ({ original_model_task_id: steps[0].task, out_format: "glb" }) },
-  { type: "animate_retarget", body: (steps) => ({ original_model_task_id: steps[1].task, animation: "preset:idle", out_format: "glb" }) },
 ];
 const forgeTask = (env, step, steps, tok) => tripoTask(env, { type: step.type, ...step.body(steps, tok) });
 

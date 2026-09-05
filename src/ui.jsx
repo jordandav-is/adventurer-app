@@ -424,8 +424,8 @@ function PortraitButton({ photo, portrait, model, size, name, classes, brief, on
     </>
   );
 }
-// Sculpt, rig and animate the current portrait. The Worker drives Tripo; we watch the stages go by.
-const FORGE_STAGES = { image_to_model: "Sculpting the figure", animate_rig: "Setting the bones", animate_retarget: "Teaching it to breathe", deliver: "Carrying it home" };
+// Sculpt the current portrait with Tripo into a static PBR figure.
+const FORGE_STAGES = { image_to_model: "Sculpting the figure", deliver: "Carrying it home" };
 function ForgeSheet({ imageId, onDone, onClose }) {
   const [stage, setStage] = useState("image_to_model");
   const [err, setErr] = useState(null);
@@ -453,7 +453,7 @@ function ForgeSheet({ imageId, onDone, onClose }) {
           <>
             <div style={{ margin: "18px auto 8px", width: 72, height: 72, borderRadius: "50%", background: T.panel2, border: `2px solid ${T.gold}`, animation: "conjureBreathe 1.8s ease-in-out infinite" }} />
             <div style={{ color: T.ink, fontSize: 14 }}>{FORGE_STAGES[stage] || stage}…</div>
-            <div style={{ color: T.dim, fontSize: 12, marginTop: 4 }}>A few minutes. You can close this; the forge keeps working and the menu will offer the figure when it's done.</div>
+            <div style={{ color: T.dim, fontSize: 12, marginTop: 4 }}>Usually under a minute. You can close this; the forge keeps working and the menu will offer the figure when it's done.</div>
           </>
         )}
         <div style={{ marginTop: 16 }}><button style={btn(false)} onClick={onClose}>{err ? "Close" : "Leave it working"}</button></div>
