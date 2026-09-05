@@ -324,7 +324,7 @@ function LoreSheet({ customs }) {
 // given, is a function building the character brief the conjurer works from.
 const veil = { position: "fixed", inset: 0, background: "#000000c8", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", animation: "sheetVeil 200ms ease" };
 const pane = { ...card, padding: 20, width: "min(92vw, 360px)", boxSizing: "border-box" };
-function PortraitButton({ photo, portrait, model, size, name, brief, onChange }) {
+function PortraitButton({ photo, portrait, model, size, name, classes, brief, onChange }) {
   const [mode, setMode] = useState(null); // null | "menu" | "conjure" | "evolve" | "forge" | "stage" | portrait record being framed
   const modelUrl = useAssetUrl(mode === "stage" ? model?.id : null);
   const sample = !model?.id && import.meta.env.DEV;
@@ -353,7 +353,7 @@ function PortraitButton({ photo, portrait, model, size, name, brief, onChange })
       )}
       {mode === "forge" && <ForgeSheet imageId={portrait.id} onDone={(id) => { onChange({ model: { id, env: model?.env || "dawn" } }); setMode("stage"); }} onClose={() => setMode(null)} />}
       {mode === "stage" && <Suspense fallback={<div style={veil}><div style={pane} role="status">Opening the clearing…<button style={btn(false)} onClick={() => setMode(null)}>Close</button></div></div>}>
-        <StageView url={sample ? `${import.meta.env.BASE_URL}.preview-assets/ranger.glb` : modelUrl} facing={sample ? -Math.PI / 2 : 0} env={model?.env || "dawn"} onEnv={(env) => onChange({ model: { ...model, env } })} onPick={(blob) => importPhoto(blob).then(setMode)} onClose={() => setMode(null)} />
+        <StageView url={sample ? `${import.meta.env.BASE_URL}.preview-assets/ranger.glb` : modelUrl} name={name} classes={classes} facing={sample ? -Math.PI / 2 : 0} env={model?.env || "dawn"} onEnv={(env) => onChange({ model: { ...model, env } })} onPick={(blob) => importPhoto(blob).then(setMode)} onClose={() => setMode(null)} />
       </Suspense>}
       {(mode === "conjure" || mode === "evolve") && (
         <ConjureSheet

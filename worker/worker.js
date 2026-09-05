@@ -344,6 +344,7 @@ export default {
         const bytes = await (await fetch(best)).arrayBuffer();
         if (bytes.byteLength > ASSET_MAX_BYTES) throw new Error("the figure is too large to keep");
         const id = await sha256Hex(bytes);
+        await env.ASSETS.put(id, bytes, { httpMetadata: { contentType: "model/gltf-binary" } });
         await env.ASSETS.put(`${accountId}/${id}`, bytes, { httpMetadata: { contentType: "model/gltf-binary" } });
         job.done = id;
         await accountStub.state(jobKey, job);

@@ -2352,7 +2352,7 @@ function Sheet({ ch: storedCh, onBack, onLevelUp, onDelete, onSpells, onNotes, o
         {shared ? (
           <Portrait photo={ch.photo} portrait={ch.portrait} size={96} name={ch.name} />
         ) : (
-          <PortraitButton photo={ch.photo} portrait={ch.portrait} model={ch.model} size={96} name={ch.name} brief={() => portraitBrief(ch, customs)} onChange={onUpdate} />
+          <PortraitButton photo={ch.photo} portrait={ch.portrait} model={ch.model} size={96} name={ch.name} classes={ch.classes} brief={() => portraitBrief(ch, customs)} onChange={onUpdate} />
         )}
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontFamily: "Georgia, serif", fontSize: 28, color: T.gold }}>{ch.name}</div>

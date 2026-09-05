@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Stage, { ENVS } from "./stage.jsx";
+import { ClassTag } from "./ui.jsx";
 import "./stage-preview.css";
 
 const MOODS = {
@@ -9,8 +10,9 @@ const MOODS = {
   night: { color: "#9baacb", time: "IV" },
 };
 
-export default function StageView({ url, facing = 0, env = "dawn", onEnv, onClose, onPick }) {
+export default function StageView({ url, name, classes, facing = 0, env = "dawn", onEnv, onClose, onPick }) {
   const [localUrl, setLocalUrl] = useState(null);
+  const [localName, setLocalName] = useState(null);
   const [motion, setMotion] = useState(() => !matchMedia("(prefers-reduced-motion: reduce)").matches);
   const [framing, setFraming] = useState("full");
   const [result, setResult] = useState(null);
@@ -18,6 +20,8 @@ export default function StageView({ url, facing = 0, env = "dawn", onEnv, onClos
   const [panelOpen, setPanelOpen] = useState(!url);
   const handle = useRef(null);
   const source = localUrl || url;
+  const displayName = localName || name;
+  const displayClasses = localName ? null : classes;
   const state = result && result.source === source ? (result.error ? "error" : "ready") : source ? "loading" : "empty";
   const failure = error || (state === "error" ? result.error : "");
   useEffect(() => () => { if (localUrl) URL.revokeObjectURL(localUrl); }, [localUrl]);
@@ -30,6 +34,7 @@ export default function StageView({ url, facing = 0, env = "dawn", onEnv, onClos
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".glb")) { setError("Choose a self-contained .glb file with embedded textures."); return; }
     setLocalUrl(URL.createObjectURL(file));
+    setLocalName(file.name.replace(/\.glb$/i, "").replace(/[-_]/g, " "));
     setError(""); setFraming("full");
   };
   const snapshot = async () => {
@@ -47,7 +52,20 @@ export default function StageView({ url, facing = 0, env = "dawn", onEnv, onClos
   return <div className="atelier" role="dialog" aria-modal="true" aria-label="3D figure viewer" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
     <Stage url={source} env={env} motion={motion} facing={localUrl ? 0 : facing} onHandle={(api) => { handle.current = api; }} onReady={ready} />
     <div className="atelier-shade" aria-hidden="true" />
-    <div className="viewer-wordmark" style={{ fontFamily: "Georgia, serif", color: "#c9a44c", letterSpacing: 1 }}>The Adventurer's Ledger</div>
+    <div className="viewer-header">
+      <div className="viewer-wordmark">The Adventurer's Ledger</div>
+      {displayName && <div className="viewer-char-name">{displayName}</div>}
+      {displayClasses?.length > 0 && (
+        <div className="viewer-char-classes">
+          {displayClasses.map((c, i) => (
+            <span key={c.name || i} className="viewer-class-entry">
+              {i > 0 ? " / " : ""}
+              <ClassTag name={c.name} size={13} /> {c.level}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
     <button className="viewer-close" aria-label="Close 3D viewer" onClick={onClose} autoFocus>×</button>
     <button className="settings-toggle" onClick={() => setPanelOpen(!panelOpen)} aria-expanded={panelOpen} aria-controls="scene-settings">{panelOpen ? "Close settings" : "Scene settings"}</button>
     <aside id="scene-settings" className={`scene-panel ${panelOpen ? "is-open" : ""}`} aria-label="Scene settings">
@@ -62,6 +80,17 @@ export default function StageView({ url, facing = 0, env = "dawn", onEnv, onClos
       </fieldset>
       <label className="motion-control"><input type="checkbox" checked={motion} onChange={(event) => setMotion(event.target.checked)} /><span>Living environment</span><span className="switch-track" aria-hidden="true" /></label>
       <div className="panel-divider" />
+      <div className="panel-heading"><span className="eyebrow">FIGURE VIEW</span></div>
+      <div className="framing-control" aria-label="Character framing">
+        <button className={framing === "full" ? "active" : ""} onClick={() => frame("full")}>Full figure</button>
+        <button className={framing === "portrait" ? "active" : ""} onClick={() => frame("portrait")}>Portrait</button>
+      </div>
+      <div className="turn-controls">
+        <button aria-label="Turn character left" title="Turn left" onClick={() => handle.current?.rotateBy(-Math.PI / 8)}>↶</button>
+        <button className="reset-view" onClick={reset}>Reset view</button>
+        <button aria-label="Turn character right" title="Turn right" onClick={() => handle.current?.rotateBy(Math.PI / 8)}>↷</button>
+      </div>
+      <div className="panel-divider" />
       <label className="outline-button open-model">Open a GLB file<input aria-label="Open a local GLB file" type="file" accept=".glb,model/gltf-binary" onChange={openModel} /></label>
       <button className="outline-button" disabled={state !== "ready" || !source} onClick={snapshot}>Save portrait</button>
     </aside>
@@ -69,10 +98,6 @@ export default function StageView({ url, facing = 0, env = "dawn", onEnv, onClos
     {state === "loading" && <div className="stage-status" role="status"><span className="loading-sigil" aria-hidden="true" /><span>Opening the clearing…</span><small>Loading the figure and woodland textures</small></div>}
     {failure && <div className="stage-error" role="alert"><strong>{state === "error" ? "The viewer could not load" : "Could not complete that action"}</strong><span>{failure}</span><button onClick={() => setPanelOpen(true)}>Open scene settings</button></div>}
 
-    <footer className="inspection-bar">
-      <div className="framing-control" aria-label="Character framing"><button className={framing === "full" ? "active" : ""} onClick={() => frame("full")}>Full figure</button><button className={framing === "portrait" ? "active" : ""} onClick={() => frame("portrait")}>Portrait</button></div>
-      <div className="turn-controls"><button aria-label="Turn character left" title="Turn left" onClick={() => handle.current?.rotateBy(-Math.PI / 8)}>↶</button><button className="reset-view" onClick={reset}>Reset view</button><button aria-label="Turn character right" title="Turn right" onClick={() => handle.current?.rotateBy(Math.PI / 8)}>↷</button></div>
-      <span className="gesture-hint">DRAG TO TURN <span>·</span> SCROLL TO ZOOM</span>
-    </footer>
+    <span className="gesture-hint">DRAG TO TURN <span>·</span> SCROLL TO ZOOM</span>
   </div>;
 }
