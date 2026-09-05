@@ -325,9 +325,11 @@ function LoreSheet({ customs }) {
 const veil = { position: "fixed", inset: 0, background: "#000000c8", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", animation: "sheetVeil 200ms ease" };
 const pane = { ...card, padding: 20, width: "min(92vw, 360px)", boxSizing: "border-box" };
 function PortraitButton({ photo, portrait, model, size, name, classes, brief, onChange }) {
+  const SAMPLE_MODEL_ID = "9fce1505f0c12d970ce56459a25c9ebcc5a5718038358af149a44b0547bbd384";
   const [mode, setMode] = useState(null); // null | "menu" | "conjure" | "evolve" | "forge" | "stage" | portrait record being framed
-  const modelUrl = useAssetUrl(mode === "stage" ? model?.id : null);
-  const sample = !model?.id && import.meta.env.DEV;
+  const activeModelId = model?.id || (mode === "stage" ? SAMPLE_MODEL_ID : null);
+  const modelUrl = useAssetUrl(activeModelId);
+  const isSample = !model?.id;
   const pick = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importPhoto(f).then(setMode).catch(() => {}); };
   const signedIn = !!getAccount();
   const canConjure = !!brief && signedIn;
@@ -353,7 +355,7 @@ function PortraitButton({ photo, portrait, model, size, name, classes, brief, on
       )}
       {mode === "forge" && <ForgeSheet imageId={portrait.id} onDone={(id) => { onChange({ model: { id, env: model?.env || "dawn" } }); setMode("stage"); }} onClose={() => setMode(null)} />}
       {mode === "stage" && <Suspense fallback={<div style={veil}><div style={pane} role="status">Opening the clearing…<button style={btn(false)} onClick={() => setMode(null)}>Close</button></div></div>}>
-        <StageView url={sample ? `${import.meta.env.BASE_URL}.preview-assets/ranger.glb` : modelUrl} name={name} classes={classes} facing={sample ? -Math.PI / 2 : 0} env={model?.env || "dawn"} onEnv={(env) => onChange({ model: { ...model, env } })} onPick={(blob) => importPhoto(blob).then(setMode)} onClose={() => setMode(null)} />
+        <StageView url={modelUrl} name={name} classes={classes} facing={isSample ? -Math.PI / 2 : 0} env={model?.env || "dawn"} onEnv={(env) => onChange({ model: { ...(model || { id: SAMPLE_MODEL_ID }), env } })} onPick={(blob) => importPhoto(blob).then(setMode)} onClose={() => setMode(null)} />
       </Suspense>}
       {(mode === "conjure" || mode === "evolve") && (
         <ConjureSheet
