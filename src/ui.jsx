@@ -3,7 +3,7 @@ import { allFeats, crShow, featBlockedBy, featGrantedSpells, featureBody, fmtMod
 import { srcSpells } from "./compendium.js";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { clampFrame, conjure, flushAssets, forge, frameRect, frameStyle, importPhoto, referenceImagePayload, thumbOf, useAssetUrl } from "./portrait.js";
-const Stage = lazy(() => import("./stage.jsx"));
+const StageView = lazy(() => import("./stage-view.jsx"));
 import { getAccount } from "./sync.js";
 const T = {
   bg: "#161219", panel: "#221c26", panel2: "#2b2330", ink: "#e8dfd0", dim: "#a2937f",
@@ -326,6 +326,8 @@ const veil = { position: "fixed", inset: 0, background: "#000000c8", zIndex: 80,
 const pane = { ...card, padding: 20, width: "min(92vw, 360px)", boxSizing: "border-box" };
 function PortraitButton({ photo, portrait, model, size, name, brief, onChange }) {
   const [mode, setMode] = useState(null); // null | "menu" | "conjure" | "evolve" | "forge" | "stage" | portrait record being framed
+  const modelUrl = useAssetUrl(mode === "stage" ? model?.id : null);
+  const sample = !model?.id && import.meta.env.DEV;
   const pick = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importPhoto(f).then(setMode).catch(() => {}); };
   const signedIn = !!getAccount();
   const canConjure = !!brief && signedIn;
@@ -339,8 +341,8 @@ function PortraitButton({ photo, portrait, model, size, name, brief, onChange })
         <div style={veil} onClick={() => setMode(null)}>
           <div style={{ ...pane, display: "flex", flexDirection: "column", gap: 8 }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold, marginBottom: 4 }}>Portrait</div>
-            {model && <button style={btn(false)} onClick={() => setMode("stage")}>View in 3D</button>}
-            {portrait && signedIn && <button style={btn(false)} onClick={() => setMode("forge")}>{model ? "Forge the figure anew" : "Forge a 3D figure"}</button>}
+            <button style={btn(false)} onClick={() => setMode("stage")}>View in 3D</button>
+            {portrait && signedIn && <button style={btn(false)} onClick={() => setMode("forge")}>{model?.id ? "Forge the figure anew" : "Forge a 3D figure"}</button>}
             <label style={{ ...btn(false), display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>Upload a photo<input type="file" accept="image/*" onChange={pick} style={{ display: "none" }} /></label>
             {canConjure && hasPortrait && <button style={btn(false)} onClick={() => setMode("evolve")}>Evolve from current portrait</button>}
             {canConjure && <button style={btn(false)} onClick={() => setMode("conjure")}>{hasPortrait ? "Conjure a fresh portrait" : "Conjure one from your sheet"}</button>}
@@ -350,7 +352,9 @@ function PortraitButton({ photo, portrait, model, size, name, brief, onChange })
         </div>
       )}
       {mode === "forge" && <ForgeSheet imageId={portrait.id} onDone={(id) => { onChange({ model: { id, env: model?.env || "dawn" } }); setMode("stage"); }} onClose={() => setMode(null)} />}
-      {mode === "stage" && <StageSheet model={model} name={name} onEnv={(env) => onChange({ model: { ...model, env } })} onPick={(blob) => importPhoto(blob).then(setMode)} onClose={() => setMode(null)} />}
+      {mode === "stage" && <Suspense fallback={<div style={veil}><div style={pane} role="status">Opening the clearing…<button style={btn(false)} onClick={() => setMode(null)}>Close</button></div></div>}>
+        <StageView url={sample ? `${import.meta.env.BASE_URL}.preview-assets/ranger.glb` : modelUrl} facing={sample ? -Math.PI / 2 : 0} env={model?.env || "dawn"} onEnv={(env) => onChange({ model: { ...model, env } })} onPick={(blob) => importPhoto(blob).then(setMode)} onClose={() => setMode(null)} />
+      </Suspense>}
       {(mode === "conjure" || mode === "evolve") && (
         <ConjureSheet
           brief={brief}
@@ -382,36 +386,6 @@ function ForgeSheet({ imageId, onDone, onClose }) {
           </>
         )}
         <div style={{ marginTop: 16 }}><button style={btn(false)} onClick={onClose}>{err ? "Close" : "Leave it working"}</button></div>
-      </div>
-    </div>
-  );
-}
-// Full-screen stage with the environment picker and a way to make the view the portrait.
-function StageSheet({ model, name, onEnv, onPick, onClose }) {
-  const url = useAssetUrl(model.id);
-  const [state, setState] = useState("loading"); // loading | ready | error
-  const [envs, setEnvs] = useState(null);
-  const handle = useRef(null);
-  const chip = (on) => ({ ...btn(false), padding: "6px 12px", minHeight: 0, fontSize: 12.5, background: on ? T.panel2 : "transparent", borderColor: on ? T.gold : T.edge, color: on ? T.gold : T.ink });
-  return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 80, background: T.bg }}>
-      {url && (
-        <Suspense fallback={null}>
-          <Stage url={url} env={model.env} onHandle={(h) => { handle.current = h; import("./stage.jsx").then((m) => setEnvs(m.ENVS)); }} onReady={(e) => setState(e ? "error" : "ready")} />
-        </Suspense>
-      )}
-      {state !== "ready" && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: state === "error" ? T.error : T.dim, fontFamily: "Georgia, serif", fontSize: 18, pointerEvents: "none" }}>
-          {state === "error" ? "The figure would not load." : "Raising the stage…"}
-        </div>
-      )}
-      <div style={{ position: "absolute", top: "calc(12px + env(safe-area-inset-top))", left: 12, right: 12, display: "flex", justifyContent: "space-between", alignItems: "center", pointerEvents: "none" }}>
-        <div style={{ fontFamily: "Georgia, serif", fontSize: 22, color: T.gold, textShadow: "0 1px 6px #000" }}>{name}</div>
-        <button style={{ ...cornerBtn, pointerEvents: "auto" }} aria-label="Close" onClick={onClose}>✕</button>
-      </div>
-      <div style={{ position: "absolute", bottom: "calc(14px + env(safe-area-inset-bottom))", left: 12, right: 12, display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", alignItems: "center" }}>
-        {envs && Object.entries(envs).map(([k, e]) => <button key={k} style={chip(k === model.env)} onClick={() => onEnv(k)}>{e.name}</button>)}
-        {state === "ready" && <button style={{ ...btn(true), padding: "8px 14px", minHeight: 0, fontSize: 13 }} onClick={() => handle.current?.snapshot().then((b) => b && onPick(b))}>Use this view as portrait</button>}
       </div>
     </div>
   );

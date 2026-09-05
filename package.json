@@ -8,6 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "preview:model": "node scripts/fetch-stage-model.mjs",
+    "preview:stage": "vite --host 0.0.0.0 --port 5173 --strictPort --open /stage-preview.html",
     "test": "node scripts/test-share-portrait.mjs && npm test --prefix worker"
   },
   "dependencies": {

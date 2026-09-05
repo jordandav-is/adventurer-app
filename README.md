@@ -10,6 +10,19 @@ npm ci
 npm run dev
 ```
 
+### Woodland figure preview
+
+```sh
+npm run preview:model
+npm run preview:stage
+```
+
+Open **http://127.0.0.1:5173/stage-preview.html**. This standalone development entry uses the same `Stage` component as the app without an account, Worker, or forge request. The first command downloads the user-supplied [horned ranger from Tripo](https://studio.tripo3d.ai/3d-model/horned-humanoid-ranger-in-leather-armor-with-staff-standing-in-a-fores-1fbd0791-444f-493b-90ff-5b1a7e486a92) using its public project endpoint. The sample stays in ignored `.preview-assets/`, outside `public/` and the production build. If the project is no longer public, download your GLB from Tripo and use **Open a GLB file** instead. Local files stay in the browser; they are not uploaded.
+
+Drag or use left/right arrows to turn the figure; scroll, pinch, or use `+`/`−` to zoom. **Portrait** frames the upper body, **Reset view** restores the starting pose, and **Save portrait** exports the rendered scene without interface overlays. The four light presets preserve existing `dawn`, `noon`, `dusk`, and `night` character settings. **Living environment** pauses/resumes wind, clouds, and motes; reduced-motion preferences also pause ambient motion. Hidden views stop rendering.
+
+The Verdant Watch's geometry, stone/bark/ground textures, and botanical sprites are original app assets, inspired by the woodland composition of BG3 character creation rather than extracted game assets. `src/woodland.js` builds the scene; `scripts/bake-woodland.py` deterministically regenerates the nine images in `public/environments/woodland/` using Python, NumPy, and Pillow. The checked-in images need no Python at runtime or build time. Regenerate them with `python scripts/bake-woodland.py` after installing those two Python dependencies. The Tripo character is a separate, user-provided preview asset, not part of the environment asset set.
+
 ### Sync Worker (optional)
 ```sh
 cd worker
@@ -86,7 +99,7 @@ cd worker && npx wrangler secret put GOOGLE_API_KEY
 
 ### Forging a 3D figure
 
-From a signed-in sheet with a portrait, the portrait menu offers **Forge a 3D figure**. The Worker's `/forge/<imageHash>` route uploads the portrait to Tripo and walks a task chain — image to model (PBR textures), auto-rig, idle animation — storing the chain in the Account Durable Object keyed by image hash so a repeat costs nothing. The finished GLB lands in R2 as an ordinary content-addressed asset and the character records `model: { id, env }`. If rigging fails the unrigged mesh is delivered instead. **View in 3D** opens the stage: a lazy-loaded three.js scene (its own chunk, never in the main bundle) with the figure on a plinth under a procedural sky. Environments are sky-shader presets in `src/stage.jsx`, and the same sky lights the figure through a PMREM map. **Use this view as portrait** snapshots the stage into the portrait framing editor. The Worker needs a Tripo key as a secret:
+From a signed-in sheet with a portrait, the portrait menu offers **Forge a 3D figure**. The Worker's `/forge/<imageHash>` route uploads the portrait to Tripo and walks a task chain — image to model (PBR textures), auto-rig, idle animation — storing the chain in the Account Durable Object keyed by image hash so a repeat costs nothing. The finished GLB lands in R2 as an ordinary content-addressed asset and the character records `model: { id, env }`. If rigging fails the unrigged mesh is delivered instead. **View in 3D** opens the lazy-loaded Three.js woodland overlook: weathered paving, a ruined arch, trees, animated foliage, distant ridges, and drifting clouds. Lighting moods and matching cached PMREM environments are managed by `src/woodland.js`; character loading and inspection live in `src/stage.jsx`, including Meshopt-compressed GLB support. The camera composition remains fixed while dragging turns the figure. **Use this view as portrait** snapshots the scene into the existing portrait framing editor. Static meshes work without rigging; embedded animation clips still play unless motion is paused. The Worker needs a Tripo key as a secret:
 
 ```sh
 cd worker && npx wrangler secret put TRIPO_API_KEY
