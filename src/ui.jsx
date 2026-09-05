@@ -2,7 +2,7 @@ import { ABILITIES, ALL_SKILLS, CLASSES, CLASS_BLURB, FEAT_CATS, FEAT_MECHANICS,
 import { allFeats, crShow, featBlockedBy, featGrantedSpells, featureBody, fmtMod, infoFor, mod, schoolName, searchRank, sourceOf, spellFitsClass, subSpellData } from "./rules.js";
 import { srcSpells } from "./compendium.js";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { clampFrame, conjure, flushAssets, forge, frameRect, frameStyle, importPhoto, importModel, referenceImagePayload, thumbOf, useAssetUrl } from "./portrait.js";
+import { clampFrame, conjure, ensurePortraitRecord, flushAssets, forge, frameRect, frameStyle, importPhoto, importModel, referenceImagePayload, thumbOf, useAssetUrl } from "./portrait.js";
 const StageView = lazy(() => import("./stage-view.jsx"));
 import { getAccount } from "./sync.js";
 const T = {
@@ -327,6 +327,7 @@ const pane = { ...card, padding: 20, width: "min(92vw, 360px)", boxSizing: "bord
 function PortraitButton({ photo, portrait, model, size, name, classes, brief, onChange }) {
   const [mode, setMode] = useState(null); // null | "menu" | "forge-modal" | "forge" | "stage" | "conjure" | "evolve" | portrait record
   const [uploadError, setUploadError] = useState(null);
+  const [forgeImageId, setForgeImageId] = useState(null);
   const modelUrl = useAssetUrl(mode === "stage" ? model?.id : null);
   const pick = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importPhoto(f).then(setMode).catch(() => {}); };
   const pickGlb = (e) => {
@@ -342,9 +343,8 @@ function PortraitButton({ photo, portrait, model, size, name, classes, brief, on
     }
   };
   const signedIn = !!getAccount();
-  const canConjure = !!brief && signedIn;
   const hasPortrait = !!(portrait || photo);
-  const canForge = !!portrait && signedIn;
+  const canForge = hasPortrait && signedIn;
   return (
     <>
       <div role="button" tabIndex={0} title="Portrait" style={{ cursor: "pointer" }} onClick={() => setMode("menu")}>
@@ -377,16 +377,25 @@ function PortraitButton({ photo, portrait, model, size, name, classes, brief, on
             {uploadError && <div style={{ color: T.error, fontSize: 12.5 }}>{uploadError}</div>}
             <button
               style={{ ...btn(true), opacity: canForge ? 1 : 0.6 }}
-              onClick={() => {
+              onClick={async () => {
                 if (!signedIn) {
                   setUploadError("Sign in to your account first to generate 3D figures with Tripo.");
                   return;
                 }
-                if (!portrait) {
-                  setUploadError("Upload or conjure a 2D portrait photo first so Tripo has an image to sculpt from.");
+                if (!hasPortrait) {
+                  setUploadError("Upload or conjure a character photo first so Tripo has an image to sculpt from.");
                   return;
                 }
-                setMode("forge");
+                try {
+                  setUploadError(null);
+                  const rec = await ensurePortraitRecord({ photo, portrait });
+                  if (!rec?.id) throw new Error("Could not process the character photo.");
+                  if (!portrait?.id) onChange({ portrait: rec });
+                  setForgeImageId(rec.id);
+                  setMode("forge");
+                } catch (err) {
+                  setUploadError(err.message || "Failed to prepare character photo.");
+                }
               }}>
               Generate with Tripo
             </button>
@@ -398,7 +407,7 @@ function PortraitButton({ photo, portrait, model, size, name, classes, brief, on
           </div>
         </div>
       )}
-      {mode === "forge" && <ForgeSheet imageId={portrait.id} onDone={(id) => { onChange({ model: { id, env: model?.env || "dawn" } }); setMode("stage"); }} onClose={() => setMode(null)} />}
+      {mode === "forge" && <ForgeSheet imageId={forgeImageId || portrait?.id} onDone={(id) => { onChange({ model: { id, env: model?.env || "dawn" } }); setMode("stage"); }} onClose={() => setMode(null)} />}
       {mode === "stage" && <Suspense fallback={<div style={veil}><div style={pane} role="status">Opening the clearing…<button style={btn(false)} onClick={() => setMode(null)}>Close</button></div></div>}>
         <StageView url={modelUrl} name={name} classes={classes} facing={0} env={model?.env || "dawn"} onEnv={(env) => onChange({ model: { ...model, env } })} onPick={(blob) => importPhoto(blob).then(setMode)} onClose={() => setMode(null)} />
       </Suspense>}

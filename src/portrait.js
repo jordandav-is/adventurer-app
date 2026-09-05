@@ -73,6 +73,52 @@ export async function importModel(file) {
   return { id };
 }
 
+export async function uploadAssetToR2(id) {
+  if (!id || !SYNC_URL || !getAccount()) return false;
+  const blob = await idb("readonly", (s) => s.get(id)).catch(() => null);
+  if (!blob) return false;
+  const r = await remote(id, { method: "PUT", body: blob, headers: { "content-type": blob.type || "application/octet-stream" } }).catch(() => null);
+  if (r?.ok) {
+    localStorage.setItem(SENT(), JSON.stringify([...sent(), id]));
+    return true;
+  }
+  return false;
+}
+
+export async function ensurePortraitRecord({ photo, portrait } = {}) {
+  if (portrait?.id) {
+    await uploadAssetToR2(portrait.id);
+    return portrait;
+  }
+  if (!photo) return null;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = async () => {
+      try {
+        const w = img.naturalWidth || 512;
+        const h = img.naturalHeight || 512;
+        const c = document.createElement("canvas");
+        c.width = w; c.height = h;
+        const ctx = c.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+        const blob = await new Promise((ok) => c.toBlob(ok, "image/jpeg", 0.9));
+        if (!blob) return resolve(null);
+        const id = hex(await crypto.subtle.digest("SHA-256", await blob.arrayBuffer()));
+        await idb("readwrite", (s) => s.put(blob, id));
+        urls.set(id, URL.createObjectURL(blob));
+        const rec = { id, w, h, x: 0.5, y: 0.5, z: 1 };
+        await uploadAssetToR2(id);
+        resolve(rec);
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = photo;
+  });
+}
+
 // ---- remote (R2 via the sync Worker), content-addressed and immutable ----
 const remote = (id, init) => {
   if (!SYNC_URL) return Promise.reject(new Error("No sync URL configured"));
