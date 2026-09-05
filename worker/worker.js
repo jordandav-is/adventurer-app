@@ -76,7 +76,13 @@ const TRIPO_MODEL_VERSION = "v3.1-20260211";
 async function tripo(env, path, init) {
   const res = await fetch(TRIPO + path, { ...init, headers: { authorization: `Bearer ${env.TRIPO_API_KEY}`, ...init?.headers } });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || data.code !== 0) throw new Error(data?.message || data?.error || `Tripo ${res.status}`);
+  if (!res.ok || data.code !== 0) {
+    const raw = data?.message || data?.error || `Tripo ${res.status}`;
+    if (/credit|balance|quota|exceeded|insufficient/i.test(raw) || data?.code === 2004) {
+      throw new Error("Tripo credits are depleted. Please top up API credits or bring your own 3D model via 'Upload .glb'.");
+    }
+    throw new Error(raw);
+  }
   return data.data;
 }
 const tripoTask = (env, body) => tripo(env, "/task", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((d) => d.task_id);

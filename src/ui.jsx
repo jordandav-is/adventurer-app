@@ -427,7 +427,18 @@ function ForgeSheet({ imageId, onDone, onClose }) {
         <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold }}>Forging a figure</div>
         {err ? (
           <div style={{ color: T.error, fontSize: 13, marginTop: 12, lineHeight: 1.5 }}>
-            {err.includes("not configured") ? "The forge is not configured — add TRIPO_API_KEY as a secret on the sync worker." : err}
+            {err.includes("not configured") ? (
+              "The forge is not configured — add TRIPO_API_KEY as a secret on the sync worker."
+            ) : /credit|balance|quota|depleted/i.test(err) ? (
+              <>
+                <div>The forge has run out of Tripo credits.</div>
+                <div style={{ color: T.dim, fontSize: 12, marginTop: 6 }}>
+                  You can still bring your own model using &ldquo;Upload .glb&rdquo;.
+                </div>
+              </>
+            ) : (
+              err
+            )}
           </div>
         ) : (
           <>
