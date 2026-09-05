@@ -325,14 +325,11 @@ function LoreSheet({ customs }) {
 const veil = { position: "fixed", inset: 0, background: "#000000c8", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", animation: "sheetVeil 200ms ease" };
 const pane = { ...card, padding: 20, width: "min(92vw, 360px)", boxSizing: "border-box" };
 function PortraitButton({ photo, portrait, model, size, name, classes, brief, onChange }) {
-  const SAMPLE_MODEL_ID = "9fce1505f0c12d970ce56459a25c9ebcc5a5718038358af149a44b0547bbd384";
+  const RANGER_MODEL_ID = "9fce1505f0c12d970ce56459a25c9ebcc5a5718038358af149a44b0547bbd384";
   const [mode, setMode] = useState(null); // null | "menu" | "conjure" | "evolve" | "forge" | "stage" | portrait record being framed
-  const activeModelId = model?.id || (mode === "stage" ? SAMPLE_MODEL_ID : null);
-  const modelUrl = useAssetUrl(activeModelId);
-  const isSample = !model?.id;
+  const modelUrl = useAssetUrl(mode === "stage" ? model?.id : null);
   const pick = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importPhoto(f).then(setMode).catch(() => {}); };
   const signedIn = !!getAccount();
-  const canConjure = !!brief && signedIn;
   const hasPortrait = !!(portrait || photo);
   return (
     <>
@@ -343,8 +340,10 @@ function PortraitButton({ photo, portrait, model, size, name, classes, brief, on
         <div style={veil} onClick={() => setMode(null)}>
           <div style={{ ...pane, display: "flex", flexDirection: "column", gap: 8 }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold, marginBottom: 4 }}>Portrait</div>
-            <button style={btn(false)} onClick={() => setMode("stage")}>View in 3D</button>
+            {model?.id && <button style={btn(false)} onClick={() => setMode("stage")}>View in 3D</button>}
+            {!model?.id && <button style={btn(false)} onClick={() => { onChange({ model: { id: RANGER_MODEL_ID, env: "dawn" } }); setMode("stage"); }}>Link Horned Ranger figure</button>}
             {portrait && signedIn && <button style={btn(false)} onClick={() => setMode("forge")}>{model?.id ? "Forge the figure anew" : "Forge a 3D figure"}</button>}
+            {model?.id && <button style={{ ...btn(false), borderColor: T.blood, color: T.blood }} onClick={() => onChange({ model: null })}>Remove 3D figure</button>}
             <label style={{ ...btn(false), display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>Upload a photo<input type="file" accept="image/*" onChange={pick} style={{ display: "none" }} /></label>
             {canConjure && hasPortrait && <button style={btn(false)} onClick={() => setMode("evolve")}>Evolve from current portrait</button>}
             {canConjure && <button style={btn(false)} onClick={() => setMode("conjure")}>{hasPortrait ? "Conjure a fresh portrait" : "Conjure one from your sheet"}</button>}
@@ -355,7 +354,7 @@ function PortraitButton({ photo, portrait, model, size, name, classes, brief, on
       )}
       {mode === "forge" && <ForgeSheet imageId={portrait.id} onDone={(id) => { onChange({ model: { id, env: model?.env || "dawn" } }); setMode("stage"); }} onClose={() => setMode(null)} />}
       {mode === "stage" && <Suspense fallback={<div style={veil}><div style={pane} role="status">Opening the clearing…<button style={btn(false)} onClick={() => setMode(null)}>Close</button></div></div>}>
-        <StageView url={modelUrl} name={name} classes={classes} facing={isSample ? -Math.PI / 2 : 0} env={model?.env || "dawn"} onEnv={(env) => onChange({ model: { ...(model || { id: SAMPLE_MODEL_ID }), env } })} onPick={(blob) => importPhoto(blob).then(setMode)} onClose={() => setMode(null)} />
+        <StageView url={modelUrl} name={name} classes={classes} facing={model?.id === RANGER_MODEL_ID ? -Math.PI / 2 : 0} env={model?.env || "dawn"} onEnv={(env) => onChange({ model: { ...model, env } })} onPick={(blob) => importPhoto(blob).then(setMode)} onClose={() => setMode(null)} />
       </Suspense>}
       {(mode === "conjure" || mode === "evolve") && (
         <ConjureSheet
