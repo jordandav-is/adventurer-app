@@ -343,6 +343,7 @@ function PortraitButton({ photo, portrait, model, size, name, classes, brief, re
     }
   };
   const signedIn = !!getAccount();
+  const canConjure = !!brief && signedIn;
   const hasPortrait = !!(portrait || photo);
   const canForge = hasPortrait && signedIn;
   return (
