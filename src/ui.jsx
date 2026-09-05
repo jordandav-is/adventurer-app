@@ -2,7 +2,7 @@ import { ABILITIES, ALL_SKILLS, CLASSES, CLASS_BLURB, FEAT_CATS, FEAT_MECHANICS,
 import { allFeats, crShow, featBlockedBy, featGrantedSpells, featureBody, fmtMod, infoFor, mod, schoolName, searchRank, sourceOf, spellFitsClass, subSpellData } from "./rules.js";
 import { srcSpells } from "./compendium.js";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { clampFrame, conjure, flushAssets, forge, frameRect, frameStyle, importPhoto, referenceImagePayload, thumbOf, useAssetUrl } from "./portrait.js";
+import { clampFrame, conjure, flushAssets, forge, frameRect, frameStyle, importPhoto, importModel, referenceImagePayload, thumbOf, useAssetUrl } from "./portrait.js";
 const StageView = lazy(() => import("./stage-view.jsx"));
 import { getAccount } from "./sync.js";
 const T = {
@@ -325,12 +325,26 @@ function LoreSheet({ customs }) {
 const veil = { position: "fixed", inset: 0, background: "#000000c8", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", animation: "sheetVeil 200ms ease" };
 const pane = { ...card, padding: 20, width: "min(92vw, 360px)", boxSizing: "border-box" };
 function PortraitButton({ photo, portrait, model, size, name, classes, brief, onChange }) {
-  const RANGER_MODEL_ID = "9fce1505f0c12d970ce56459a25c9ebcc5a5718038358af149a44b0547bbd384";
-  const [mode, setMode] = useState(null); // null | "menu" | "conjure" | "evolve" | "forge" | "stage" | portrait record being framed
+  const [mode, setMode] = useState(null); // null | "menu" | "forge-modal" | "forge" | "stage" | "conjure" | "evolve" | portrait record
+  const [uploadError, setUploadError] = useState(null);
   const modelUrl = useAssetUrl(mode === "stage" ? model?.id : null);
   const pick = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importPhoto(f).then(setMode).catch(() => {}); };
+  const pickGlb = (e) => {
+    const f = e.target.files?.[0]; e.target.value = "";
+    if (f) {
+      importModel(f)
+        .then(({ id }) => {
+          onChange({ model: { id, env: model?.env || "dawn" } });
+          flushAssets([{ model: { id } }]);
+          setMode("stage");
+        })
+        .catch((err) => setUploadError(err.message));
+    }
+  };
   const signedIn = !!getAccount();
+  const canConjure = !!brief && signedIn;
   const hasPortrait = !!(portrait || photo);
+  const canForge = !!portrait && signedIn;
   return (
     <>
       <div role="button" tabIndex={0} title="Portrait" style={{ cursor: "pointer" }} onClick={() => setMode("menu")}>
@@ -341,8 +355,9 @@ function PortraitButton({ photo, portrait, model, size, name, classes, brief, on
           <div style={{ ...pane, display: "flex", flexDirection: "column", gap: 8 }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold, marginBottom: 4 }}>Portrait</div>
             {model?.id && <button style={btn(false)} onClick={() => setMode("stage")}>View in 3D</button>}
-            {!model?.id && <button style={btn(false)} onClick={() => { onChange({ model: { id: RANGER_MODEL_ID, env: "dawn" } }); setMode("stage"); }}>Link Horned Ranger figure</button>}
-            {portrait && signedIn && <button style={btn(false)} onClick={() => setMode("forge")}>{model?.id ? "Forge the figure anew" : "Forge a 3D figure"}</button>}
+            <button style={btn(false)} onClick={() => { setUploadError(null); setMode("forge-modal"); }}>
+              {model?.id ? "Forge the figure anew" : "Forge a 3D figure"}
+            </button>
             {model?.id && <button style={{ ...btn(false), borderColor: T.blood, color: T.blood }} onClick={() => onChange({ model: null })}>Remove 3D figure</button>}
             <label style={{ ...btn(false), display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>Upload a photo<input type="file" accept="image/*" onChange={pick} style={{ display: "none" }} /></label>
             {canConjure && hasPortrait && <button style={btn(false)} onClick={() => setMode("evolve")}>Evolve from current portrait</button>}
@@ -352,9 +367,40 @@ function PortraitButton({ photo, portrait, model, size, name, classes, brief, on
           </div>
         </div>
       )}
+      {mode === "forge-modal" && (
+        <div style={veil} onClick={() => setMode(null)}>
+          <div style={{ ...pane, display: "flex", flexDirection: "column", gap: 10 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold }}>3D Figure</div>
+            <div style={{ color: T.dim, fontSize: 13, lineHeight: 1.5, marginBottom: 4 }}>
+              Sculpt a figure from your 2D portrait with Tripo, or bring your own 3D model.
+            </div>
+            {uploadError && <div style={{ color: T.error, fontSize: 12.5 }}>{uploadError}</div>}
+            <button
+              style={{ ...btn(true), opacity: canForge ? 1 : 0.6 }}
+              onClick={() => {
+                if (!signedIn) {
+                  setUploadError("Sign in to your account first to generate 3D figures with Tripo.");
+                  return;
+                }
+                if (!portrait) {
+                  setUploadError("Upload or conjure a 2D portrait photo first so Tripo has an image to sculpt from.");
+                  return;
+                }
+                setMode("forge");
+              }}>
+              Generate with Tripo
+            </button>
+            <label style={{ ...btn(false), display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>
+              Upload .glb
+              <input type="file" accept=".glb,model/gltf-binary" onChange={pickGlb} style={{ display: "none" }} />
+            </label>
+            <button style={btn(false)} onClick={() => setMode("menu")}>Back</button>
+          </div>
+        </div>
+      )}
       {mode === "forge" && <ForgeSheet imageId={portrait.id} onDone={(id) => { onChange({ model: { id, env: model?.env || "dawn" } }); setMode("stage"); }} onClose={() => setMode(null)} />}
       {mode === "stage" && <Suspense fallback={<div style={veil}><div style={pane} role="status">Opening the clearing…<button style={btn(false)} onClick={() => setMode(null)}>Close</button></div></div>}>
-        <StageView url={modelUrl} name={name} classes={classes} facing={model?.id === RANGER_MODEL_ID ? -Math.PI / 2 : 0} env={model?.env || "dawn"} onEnv={(env) => onChange({ model: { ...model, env } })} onPick={(blob) => importPhoto(blob).then(setMode)} onClose={() => setMode(null)} />
+        <StageView url={modelUrl} name={name} classes={classes} facing={0} env={model?.env || "dawn"} onEnv={(env) => onChange({ model: { ...model, env } })} onPick={(blob) => importPhoto(blob).then(setMode)} onClose={() => setMode(null)} />
       </Suspense>}
       {(mode === "conjure" || mode === "evolve") && (
         <ConjureSheet
@@ -379,7 +425,11 @@ function ForgeSheet({ imageId, onDone, onClose }) {
     <div style={veil}>
       <div style={{ ...pane, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold }}>Forging a figure</div>
-        {err ? <div style={{ color: T.error, fontSize: 13, marginTop: 12 }}>{err}</div> : (
+        {err ? (
+          <div style={{ color: T.error, fontSize: 13, marginTop: 12, lineHeight: 1.5 }}>
+            {err.includes("not configured") ? "The forge is not configured — add TRIPO_API_KEY as a secret on the sync worker." : err}
+          </div>
+        ) : (
           <>
             <div style={{ margin: "18px auto 8px", width: 72, height: 72, borderRadius: "50%", background: T.panel2, border: `2px solid ${T.gold}`, animation: "conjureBreathe 1.8s ease-in-out infinite" }} />
             <div style={{ color: T.ink, fontSize: 14 }}>{FORGE_STAGES[stage] || stage}…</div>

@@ -55,6 +55,23 @@ export async function importPhoto(file) {
   urls.set(id, URL.createObjectURL(blob));
   return { id, w: c.width, h: c.height, x: 0.5, y: 0.5, z: 1 };
 }
+export async function importModel(file) {
+  if (!file) throw new Error("No file provided");
+  const buffer = await file.arrayBuffer();
+  if (buffer.byteLength < 12) throw new Error("Not a valid GLB file (file is too small).");
+  const view = new DataView(buffer);
+  if (view.getUint32(0, true) !== 0x46546c67) {
+    throw new Error("Choose a binary .glb file. Text .gltf files with separate textures are not supported.");
+  }
+  const id = hex(await crypto.subtle.digest("SHA-256", buffer));
+  const blob = new Blob([buffer], { type: "model/gltf-binary" });
+  await idb("readwrite", (s) => s.put(blob, id));
+  urls.set(id, URL.createObjectURL(blob));
+  remote(id, { method: "PUT", body: blob, headers: { "content-type": "model/gltf-binary" } })
+    .then((r) => { if (r?.ok) localStorage.setItem(SENT(), JSON.stringify([...sent(), id])); })
+    .catch(() => {});
+  return { id };
+}
 
 // ---- remote (R2 via the sync Worker), content-addressed and immutable ----
 const remote = (id, init) => {
@@ -73,10 +90,12 @@ const sent = () => { try { return new Set(JSON.parse(localStorage.getItem(SENT()
 export function flushAssets(chars) {
   const done = sent();
   for (const ch of chars) {
-    const id = ch.portrait?.id;
-    if (!id || done.has(id)) continue;
-    idb("readonly", (s) => s.get(id)).then((blob) => blob && remote(id, { method: "PUT", body: blob, headers: { "content-type": blob.type } }))
-      .then((r) => { if (r?.ok) localStorage.setItem(SENT(), JSON.stringify([...sent(), id])); }).catch(() => {});
+    const ids = [ch.portrait?.id, ch.model?.id].filter(Boolean);
+    for (const id of ids) {
+      if (done.has(id)) continue;
+      idb("readonly", (s) => s.get(id)).then((blob) => blob && remote(id, { method: "PUT", body: blob, headers: { "content-type": blob.type || "application/octet-stream" } }))
+        .then((r) => { if (r?.ok) localStorage.setItem(SENT(), JSON.stringify([...sent(), id])); }).catch(() => {});
+    }
   }
 }
 
