@@ -4,7 +4,6 @@ import {
   verifyPasswordRecord,
   isValidPasswordRecord,
   dummyPasswordWork,
-  hashGatePassphrase,
   timingSafeEqualStr,
   generateRecoveryKey,
   normalizeRecoveryKey,
@@ -35,11 +34,11 @@ const CONJURE_IMAGE_MODEL = "gemini-3.1-flash-image";
 // emails that are never metered, comma-separated.
 const roundLimit = (v) => Number(v) || Infinity;
 const unmetered = (env, email) => (env.CONJURE_UNMETERED || "").split(",").map((e) => e.trim().toLowerCase()).includes(email);
-const CONJURE_FRAME = `You are an art director writing a single, richly detailed image-generation prompt for Dungeons & Dragons 5e character art in the painterly Wizards of the Coast sourcebook style. You receive a character brief: the player's own description plus sheet facts (ancestry, classes, background, features, persona, notes). Write the prompt as labelled paragraphs, 300-450 words in total, in this order:
+const CONJURE_FRAME = `You are an art director writing a single, richly detailed image-generation prompt for Dungeons & Dragons 5e character art in the painterly Wizards of the Coast sourcebook style. You receive a character brief: the player's own description plus sheet facts (ancestry, classes, background, gear, features, persona, notes). Write the prompt as labelled paragraphs, 300-450 words in total, in this order:
 
 Character: who this is in one dense sentence or two — ancestry, apparent age, build, station in life, and what they should NOT be mistaken for (e.g. "not a nobleman, not an adventuring superhero").
 Permanent visual anchors: skin, horns/ears/tail or other ancestry features, eye colour, hair, face shape, distinguishing marks, and the overall impression of the face. Be concrete and recognisable; say what is absent as well as what is present.
-Gear and silhouette: clothing layers with named colours and materials, armour, the weapon in hand, pouches, tools, and how worn or repaired everything looks. Name the things that must not appear (no plate, no glowing weapon, etc.).
+Gear and silhouette: depict the character's equipment from the brief — their armor (or unarmored clothing if no armor is equipped), primary weapon in hand or sheathed, shield, and notable attuned/carried gear — styled to be authentic, practical, and appropriate to their class, subclass, and background (e.g. a rogue's quiet leather and sheathed daggers, a wizard's travel-worn robes and implements, a ranger's weather-beaten kit). Detail clothing layers with named colours and materials, pouches, tools, and how worn or repaired everything looks. If the player's description specifies clothing, gear, weapons, or aesthetic styling, lean decisively into the player's flavoring over the sheet's items. Name the things that must not appear (no plate if unarmored or light armor, no glowing weapon, etc.).
 Class cues: how the class shows through lived-in details rather than costume clichés. If the brief holds a secret (a hidden class, patron, past), the image must keep it: say plainly which imagery is forbidden so nothing reveals it.
 Mood and pose: acting direction — what they feel, what they have just heard, posture, hands, gaze.
 Setting: a specific, grounded place that supports the identity: terrain, plants, weather, distance cues. Not fantastical scenery.
@@ -48,7 +47,26 @@ Avoid: a comma-separated list of everything that would spoil it — photorealism
 
 Revision: if the brief carries previousPrompt and revision, the player has seen art from previousPrompt and wants changes. Rewrite previousPrompt applying the revision faithfully and keep everything else as it was, so the character stays the same person. An empty revision means "again, but different": vary pose, setting and light while keeping the anchors.
 
-Rules: one character only. The player's description outranks sheet facts when they conflict; never change the stated ancestry or class. Invent tasteful, specific detail wherever the brief is thin — named colours, named plants, one small living touch such as a bird or a tucked sprig. Prefer weathered and accumulated over pristine. Respond with JSON: {"prompt": "<the full prompt with the labelled paragraphs separated by newlines>"}.`;
+Rules: one character only. Ground the depiction in the character's sheet gear (armor, weapons, shield, attuned items) in a class-appropriate, lived-in style. However, the player's own description and revision notes ALWAYS outrank sheet facts and gear: if the player types specific clothing, weapons, an unarmored appearance, colors, or visual flavoring, lean decisively into their stated desires. Never change the stated ancestry or class. Invent tasteful, specific detail wherever the brief is thin — named colours, named plants, one small living touch such as a bird or a tucked sprig. Prefer weathered and accumulated over pristine. Respond with JSON: {"prompt": "<the full prompt with the labelled paragraphs separated by newlines>"}.`;
+
+const EVOLVE_FRAME = `You are an art director writing a single, richly detailed image-generation prompt for Dungeons & Dragons 5e character art in the painterly Wizards of the Coast sourcebook style. You receive an attached reference image of the character's existing portrait, plus an updated character brief: player description and notes, along with current sheet facts (ancestry, classes, background, gear, features, persona).
+
+Your job is to "level up" and evolve this character: maintain strong visual continuity with the reference image so they are clearly the same person, while evolving their gear, attire, physical presence, and adventuring wear to reflect their progression, new equipment, and higher level.
+
+Write the prompt as labelled paragraphs, 300-450 words in total, in this order:
+
+Character: who this is in one dense sentence or two — carry forward the character's ancestry, age, facial identity, and build from the reference image, reflecting their growth in station, experience, or confidence.
+Permanent visual anchors: meticulously transcribe the character's visual DNA from the reference image — face shape, skin tone and undertones, eye colour and shape, hair color, texture, and style, nose shape, jawline, ears/horns/tail, and any scars, beauty marks, or distinctive features. They must be instantly recognizable as the same individual seen in the reference.
+Gear and silhouette: level up their gear. Compare the reference image against the sheet's current equipment (equipped armor or unarmored clothing, weapons in hand or at side, shield, attuned magic items, foci, pouches). Replace or upgrade outdated equipment from the reference with their current sheet gear, styled authentically for their class and background (e.g. upgraded armor, finer weapon craft, attuned cloaks or rings, battle-tested leather). Detail clothing layers with named colours and materials, and show accumulated signs of adventure (scuffs, stitching, weather-wear). If the player's description specifies clothing, gear, weapons, or aesthetic styling, lean decisively into the player's desires over the reference or sheet items. Name the things that must not appear (no plate if unarmored or light armor, no glowing weapon unless noted, etc.).
+Class cues: how their advanced class mastery and experience show through lived-in details rather than costume clichés — seasoned hands, arcane ink or focus wear, holy symbols, martial discipline. If the brief holds a secret (a hidden class, patron, past), the image must keep it: say plainly which imagery is forbidden so nothing reveals it.
+Mood and pose: acting direction — what they feel, posture, hands, gaze, reflecting their seasoned growth since their earlier portrait.
+Setting: a specific, grounded place that supports their current journey: terrain, plants, weather, distance cues. Not fantastical scenery.
+Light and format: "Painterly high-fantasy tabletop RPG character illustration reminiscent of premium modern Dungeons & Dragons sourcebook art: realistic anatomy and materials, expressive brushwork, restrained detail, textured traditional-media feel, sophisticated natural palette." Then the light (direction, time of day, atmosphere) and: full-body three-quarter character portrait, vertical composition, readable from head to boots, simple environmental background, no text, no watermark, no border.
+Avoid: a comma-separated list of everything that would spoil it — photorealism, anime, videogame concept-art armour, exaggerated proportions, generic evil imagery, glowing magic, and anything the brief's secrets forbid.
+
+Revision: if the brief carries previousPrompt and revision, the player has seen art from previousPrompt and wants changes. Rewrite previousPrompt applying the revision faithfully while keeping the reference anchors and character identity intact. An empty revision means "again, but different": vary pose, setting and light while keeping the anchors.
+
+Rules: one character only. Preserve the person's identity and visual DNA from the reference image while progressing their equipment and presence to match their sheet and level. However, the player's own description and revision notes ALWAYS outrank reference imagery and sheet facts: if the player requests changes (e.g. a new scar, dyed hair, an alternate outfit, different weapon, or specific visual flavoring), lean decisively into their stated desires. Never change the stated ancestry or class. Respond with JSON: {"prompt": "<the full prompt with the labelled paragraphs separated by newlines>"}.`;
 
 // Tripo: image -> mesh with PBR textures -> rig -> idle animation. Each step is a task; the job
 // record in the Account DO remembers the chain so a poll can advance it. Keyed by image hash, so
@@ -146,20 +164,28 @@ async function getAuthWorkStub(env, key) {
 export default {
   async fetch(req, env) {
     const origin = req.headers.get("origin");
-    if (origin && !ALLOWED_ORIGINS.has(origin)) {
+    const url = new URL(req.url);
+    const path = url.pathname;
+    const isAssetRoute = ASSET_PATH.test(path);
+    const isPublicAssetGet = req.method === "GET" && isAssetRoute;
+
+    if (origin && !ALLOWED_ORIGINS.has(origin) && !isPublicAssetGet) {
       return new Response("Origin not allowed", { status: 403, headers: getCorsHeaders(origin) });
     }
 
     if (req.method === "OPTIONS") {
+      const headers = getCorsHeaders(origin);
+      if (isAssetRoute && origin && !ALLOWED_ORIGINS.has(origin)) {
+        headers["access-control-allow-origin"] = "*";
+        headers["access-control-allow-methods"] = "POST, GET, PUT, OPTIONS";
+        headers["access-control-allow-headers"] = "content-type, authorization";
+      }
       return new Response(null, {
         status: 204,
-        headers: getCorsHeaders(origin),
+        headers,
       });
     }
-
-    const url = new URL(req.url);
-    const path = url.pathname;
-    const identityStub = env.IDENTITY.get(env.IDENTITY.idFromName("singleton"));
+    const identityStub = env.IDENTITY ? env.IDENTITY.get(env.IDENTITY.idFromName("singleton")) : null;
 
     if (path === "/ws") {
       if (req.method !== "GET") return err(405, "Method not allowed", origin);
@@ -177,30 +203,100 @@ export default {
 
     const asset = path.match(ASSET_PATH);
     if (asset) {
-      // Content-addressed originals in R2 under <account>/<sha256>: immutable, so cache forever.
+      // Content-addressed originals in R2: immutable, so cache forever.
       if (req.method !== "GET" && req.method !== "PUT") return err(405, "Method not allowed", origin);
       if (!env.ASSETS) return err(503, "Assets not configured", origin);
+
+      const sha = asset[1];
+      const corsOrigin = origin && ALLOWED_ORIGINS.has(origin) ? origin : "*";
+
+      if (req.method === "GET") {
+        const accountId = url.searchParams.get("account") || "";
+        let obj = await env.ASSETS.get(sha);
+
+        if (!obj && accountId && UUID_RE.test(accountId)) {
+          obj = await env.ASSETS.get(`${accountId}/${sha}`);
+          if (obj) {
+            try {
+              const b = await obj.arrayBuffer();
+              await env.ASSETS.put(sha, b, { httpMetadata: obj.httpMetadata });
+              return new Response(b, {
+                headers: {
+                  ...getCorsHeaders(origin),
+                  "access-control-allow-origin": corsOrigin,
+                  "content-type": obj.httpMetadata?.contentType || "application/octet-stream",
+                  "cache-control": "public, max-age=31536000, immutable",
+                },
+              });
+            } catch {}
+          }
+        }
+
+        if (!obj) {
+          let cursor;
+          do {
+            const list = await env.ASSETS.list({ cursor, limit: 1000 });
+            const match = list.objects.find((o) => o.key === sha || o.key.endsWith("/" + sha));
+            if (match) {
+              obj = await env.ASSETS.get(match.key);
+              if (obj) {
+                try {
+                  const b = await obj.arrayBuffer();
+                  await env.ASSETS.put(sha, b, { httpMetadata: obj.httpMetadata });
+                  return new Response(b, {
+                    headers: {
+                      ...getCorsHeaders(origin),
+                      "access-control-allow-origin": corsOrigin,
+                      "content-type": obj.httpMetadata?.contentType || "application/octet-stream",
+                      "cache-control": "public, max-age=31536000, immutable",
+                    },
+                  });
+                } catch {}
+              }
+              break;
+            }
+            cursor = list.truncated ? list.cursor : undefined;
+          } while (cursor);
+        }
+
+        if (!obj) return err(404, "Not found", origin);
+        return new Response(obj.body, {
+          headers: {
+            ...getCorsHeaders(origin),
+            "access-control-allow-origin": corsOrigin,
+            "content-type": obj.httpMetadata?.contentType || "application/octet-stream",
+            "cache-control": "public, max-age=31536000, immutable",
+          },
+        });
+      }
+
+      // PUT: requires authenticated account
       const accountId = url.searchParams.get("account") || "";
       const token = (req.headers.get("authorization") || "").replace(/^Bearer /, "");
       if (!UUID_RE.test(accountId) || !HEX_64_RE.test(token)) return err(400, "Bad request", origin);
       const account = await identityStub.getAccountById(accountId);
       const live = account && (await env.ACCOUNT.get(env.ACCOUNT.idFromName(accountId)).touchSession(token));
       if (!live) return err(401, "Unauthorized", origin);
-      const key = `${accountId}/${asset[1]}`;
-      if (req.method === "GET") {
-        const obj = await env.ASSETS.get(key);
-        if (!obj) return err(404, "Not found", origin);
-        return new Response(obj.body, {
-          headers: { ...getCorsHeaders(origin), "content-type": obj.httpMetadata?.contentType || "application/octet-stream", "cache-control": "private, max-age=31536000, immutable" },
-        });
+
+      const key = `${accountId}/${sha}`;
+      if (await env.ASSETS.head(sha)) return json(200, { ok: true }, origin);
+      if (await env.ASSETS.head(key)) {
+        const existing = await env.ASSETS.get(key);
+        if (existing) {
+          const b = await existing.arrayBuffer();
+          await env.ASSETS.put(sha, b, { httpMetadata: existing.httpMetadata });
+          return json(200, { ok: true }, origin);
+        }
       }
-      if (await env.ASSETS.head(key)) return json(200, { ok: true }, origin);
+
       const type = req.headers.get("content-type") || "";
       if (!ASSET_TYPES.has(type)) return err(415, "Unsupported media type", origin);
       if (parseInt(req.headers.get("content-length") || "0", 10) > ASSET_MAX_BYTES) return err(413, "Payload too large", origin);
       const bytes = await req.arrayBuffer();
       if (bytes.byteLength > ASSET_MAX_BYTES) return err(413, "Payload too large", origin);
-      if ((await sha256Hex(bytes)) !== asset[1]) return err(400, "Digest mismatch", origin);
+      if ((await sha256Hex(bytes)) !== sha) return err(400, "Digest mismatch", origin);
+
+      await env.ASSETS.put(sha, bytes, { httpMetadata: { contentType: type } });
       await env.ASSETS.put(key, bytes, { httpMetadata: { contentType: type } });
       return json(200, { ok: true }, origin);
     }
@@ -261,12 +357,13 @@ export default {
       return err(405, "Method not allowed", origin);
     }
 
+    const maxPostBytes = path === "/conjure" ? 2 * 1024 * 1024 : 65536;
     const contentLength = parseInt(req.headers.get("content-length") || "0", 10);
-    if (contentLength > 65536) {
+    if (contentLength > maxPostBytes) {
       return err(413, "Payload too large", origin);
     }
     const rawText = await req.text();
-    if (rawText.length > 65536) {
+    if (rawText.length > maxPostBytes) {
       return err(413, "Payload too large", origin);
     }
     let body;
@@ -280,17 +377,14 @@ export default {
     }
 
     if (path === "/register") {
-      const { email, password, passphrase, registrationId } = body;
+      const { email, password, registrationId } = body;
       if (
         typeof email !== "string" ||
         typeof password !== "string" ||
-        typeof passphrase !== "string" ||
         typeof registrationId !== "string" ||
         email.length > 254 ||
         password.length < 8 ||
         password.length > 256 ||
-        passphrase.length < 1 ||
-        passphrase.length > 256 ||
         !HEX_64_RE.test(registrationId)
       ) {
         return err(400, "Bad request", origin);
@@ -299,22 +393,6 @@ export default {
       const normEmail = email.trim().toLowerCase();
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normEmail)) {
         return err(400, "Bad request", origin);
-      }
-
-      const gateSalt = env.GATE_SALT || "edffce3ce9712cbd6f997900359f6dd9";
-      const gateHash = env.GATE_HASH || "faf79b899def21c5e3f3cdce3ac6813f2ac2c01c8b4f9c6cce222cf84ad4aed1";
-      const gateIter = Number(env.GATE_ITERATIONS || 600000);
-
-      const authWorkStub = await getAuthWorkStub(env, normEmail);
-      const gateRes = await authWorkStub.verifyGate({
-        passphrase,
-        gateSalt,
-        gateHash,
-        gateIter,
-      });
-
-      if (!gateRes.ok) {
-        return err(403, "The gate does not yield.", origin);
       }
       const regDigest = await sha256Hex(registrationId);
       const prepRes = await identityStub.prepareRegistration({
@@ -541,9 +619,14 @@ export default {
     }
 
     if (path === "/conjure") {
-      const { accountId, token, brief } = body;
+      const { accountId, token, brief, referenceImage } = body;
       if (typeof accountId !== "string" || typeof token !== "string" || !UUID_RE.test(accountId) || !HEX_64_RE.test(token) || !brief || typeof brief !== "object" || typeof brief.description !== "string" || brief.description.length > 800 || (brief.revision != null && (typeof brief.revision !== "string" || brief.revision.length > 800 || typeof brief.previousPrompt !== "string" || brief.previousPrompt.length > 6000))) {
         return err(400, "Bad request", origin);
+      }
+      if (referenceImage != null) {
+        if (typeof referenceImage !== "object" || typeof referenceImage.data !== "string" || referenceImage.data.length > 2 * 1024 * 1024 || (referenceImage.mimeType != null && typeof referenceImage.mimeType !== "string")) {
+          return err(400, "Invalid reference image", origin);
+        }
       }
       if (!env.GOOGLE_API_KEY) return err(503, "Conjuring is not configured", origin);
       const account = await identityStub.getAccountById(accountId);
@@ -557,9 +640,21 @@ export default {
         return err(429, "The conjuring well has run dry for now.", origin);
       }
       try {
+        const hasRef = !!referenceImage?.data;
+        const frame = hasRef ? EVOLVE_FRAME : CONJURE_FRAME;
+        const parts = [];
+        if (hasRef) {
+          parts.push({
+            inlineData: {
+              mimeType: referenceImage.mimeType || "image/jpeg",
+              data: referenceImage.data,
+            },
+          });
+        }
+        parts.push({ text: JSON.stringify(brief) });
         const [textPart] = await gemini(env, CONJURE_TEXT_MODEL, {
-          systemInstruction: { parts: [{ text: CONJURE_FRAME }] },
-          contents: [{ parts: [{ text: JSON.stringify(brief) }] }],
+          systemInstruction: { parts: [{ text: frame }] },
+          contents: [{ parts }],
           generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { prompt: { type: "STRING" } }, required: ["prompt"] } },
         });
         const prompt = JSON.parse(textPart?.text || "{}").prompt;
@@ -763,10 +858,6 @@ export class Account extends DurableObject {
     if (value === null) this.ctx.storage.sql.exec("DELETE FROM auth_state WHERE k = ?", key);
     else this.ctx.storage.sql.exec("INSERT INTO auth_state (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v", key, JSON.stringify(value));
     return value;
-  }
-  async verifyGate({ passphrase, gateSalt, gateHash, gateIter }) {
-    const computed = await hashGatePassphrase(passphrase, gateSalt, gateIter);
-    return { ok: timingSafeEqualStr(computed, gateHash) };
   }
 
   async runDummyPassword(password) {

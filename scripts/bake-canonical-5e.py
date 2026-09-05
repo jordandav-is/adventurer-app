@@ -92,6 +92,13 @@ def source_fixture() -> dict[str, dict[str, Any]]:
         "defaultEnabled": True,
         "scope": "Ranger class and Ranger subclasses only",
     }
+    rows["MPMM"] = {
+        "code": "MPMM",
+        "name": "Mordenkainen Presents: Monsters of the Multiverse",
+        "published": "2022-05-17",
+        "defaultEnabled": True,
+        "scope": "Minotaur race only",
+    }
     return rows
 
 
@@ -110,8 +117,11 @@ def label(value: str) -> str:
 
 
 def allowed_source(source: str | None) -> bool:
-    return bool(source and source in SOURCES and source != RANGER_SOURCE)
+    return bool(source and source in SOURCES and source != RANGER_SOURCE and source != "MPMM")
 
+
+def minotaur_exception(row: dict[str, Any]) -> bool:
+    return row.get("source") == "MPMM" and row.get("name") == "Minotaur"
 
 def ranger_exception(row: dict[str, Any]) -> bool:
     return row.get("source") == RANGER_SOURCE and row.get("className", row.get("name")) == "Ranger"
@@ -1011,13 +1021,13 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
     fluff_art = {k: (v[0] if isinstance(v, tuple) else v) for k, v in fluff_art.items()}
     raw_races = resolve_copies(races_data.get("race", []))
     raw_subraces = resolve_copies(races_data.get("subrace", []))
-    allowed_races = latest([r for r in raw_races if allowed_source(r.get("source"))], lambda x: x.get("name", ""))
+    allowed_races = latest([r for r in raw_races if allowed_source(r.get("source")) or minotaur_exception(r)], lambda x: x.get("name", ""))
     base_by_name = {r["name"].lower(): r for r in allowed_races if r.get("name")}
     full_races = []
     race_traits = {}
 
     for r in raw_races + raw_subraces:
-        if not allowed_source(r.get("source")):
+        if not allowed_source(r.get("source")) and not minotaur_exception(r):
             continue
         rname = r.get("name", "")
         for entry in r.get("entries", []):
@@ -1638,6 +1648,8 @@ def main() -> None:
     def check(value: Any, path: str = "") -> None:
         if isinstance(value, dict):
             if value.get("src") == RANGER_SOURCE and not (value.get("name") == "Ranger" or value.get("className") == "Ranger" or path.startswith("subs.Ranger")):
+                leaked.append(value.get("id", path))
+            if value.get("src") == "MPMM" and not (value.get("name") == "Minotaur" or path.startswith("runtime.raceTraits") or path.startswith("runtime.raceLangs")):
                 leaked.append(value.get("id", path))
             for key, child in value.items(): check(child, f"{path}.{key}" if path else key)
         elif isinstance(value, list):

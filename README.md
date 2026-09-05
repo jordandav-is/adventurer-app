@@ -21,7 +21,7 @@ npm run dev
 
 The deployed web application is protected by a client-side passphrase gate (`src/gate.jsx`). It computes a PBKDF2-SHA256 hash (600,000 iterations) from the entered passphrase and checks it against public parameters in `src/gate-config.js`.
 
-The gate is a client-side filter for static hosting, not cryptographic backend authorization. Local character data remains in the browser (IndexedDB with localStorage fallback), so unauthenticated visitors see only their own empty local state. During account registration, the raw passphrase is submitted over TLS and verified server-side using the committed gate parameters.
+The gate is a client-side filter for static hosting, not cryptographic backend authorization. Local character data remains in the browser (IndexedDB with localStorage fallback), so unauthenticated visitors see only their own empty local state.
 
 ## Account sync architecture
 
@@ -34,7 +34,7 @@ When configured, sync runs on a Cloudflare Worker backed by SQLite Durable Objec
 
 ## Authentication and credentials
 
-- **Email/password registration**: Account registration (`/register`) requires an email, password, the ledger gate passphrase, and a client-generated registration ID. The Worker validates input lengths, verifies the raw passphrase server-side against committed gate parameters (the public gate hash is never accepted as an authorization bearer), idempotently provisions the account via the Identity singleton, and returns a 256-bit single-use recovery key.
+- **Email/password registration**: Account registration (`/register`) requires an email, password, and a client-generated registration ID. The Worker validates input lengths, idempotently provisions the account via the Identity singleton, and returns a 256-bit single-use recovery key.
 - **Unverified login identifier and user-held recovery keys**: Email serves solely as an unverified login identifier to namespace accounts. There is deliberately no email verification, transactional email provider, or administrative backdoor. Instead, users are issued a cryptographically random, 256-bit one-time recovery key upon account creation (`/register`). Stored on the server strictly as a SHA-256 digest, this key allows resetting forgotten passwords (`/recover`) without relying on an external email service.
 - **Password reset and key rotation**: Account recovery (`/recover`) verifies the recovery key against its stored hash, updates the password, revokes all existing sessions, tickets, and active WebSockets, and automatically issues a fresh replacement recovery key. Signed-in users can also update their password (`/password`) or rotate their recovery key (`/recovery-key`) with their current password. Losing both password and recovery key makes the synchronized account unrecoverable.
 - **Password storage and verification**: Passwords cross TLS to the Worker and are stored exclusively on the Account DO as versioned PBKDF2-SHA256 hashes with random 16-byte salts and 600,000 iterations. Derivation is computed via the exact-pinned, independently audited, zero-runtime-dependency `@noble/hashes` implementation inside Account Durable Objects (deployed workerd caps native WebCrypto PBKDF2 at 100,000 iterations, while Durable Objects provide the 30-second CPU budget). Passwords and plaintext recovery keys are never stored client-side. To prevent user enumeration and timing attacks, failed logins and invalid recovery attempts perform uniform KDF work and return a fixed delay and response. Correct credentials always succeed with no account lockout.
@@ -74,7 +74,7 @@ cd worker && npx wrangler r2 bucket create ledger-assets
 
 A portrait is imported once at up to 2048px, hashed (SHA-256), and kept as a content-addressed Blob in IndexedDB. The character record stores only `portrait: { id, w, h, x, y, z }` (asset hash, pixel size, and a framing: normalized centre plus zoom) alongside `photo`, a 220px thumb rendered from that framing. Tapping a portrait opens the framing editor (drag, pinch, or slide to zoom). Roster, share cards, and exports use the thumb, so they never need the original.
 
-When an account is signed in, originals upload to R2 through the Worker (`PUT /asset/<sha256>?account=<id>` with a `Bearer` session token) and other devices fetch them lazily (`GET`) the first time a sheet needs full resolution. Objects live under `<account>/<sha256>`, are verified against their digest on upload, and are immutable. Without R2 configured the Worker answers 503 and the app simply keeps originals device-local, with thumbs still syncing.
+When an account is signed in, originals upload to R2 through the Worker (`PUT /asset/<sha256>?account=<id>` with a `Bearer` session token). Originals are content-addressed by SHA-256 and immutable: other devices and shared sheets fetch them lazily (`GET /asset/<sha256>`), allowing read-only snapshots to display portraits without embedding bulky image blobs in the share URL. Without R2 configured the Worker answers 503 and the app simply keeps originals device-local, with thumbs still syncing.
 
 ### Conjuring a portrait
 
@@ -94,7 +94,7 @@ cd worker && npx wrangler secret put TRIPO_API_KEY
 
 ## Share a sheet
 
-The share button (top right of a character sheet) encodes a read-only snapshot of the character and referenced homebrew into the URL hash fragment as compressed base64url data. The fragment is processed entirely client-side without reaching GitHub or the sync Worker, bypassing the passphrase gate for that single sheet. Dice rolling and rule lookups remain active while trackers and edits are locked. The share tray also generates a character card image containing portrait, stats, and badges.
+The share button (top right of a character sheet) encodes a read-only snapshot of the character and referenced homebrew into the URL hash fragment as compressed base64url data. The fragment is processed entirely client-side without reaching GitHub or the sync Worker, bypassing the passphrase gate for that single sheet. Dice rolling and rule lookups remain active while trackers and edits are locked. Portrait framing metadata is preserved in the link while the large thumbnail is omitted, so shared sheets load the portrait from R2 using its content hash. The share tray also generates a character card image containing portrait, stats, and badges.
 
 ## Install on iOS
 

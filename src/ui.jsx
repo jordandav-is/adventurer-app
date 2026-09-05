@@ -2,7 +2,7 @@ import { ABILITIES, ALL_SKILLS, CLASSES, CLASS_BLURB, FEAT_CATS, FEAT_MECHANICS,
 import { allFeats, crShow, featBlockedBy, featGrantedSpells, featureBody, fmtMod, infoFor, mod, schoolName, searchRank, sourceOf, spellFitsClass, subSpellData } from "./rules.js";
 import { srcSpells } from "./compendium.js";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { clampFrame, conjure, flushAssets, forge, frameRect, frameStyle, importPhoto, thumbOf, useAssetUrl } from "./portrait.js";
+import { clampFrame, conjure, flushAssets, forge, frameRect, frameStyle, importPhoto, referenceImagePayload, thumbOf, useAssetUrl } from "./portrait.js";
 const Stage = lazy(() => import("./stage.jsx"));
 import { getAccount } from "./sync.js";
 const T = {
@@ -50,6 +50,12 @@ const GLOBAL_CSS = `
     animation: horizonIn 2.6s ease-out both; }
   @media (min-width: 700px) { .horizon { height: clamp(200px, 32vh, 360px); } }
   @keyframes horizonIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 0.72; transform: none; } }
+  @keyframes nightSkyIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes campfireFlicker { 0%, 100% { opacity: 0.65; transform: scaleY(1); } 50% { opacity: 0.9; transform: scaleY(1.08); } }
+  @keyframes emberRise { 0% { transform: translate(0, 0) scale(0.6); opacity: 0; } 25% { opacity: 0.95; } 75% { opacity: 0.7; } 100% { transform: translate(var(--dx, 15px), -140px) scale(0.2); opacity: 0; } }
+  @keyframes headerShine { 0%, 100% { filter: drop-shadow(0 0 0 rgba(201,164,76,0)); } 50% { filter: drop-shadow(0 0 14px rgba(201,164,76,0.85)) drop-shadow(0 0 4px rgba(247,230,181,0.9)); } }
+  @keyframes starTwinkle { 0%, 100% { opacity: 0.2; transform: scale(0.7); } 50% { opacity: 0.95; transform: scale(1.3); } }
+  @keyframes critPulse { 0% { box-shadow: 0 0 0 0 rgba(201,164,76,0.6); } 70% { box-shadow: 0 0 0 16px rgba(201,164,76,0); } 100% { box-shadow: 0 0 0 0 rgba(201,164,76,0); } }
   @media (hover: none) and (pointer: coarse) {
     [data-lore] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
     .lore-lock, .lore-lock * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
@@ -319,9 +325,11 @@ function LoreSheet({ customs }) {
 const veil = { position: "fixed", inset: 0, background: "#000000c8", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", animation: "sheetVeil 200ms ease" };
 const pane = { ...card, padding: 20, width: "min(92vw, 360px)", boxSizing: "border-box" };
 function PortraitButton({ photo, portrait, model, size, name, brief, onChange }) {
-  const [mode, setMode] = useState(null); // null | "menu" | "conjure" | "forge" | "stage" | portrait record being framed
+  const [mode, setMode] = useState(null); // null | "menu" | "conjure" | "evolve" | "forge" | "stage" | portrait record being framed
   const pick = (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) importPhoto(f).then(setMode).catch(() => {}); };
   const signedIn = !!getAccount();
+  const canConjure = !!brief && signedIn;
+  const hasPortrait = !!(portrait || photo);
   return (
     <>
       <div role="button" tabIndex={0} title="Portrait" style={{ cursor: "pointer" }} onClick={() => setMode("menu")}>
@@ -331,18 +339,26 @@ function PortraitButton({ photo, portrait, model, size, name, brief, onChange })
         <div style={veil} onClick={() => setMode(null)}>
           <div style={{ ...pane, display: "flex", flexDirection: "column", gap: 8 }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold, marginBottom: 4 }}>Portrait</div>
-            <label style={{ ...btn(true), textAlign: "center" }}>Upload a photo<input type="file" accept="image/*" onChange={pick} style={{ display: "none" }} /></label>
-            {brief && signedIn && <button style={btn(false)} onClick={() => setMode("conjure")}>Conjure one from your sheet</button>}
             {model && <button style={btn(false)} onClick={() => setMode("stage")}>View in 3D</button>}
             {portrait && signedIn && <button style={btn(false)} onClick={() => setMode("forge")}>{model ? "Forge the figure anew" : "Forge a 3D figure"}</button>}
+            <label style={{ ...btn(false), display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>Upload a photo<input type="file" accept="image/*" onChange={pick} style={{ display: "none" }} /></label>
+            {canConjure && hasPortrait && <button style={btn(false)} onClick={() => setMode("evolve")}>Evolve from current portrait</button>}
+            {canConjure && <button style={btn(false)} onClick={() => setMode("conjure")}>{hasPortrait ? "Conjure a fresh portrait" : "Conjure one from your sheet"}</button>}
             {portrait && <button style={btn(false)} onClick={() => setMode(portrait)}>Reframe</button>}
             {portrait && <button style={{ ...btn(false), borderColor: T.blood, color: T.blood }} onClick={() => { onChange({ photo: null, portrait: null }); setMode(null); }}>Remove</button>}
           </div>
         </div>
       )}
-      {mode === "conjure" && <ConjureSheet brief={brief} onPick={(blob) => importPhoto(blob).then(setMode)} onClose={() => setMode(null)} />}
       {mode === "forge" && <ForgeSheet imageId={portrait.id} onDone={(id) => { onChange({ model: { id, env: model?.env || "dawn" } }); setMode("stage"); }} onClose={() => setMode(null)} />}
       {mode === "stage" && <StageSheet model={model} name={name} onEnv={(env) => onChange({ model: { ...model, env } })} onPick={(blob) => importPhoto(blob).then(setMode)} onClose={() => setMode(null)} />}
+      {(mode === "conjure" || mode === "evolve") && (
+        <ConjureSheet
+          brief={brief}
+          reference={mode === "evolve" ? { photo, portrait, name } : null}
+          onPick={(blob) => importPhoto(blob).then(setMode)}
+          onClose={() => setMode(null)}
+        />
+      )}
       {mode && typeof mode === "object" && <PortraitEditor p={mode} onClose={() => setMode(null)}
         onSave={(img, p) => { onChange({ photo: thumbOf(img, p), portrait: p }); flushAssets([{ portrait: p }]); setMode(null); }} />}
     </>
@@ -402,17 +418,29 @@ function StageSheet({ model, name, onEnv, onPick, onClose }) {
 }
 // Describe the character, let the aether paint four, choose one — or add a note and get four more.
 const CONJURE_ROUNDS = Infinity;
-function ConjureSheet({ brief, onPick, onClose }) {
+function ConjureSheet({ brief, reference, onPick, onClose }) {
   const [text, setText] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [rounds, setRounds] = useState([]); // [{ prompt, urls, blobs }]
+  const [refPayload, setRefPayload] = useState(null);
+  const isEvolve = !!reference;
+
+  useEffect(() => {
+    if (reference) {
+      referenceImagePayload(reference).then(setRefPayload).catch(() => {});
+    }
+  }, [reference]);
+
   useEffect(() => () => rounds.forEach((r) => r.urls.forEach(URL.revokeObjectURL)), [rounds]);
   const last = rounds[rounds.length - 1];
   const go = () => {
     setBusy(true); setErr(null);
-    conjure({ ...brief(), description: text.trim(), ...(last ? { previousPrompt: last.prompt, revision: note.trim() } : {}) })
+    conjure(
+      { ...brief(), description: text.trim(), ...(last ? { previousPrompt: last.prompt, revision: note.trim() } : {}) },
+      refPayload
+    )
       .then((r) => { setRounds((rs) => [...rs, { ...r, urls: r.blobs.map((b) => URL.createObjectURL(b)) }]); setNote(""); })
       .catch((e) => setErr(e.message)).finally(() => setBusy(false));
   };
@@ -421,10 +449,25 @@ function ConjureSheet({ brief, onPick, onClose }) {
   return (
     <div style={veil} onClick={busy ? undefined : onClose}>
       <div style={{ ...pane, width: "min(92vw, 420px)", maxHeight: "90vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold }}>Conjure a portrait</div>
-        <div style={{ color: T.dim, fontSize: 12.5, margin: "4px 0 10px" }}>Your sheet — ancestry, classes, features, persona, notes — goes in with whatever you add here.</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <div style={{ fontFamily: "Georgia, serif", fontSize: 20, color: T.gold }}>{isEvolve ? "Evolve portrait" : "Conjure a portrait"}</div>
+            <div style={{ color: T.dim, fontSize: 12.5, margin: "4px 0 10px" }}>
+              {isEvolve
+                ? "Your current portrait inspires this evolution — carrying your character forward with their new level and gear."
+                : "Your sheet — ancestry, classes, gear, features, persona, notes — goes in with whatever you add here."}
+            </div>
+          </div>
+          {isEvolve && (
+            <div style={{ flexShrink: 0, marginBottom: 6 }}>
+              <Portrait photo={reference.photo} portrait={reference.portrait} size={48} name={reference.name} />
+            </div>
+          )}
+        </div>
         {!last && <textarea value={text} rows={4} maxLength={800} disabled={busy} onChange={(e) => setText(e.target.value)} style={field}
-          placeholder="Scar over the left eye, hair braided with copper rings, a grin that says the tavern is already on fire…" />}
+          placeholder={isEvolve
+            ? "Level-up details to guide the muse — new scars, dyed hair, different expression, or leave blank to let your new gear shine…"
+            : "Scar over the left eye, hair braided with copper rings, a grin that says the tavern is already on fire…"} />}
         {(last || busy) && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             {rounds.flatMap((r, ri) => r.urls.map((u, i) => <img key={u} src={u} alt={`Candidate ${ri * 4 + i + 1}`} onClick={() => onPick(r.blobs[i])} style={{ ...tile, objectFit: "cover", cursor: "pointer" }} />))}
@@ -439,7 +482,7 @@ function ConjureSheet({ brief, onPick, onClose }) {
           <button style={btn(false)} disabled={busy} onClick={onClose}>{last ? "Close" : "Cancel"}</button>
           {(!last || rounds.length < CONJURE_ROUNDS) && (
             <button style={{ ...btn(true), animation: busy ? "conjureBreathe 1.8s ease-in-out infinite" : "none" }} disabled={busy} onClick={go}>
-              {busy ? "Conjuring…" : last ? "Conjure four more" : "Conjure"}
+              {busy ? (isEvolve ? "Evolving…" : "Conjuring…") : last ? (isEvolve ? "Evolve four more" : "Conjure four more") : (isEvolve ? "Evolve" : "Conjure")}
             </button>
           )}
         </div>

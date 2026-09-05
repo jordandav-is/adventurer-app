@@ -31,7 +31,6 @@ export function AccountPanel({ cloud, account, syncState, onAccount, toolRow, hi
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [passphrase, setPassphrase] = useState("");
   const [recoveryKeyInput, setRecoveryKeyInput] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -50,7 +49,6 @@ export function AccountPanel({ cloud, account, syncState, onAccount, toolRow, hi
     setEmail("");
     setPassword("");
     setConfirmPassword("");
-    setPassphrase("");
     setRecoveryKeyInput("");
     setCurrentPassword("");
     setNewPassword("");
@@ -589,10 +587,6 @@ export function AccountPanel({ cloud, account, syncState, onAccount, toolRow, hi
       setMsg("Passwords do not match.");
       return;
     }
-    if (!passphrase.trim() || passphrase.length > 256) {
-      setMsg("Ledger passphrase is required.");
-      return;
-    }
 
     if (!registrationIdRef.current) {
       registrationIdRef.current = generateRegistrationId();
@@ -601,7 +595,7 @@ export function AccountPanel({ cloud, account, syncState, onAccount, toolRow, hi
     setBusy(true);
     setMsg("");
     try {
-      const data = await cloud.registerPassword(cleanEmail, password, passphrase, registrationIdRef.current);
+      const data = await cloud.registerPassword(cleanEmail, password, registrationIdRef.current);
       resetForms();
       onAccount(cloud.getAccount()?.email || null);
       if (data?.recoveryKey) {
@@ -735,7 +729,7 @@ export function AccountPanel({ cloud, account, syncState, onAccount, toolRow, hi
 
       <div style={{ fontSize: 11.5, color: T.dim, lineHeight: 1.4 }}>
         {mode === "signin" && "Email is an unverified login identifier. Forgotten passwords can be reset using your saved recovery key."}
-        {mode === "register" && "Enter the ledger passphrase to forge a new account. A unique recovery key will be generated."}
+        {mode === "register" && "Forge a new account. A unique recovery key will be generated."}
         {mode === "recover" && "Reset your password using your saved recovery key. A replacement key will be issued upon recovery."}
       </div>
 
@@ -815,19 +809,6 @@ export function AccountPanel({ cloud, account, syncState, onAccount, toolRow, hi
             placeholder="Confirm password"
             value={confirmPassword}
             onChange={(e) => { setConfirmPassword(e.target.value); registrationIdRef.current = null; }}
-            style={field}
-          />
-          <input
-            type="password"
-            required
-            aria-label="Ledger passphrase"
-            disabled={busy}
-            className="account-control"
-            autoComplete="off"
-            maxLength={256}
-            placeholder="Ledger passphrase"
-            value={passphrase}
-            onChange={(e) => { setPassphrase(e.target.value); registrationIdRef.current = null; }}
             style={field}
           />
           <button type="submit" disabled={busy} className="account-control" style={actBtn(true, busy)}>

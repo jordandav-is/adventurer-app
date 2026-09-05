@@ -29,6 +29,6 @@ createRoot(document.getElementById("root")).render(<Root />);
 // Relative path supports custom domain roots and GitHub Pages subpaths.
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    navigator.serviceWorker.register("./sw.js").then((r) => r.update()).catch(() => {});
   });
 }
