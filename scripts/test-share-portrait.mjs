@@ -26,6 +26,7 @@ async function encodeShare(ch, customs) {
     soul.model = {
       id: soul.model.id,
       env: typeof soul.model.env === "string" ? soul.model.env : "dawn",
+      background: soul.model.background === "cathedral" ? "cathedral" : "woodland",
     };
   } else {
     delete soul.model;
@@ -59,6 +60,7 @@ async function decodeShare(token) {
   const model = c.model && typeof c.model.id === "string" && c.model.id.length === 64 ? {
     id: c.model.id,
     env: typeof c.model.env === "string" ? c.model.env : "dawn",
+    background: c.model.background === "cathedral" ? "cathedral" : "woodland",
   } : null;
   payload.c = { ...c, photo: null, portrait, model, log: [], skills: Array.isArray(c.skills) ? c.skills : [], maxHp: typeof c.maxHp === "number" ? c.maxHp : 1 };
   payload.x = { ...EMPTY_CUSTOM, ...(payload.x || {}) };

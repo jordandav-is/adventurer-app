@@ -1,10 +1,16 @@
-// A fixed woodland composition; inspection turns the figure, never the landscape.
+// A fixed composition; inspection turns the figure, never the architecture or landscape.
 // The renderer is retained when changing models, and all async work is mount-scoped.
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { useEffect, useRef } from "react";
 import { createWoodland } from "./woodland.js";
+import { createCathedral } from "./cathedral.js";
+
+export const BACKGROUNDS = {
+  woodland: { name: "Woodland overlook", create: createWoodland },
+  cathedral: { name: "The Cathedral of the Eight", create: createCathedral },
+};
 
 export const ENVS = {
   dawn: { name: "Golden hour" },
@@ -30,10 +36,10 @@ function disposeFigure(figure) {
   figure.removeFromParent();
 }
 
-export default function Stage({ url, env = "dawn", motion = true, facing = 0, onReady, onHandle }) {
+export default function Stage({ url, env = "dawn", background = "woodland", motion = true, facing = 0, onReady, onBackgroundState, onFramingChange, onHandle }) {
   const hostRef = useRef(null), runtime = useRef(null);
-  const callbacks = useRef({ onReady, onHandle });
-  callbacks.current = { onReady, onHandle };
+  const callbacks = useRef({ onReady, onBackgroundState, onFramingChange, onHandle });
+  callbacks.current = { onReady, onBackgroundState, onFramingChange, onHandle };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -52,23 +58,14 @@ export default function Stage({ url, env = "dawn", motion = true, facing = 0, on
     canvas.style.cssText = "display:block;width:100%;height:100%;touch-action:none;outline-offset:-4px;cursor:grab";
     canvas.tabIndex = 0;
     canvas.setAttribute("role", "img");
-    canvas.setAttribute("aria-label", "3D character in a woodland overlook. Drag or use left and right arrows to turn. Scroll, pinch, or use plus and minus to zoom. Home resets the view.");
+    canvas.setAttribute("aria-label", "3D character viewer. Drag or use left and right arrows to turn. Scroll, pinch, or use plus and minus to zoom. Home resets the view.");
     host.appendChild(canvas);
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(32, 1, 0.05, 500);
     const figurePivot = new THREE.Group();
     scene.add(figurePivot);
-    let woodland;
-    try { woodland = createWoodland(scene, renderer); }
-    catch (error) {
-      renderer.dispose(); canvas.remove();
-      callbacks.current.onReady?.(error);
-      return;
-    }
-    // Handle rejection immediately, including while the model is still downloading.
-    let environmentError = null;
-    const environmentReady = woodland.ready.catch((error) => { environmentError = error; });
+    let environment = null, backgroundKey = null, mood = "dawn", environmentLoaded = false;
     const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
     const target = new THREE.Vector3();
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
@@ -78,12 +75,17 @@ export default function Stage({ url, env = "dawn", motion = true, facing = 0, on
     let moving = true, visible = true;
     let pending = null;
 
-    const reset = () => { targetAngle = front; targetZoom = 0; };
+    const reset = () => { targetAngle = front; targetZoom = 0; callbacks.current.onFramingChange?.("full"); };
     const rotateBy = (radians) => { targetAngle += radians; };
-    const zoomBy = (amount) => { targetZoom = THREE.MathUtils.clamp(targetZoom + amount, 0, 1); };
+    const zoomBy = (amount) => {
+      targetZoom = THREE.MathUtils.clamp(targetZoom + amount, backgroundKey === "cathedral" ? -1.35 : 0, 1);
+      callbacks.current.onFramingChange?.(targetZoom === 1 ? "portrait" : targetZoom === 0 ? "full" : targetZoom <= -1 ? "grand" : "custom");
+    };
     const updateCamera = () => {
-      camera.position.set(0, THREE.MathUtils.lerp(1.4, 1.52, zoom), THREE.MathUtils.lerp(fullDistance, 2.05, zoom));
-      target.set(0, THREE.MathUtils.lerp(0.9, 1.42, zoom), 0);
+      // A fixed viewing axis: pull back and rise to reveal the nave, never orbit it.
+      const cathedral = backgroundKey === "cathedral", wide = cathedral ? Math.max(0, -zoom) : 0, close = Math.max(0, zoom);
+      camera.position.set(0, wide ? THREE.MathUtils.lerp(1.8, 4.8, wide) : THREE.MathUtils.lerp(cathedral ? 1.8 : 1.4, 1.52, close), wide ? THREE.MathUtils.lerp(fullDistance, Math.max(16, fullDistance + 9.6), wide) : THREE.MathUtils.lerp(fullDistance, 2.05, close));
+      target.set(0, wide ? THREE.MathUtils.lerp(1.48, 2.75, wide) : THREE.MathUtils.lerp(cathedral ? 1.48 : 0.9, 1.42, close), 0);
       camera.lookAt(target);
     };
     const resize = () => {
@@ -91,12 +93,39 @@ export default function Stage({ url, env = "dawn", motion = true, facing = 0, on
       renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2, Math.sqrt(2400000 / (width * height))));
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
-      fullDistance = Math.max(5.2, figureWidth * 0.72 / (Math.tan(THREE.MathUtils.degToRad(16)) * camera.aspect));
+      fullDistance = Math.max(backgroundKey === "cathedral" ? 6.4 : 5.2, figureWidth * 0.72 / (Math.tan(THREE.MathUtils.degToRad(16)) * camera.aspect));
       camera.updateProjectionMatrix(); updateCamera();
     };
     const clearFigure = () => {
       if (mixer) { mixer.stopAllAction(); mixer.uncacheRoot(figure); mixer = null; }
       if (figure) { disposeFigure(figure); figure = null; }
+    };
+    const setBackground = (key) => {
+      const next = Object.hasOwn(BACKGROUNDS, key) ? key : "woodland";
+      if (next === backgroundKey) return;
+      backgroundKey = next; environmentLoaded = false;
+      if (next !== "cathedral" && targetZoom < 0) { targetZoom = 0; zoom = Math.max(0, zoom); callbacks.current.onFramingChange?.("full"); }
+      resize();
+      environment?.dispose(); environment = null;
+      callbacks.current.onBackgroundState?.({ key: next, status: "loading" });
+      canvas.setAttribute("aria-label", `3D character in ${BACKGROUNDS[next].name}. Drag or use left and right arrows to turn. Scroll, pinch, or use plus and minus to zoom. Home resets the view.`);
+      let current;
+      try {
+        current = BACKGROUNDS[next].create(scene, renderer);
+        environment = current;
+        // Attach rejection handling before applying a mood (PMREM can fail).
+        current.ready.then(() => {
+          if (disposed || environment !== current) return;
+          environmentLoaded = true;
+          callbacks.current.onBackgroundState?.({ key: next, status: "ready" });
+        }, (error) => {
+          if (!disposed && environment === current) callbacks.current.onBackgroundState?.({ key: next, status: "error", error: error.message });
+        });
+        current.setMood(mood);
+      } catch (error) {
+        current?.dispose(); environment = null;
+        callbacks.current.onBackgroundState?.({ key: next, status: "error", error: error.message });
+      }
     };
     const load = (source) => {
       pending?.abort();
@@ -139,9 +168,6 @@ export default function Stage({ url, env = "dawn", motion = true, facing = 0, on
           mixer.clipAction(gltf.animations[0]).play();
         }
         resize();
-        await environmentReady;
-        if (!active()) return;
-        if (environmentError) throw new Error(`The woodland assets could not load: ${environmentError.message}`);
         callbacks.current.onReady?.();
       })();
       promise.catch((error) => {
@@ -223,18 +249,20 @@ export default function Stage({ url, env = "dawn", motion = true, facing = 0, on
       figurePivot.rotation.y = angle;
       updateCamera();
       if (moving && !reducedMotion.matches) { elapsed += delta; mixer?.update(delta); }
-      woodland.update(elapsed);
+      environment?.update(elapsed);
       renderer.render(scene, camera);
     };
     frame = requestAnimationFrame(render);
     const handle = {
       reset, rotateBy, zoomBy,
-      setFraming: (framing) => { targetZoom = framing === "portrait" ? 1 : 0; },
+      setFraming: (framing) => { targetZoom = framing === "portrait" ? 1 : framing === "grand" && backgroundKey === "cathedral" ? -1 : 0; },
       setFacing: (radians) => { front = radians; reset(); },
-      setEnv: (key) => woodland.setMood(Object.hasOwn(ENVS, key) ? key : "dawn"),
+      setBackground,
+      setEnv: (key) => { mood = Object.hasOwn(ENVS, key) ? key : "dawn"; environment?.setMood(mood); },
       setMotion: (enabled) => { moving = enabled; },
       snapshot: () => new Promise((resolve, reject) => {
         if (disposed || contextLost) { reject(new Error("The viewer is no longer available.")); return; }
+        if (!environmentLoaded) { reject(new Error("Wait for the background to finish loading before saving a portrait.")); return; }
         renderer.render(scene, camera);
         canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("The portrait could not be captured.")), "image/jpeg", 0.92);
       }),
@@ -252,13 +280,14 @@ export default function Stage({ url, env = "dawn", motion = true, facing = 0, on
       canvas.removeEventListener("wheel", wheel);
       canvas.removeEventListener("keydown", keyDown);
       canvas.removeEventListener("webglcontextlost", loseContext);
-      pointers.clear(); clearFigure(); woodland.dispose();
+      pointers.clear(); clearFigure(); environment?.dispose();
       renderer.dispose(); canvas.remove(); runtime.current = null;
       callbacks.current.onHandle?.(null);
     };
   }, []);
 
   useEffect(() => { runtime.current?.handle.setEnv(env); }, [env]);
+  useEffect(() => { runtime.current?.handle.setBackground(background); }, [background]);
   useEffect(() => { runtime.current?.handle.setMotion(motion); }, [motion]);
   useEffect(() => { runtime.current?.handle.setFacing(facing); }, [facing]);
   useEffect(() => url ? runtime.current?.load(url) : undefined, [url]);

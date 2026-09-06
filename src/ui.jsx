@@ -335,7 +335,7 @@ function PortraitButton({ photo, portrait, model, size, name, classes, brief, re
     if (f) {
       importModel(f)
         .then(({ id }) => {
-          onChange({ model: { id, env: model?.env || "dawn" } });
+          onChange({ model: { id, env: model?.env || "dawn", background: model?.background || "woodland" } });
           flushAssets([{ model: { id } }]);
           setMode("stage");
         })
@@ -419,9 +419,9 @@ function PortraitButton({ photo, portrait, model, size, name, classes, brief, re
           </div>
         </div>
       )}
-      {mode === "forge" && <ForgeSheet imageId={forgeImageId || portrait?.id} onDone={(id) => { onChange({ model: { id, env: model?.env || "dawn" } }); setMode("stage"); }} onClose={() => setMode(null)} />}
-      {mode === "stage" && <Suspense fallback={<div style={veil}><div style={pane} role="status">Opening the clearing…<button style={btn(false)} onClick={() => setMode(null)}>Close</button></div></div>}>
-        <StageView url={modelUrl} name={name} classes={classes} facing={0} env={model?.env || "dawn"} onEnv={(env) => onChange({ model: { ...model, env } })} onPick={(blob) => importPhoto(blob).then(setMode)} onClose={() => setMode(null)} />
+      {mode === "forge" && <ForgeSheet imageId={forgeImageId || portrait?.id} onDone={(id) => { onChange({ model: { id, env: model?.env || "dawn", background: model?.background || "woodland" } }); setMode("stage"); }} onClose={() => setMode(null)} />}
+      {mode === "stage" && <Suspense fallback={<div style={veil}><div style={pane} role="status">Opening the viewer…<button style={btn(false)} onClick={() => setMode(null)}>Close</button></div></div>}>
+        <StageView url={modelUrl} name={name} classes={classes} facing={0} env={model?.env || "dawn"} onEnv={(env) => onChange({ model: { ...model, env } })} background={model?.background || "woodland"} onBackground={(background) => onChange({ model: { ...model, background } })} onPick={(blob) => importPhoto(blob).then(setMode)} onClose={() => setMode(null)} />
       </Suspense>}
       {(mode === "conjure" || mode === "evolve") && (
         <ConjureSheet

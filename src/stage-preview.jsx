@@ -10,7 +10,8 @@ function closePreview() {
 
 function StagePreview() {
   const [env, setEnv] = useState("dawn");
-  return <StageView url={`${import.meta.env.BASE_URL}.preview-assets/ranger.glb`} name="The Horned Ranger" classes={[{ name: "Ranger", level: 1 }]} facing={-Math.PI / 2} env={env} onEnv={setEnv} onClose={closePreview} />;
+  const [background, setBackground] = useState(() => new URLSearchParams(location.search).get("background") === "woodland" ? "woodland" : "cathedral");
+  return <StageView url={`${import.meta.env.BASE_URL}.preview-assets/ranger.glb`} name="The Horned Ranger" classes={[{ name: "Ranger", level: 1 }]} facing={-Math.PI / 2} env={env} onEnv={setEnv} background={background} onBackground={setBackground} initialFraming={new URLSearchParams(location.search).get("framing") || "full"} onClose={closePreview} />;
 }
 
 createRoot(document.getElementById("root")).render(<StagePreview />);

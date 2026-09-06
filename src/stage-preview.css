@@ -27,6 +27,11 @@
 .atelier .mood-option small { margin-left: auto; font: 8px system-ui, sans-serif; color: #c8b98a79; }
 .atelier .mood-swatch { width: 20px; height: 20px; border-radius: 50%; border: 1px solid #f3e6be52; background: radial-gradient(circle at 30% 28%, #fff4cb 0%, var(--mood) 18%, #405656 55%, #1b2c33 85%); box-shadow: 0 0 0 3px #bdb38809; }
 .atelier .mood-night { background: radial-gradient(circle at 35% 28%, #dae4ed 0%, #adb8d2 9%, #394958 15%, #132534 75%); }
+.atelier .background-option { font-size: 12px; line-height: 1.4; min-height: 44px; }
+.atelier .background-swatch { flex: 0 0 25px; width: 25px; height: 30px; border: 1px solid #cab98677; box-shadow: inset 0 0 0 2px #18221d; }
+.atelier .background-woodland { border-radius: 45% 45% 2px 2px; background: linear-gradient(135deg, transparent 40%, #283d33 41% 53%, transparent 54%), linear-gradient(45deg, #394b35 45%, transparent 46%), linear-gradient(#bcc39a, #6d805d 50%, #263a34); }
+.atelier .background-cathedral { border-radius: 50% 50% 2px 2px; background: repeating-conic-gradient(from 22.5deg at 50% 42%, #d7bc7e 0deg 34deg, #4a4636 35deg 45deg); }
+.atelier .grand-view.active { color: #f1dfb5; background: #cdbb891f; border-color: #c5ad7877; }
 .atelier .motion-control { display: flex; position: relative; align-items: center; gap: 8px; margin-top: 18px; cursor: pointer; font: 11px system-ui, sans-serif; color: #d2d8ca; }
 .atelier .motion-control input { position: absolute; opacity: 0; }
 .atelier .switch-track { position: relative; width: 26px; height: 14px; border-radius: 12px; margin-left: auto; background: #344240; border: 1px solid #a9b59833; }
