@@ -5,6 +5,7 @@ import React, { useEffect, useState } from "react";
 import { CLASS_THEMES, ClassTag, ICON_PATHS, Icon, LazyList, Portrait, SpellPickGrid, PortraitButton, T, __showLore, btn, card, cornerBtn, lorePress } from "./ui.jsx";
 import { DiceTray, RollTray, roll, rollFeatures, rollNotes } from "./dice.jsx";
 import { assetUrl, frameRect } from "./portrait.js";
+import { Roll20TransferView } from "./Roll20Transfer.jsx";
 const SHARE_W = 1200, SHARE_H = 630;
 const CARD_SERIF = 'Georgia, "Liberation Serif", "Times New Roman", serif';
 const CARD_SANS = '-apple-system, "SF Pro Text", "DejaVu Sans", system-ui, sans-serif';
@@ -1982,7 +1983,8 @@ function GuideSheet({ onClose }) {
     </div>
   );
 }
-function ShareSheet({ ch, customs, onClose }) {
+function ShareSheet({ ch, customs, onClose, shared }) {
+  const [tab, setTab] = useState(shared ? "roll20" : "dm");
   const [url, setUrl] = useState(null);
   const [failed, setFailed] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -2020,41 +2022,61 @@ function ShareSheet({ ch, customs, onClose }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 80, display: "flex", alignItems: "flex-end", justifyContent: "center", animation: "sheetVeil 200ms ease" }} onClick={onClose}>
       <div className="sheet-cap"
-        style={{ ...card, width: "min(640px, 100%)", borderRadius: "16px 16px 0 0", display: "flex", flexDirection: "column", overflow: "hidden", animation: "sheetRise 300ms cubic-bezier(0.32, 0.72, 0, 1)" }}
+        style={{ ...card, width: "min(680px, 100%)", maxHeight: "90dvh", borderRadius: "16px 16px 0 0", display: "flex", flexDirection: "column", overflow: "hidden", animation: "sheetRise 300ms cubic-bezier(0.32, 0.72, 0, 1)" }}
         onClick={(e) => e.stopPropagation()}>
         <div style={{ flex: "none", padding: "8px 20px 0" }}>
           <div style={{ width: 36, height: 4, borderRadius: 2, background: T.edge, margin: "0 auto 10px" }} />
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
             <div>
-              <div style={{ fontFamily: "Georgia, serif", fontSize: 21, color: T.gold }}><Icon name="share" size={18} /> Send to your DM</div>
-              <div style={{ color: T.dim, fontSize: 13, marginTop: 2 }}>A read-only snapshot of {ch.name}, sealed in a link.</div>
+              <div style={{ fontFamily: "Georgia, serif", fontSize: 21, color: T.gold }}>
+                <Icon name={tab === "dm" ? "share" : "d20"} size={18} /> {tab === "dm" ? "Send to your DM" : "Send to Roll20"}
+              </div>
+              <div style={{ color: T.dim, fontSize: 13, marginTop: 2 }}>
+                {tab === "dm" ? `A read-only snapshot of ${ch.name}, sealed in a link.` : `Transfer ${ch.name} or copy any 1 spell, feature, or stat to Roll20.`}
+              </div>
             </div>
             <button aria-label="Close" onClick={onClose}
               style={{ background: "none", border: "none", color: T.dim, cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "10px 4px 10px 14px", margin: "-10px -4px", WebkitTapHighlightColor: "transparent" }}>✕</button>
           </div>
+          {!shared && (
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button style={{ ...btn(tab === "dm"), padding: "6px 14px", fontSize: 13, minHeight: 0 }} onClick={() => setTab("dm")}>
+                <Icon name="share" size={14} /> Send to your DM
+              </button>
+              <button style={{ ...btn(tab === "roll20"), padding: "6px 14px", fontSize: 13, minHeight: 0 }} onClick={() => setTab("roll20")}>
+                <Icon name="d20" size={14} /> Roll20 VTT
+              </button>
+            </div>
+          )}
         </div>
         <div className="sheet-body" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "6px 20px calc(22px + env(safe-area-inset-bottom))" }}>
-          {card && (
-            <img src={card.src} alt={`${ch.name} — character card`}
-              style={{ width: "100%", display: "block", marginTop: 10, borderRadius: 12, border: `1px solid ${T.edge}` }} />
-          )}
-          {failed ? (
-            <div style={{ color: "#d76a76", fontSize: 13, marginTop: 16 }}>The link would not seal — this browser lacks the craft. Try a current Safari, Chrome, or Firefox.</div>
+          {tab === "roll20" ? (
+            <Roll20TransferView ch={ch} customs={customs} />
           ) : (
             <>
-              <div style={{ marginTop: 16, padding: "10px 12px", background: T.panel2, border: `1px solid ${T.edge}`, borderRadius: 10, color: url ? T.dim : T.edge, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontFamily: "ui-monospace, monospace" }}>
-                {url || "Sealing the link…"}
-              </div>
-              {url && url.length > 8000 && (
-                <div style={{ color: T.dim, fontSize: 12, marginTop: 8 }}>A hefty soul — this link runs long, and some messaging apps clip long links. If it arrives broken, send it by email instead.</div>
+              {card && (
+                <img src={card.src} alt={`${ch.name} — character card`}
+                  style={{ width: "100%", display: "block", marginTop: 10, borderRadius: 12, border: `1px solid ${T.edge}` }} />
               )}
-              <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-                <button style={{ ...btn(true), flex: 1, opacity: url ? 1 : 0.5 }} disabled={!url} onClick={copy}>{copied ? "Copied ✓" : "Copy link"}</button>
-                {typeof navigator !== "undefined" && !!navigator.share && (
-                  <button style={{ ...btn(false), flex: 1, opacity: url ? 1 : 0.5 }} disabled={!url} onClick={nativeShare}><Icon name="share" size={14} /> Share…</button>
-                )}
-              </div>
-              {copied && <div style={{ color: T.green, fontSize: 12.5, marginTop: 10 }}>Copied — paste it anywhere your DM will see it.</div>}
+              {failed ? (
+                <div style={{ color: "#d76a76", fontSize: 13, marginTop: 16 }}>The link would not seal — this browser lacks the craft. Try a current Safari, Chrome, or Firefox.</div>
+              ) : (
+                <>
+                  <div style={{ marginTop: 16, padding: "10px 12px", background: T.panel2, border: `1px solid ${T.edge}`, borderRadius: 10, color: url ? T.dim : T.edge, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontFamily: "ui-monospace, monospace" }}>
+                    {url || "Sealing the link…"}
+                  </div>
+                  {url && url.length > 8000 && (
+                    <div style={{ color: T.dim, fontSize: 12, marginTop: 8 }}>A hefty soul — this link runs long, and some messaging apps clip long links. If it arrives broken, send it by email instead.</div>
+                  )}
+                  <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                    <button style={{ ...btn(true), flex: 1, opacity: url ? 1 : 0.5 }} disabled={!url} onClick={copy}>{copied ? "Copied ✓" : "Copy link"}</button>
+                    {typeof navigator !== "undefined" && !!navigator.share && (
+                      <button style={{ ...btn(false), flex: 1, opacity: url ? 1 : 0.5 }} disabled={!url} onClick={nativeShare}><Icon name="share" size={14} /> Share…</button>
+                    )}
+                  </div>
+                  {copied && <div style={{ color: T.green, fontSize: 12.5, marginTop: 10 }}>Copied — paste it anywhere your DM will see it.</div>}
+                </>
+              )}
             </>
           )}
         </div>
@@ -2099,7 +2121,7 @@ function Sheet({ ch: storedCh, onBack, onLevelUp, onDelete, onSpells, onNotes, o
   const usedSlots = ch.usedSlots || [];
   const usedOf = (i) => Math.min(usedSlots[i] || 0, slots ? slots[i] || 0 : 0);
   const setUsed = (i, n) => {
-    const next = Array.from({ length: slots.length }, (_, j) => (j === i ? n : usedOf(j)));
+    const next = Array.from({ length: slots ? slots.length : 0 }, (_, j) => (j === i ? n : usedOf(j)));
     onUpdate({ usedSlots: next });
   };
   const usedPact = pact ? Math.min(ch.usedPact || 0, pact.n) : 0;
@@ -2353,10 +2375,8 @@ function Sheet({ ch: storedCh, onBack, onLevelUp, onDelete, onSpells, onNotes, o
             <button aria-label="Sourcebooks" title="Enable or disable sourcebooks" onClick={onSources}
               style={cornerBtn}><Icon name="gear" size={17} style={{ marginRight: 0 }} /></button>
           )}
-          {!shared && (
-            <button aria-label="Share with your DM" title="Share a read-only snapshot" onClick={() => setShareOpen(true)}
-              style={{ ...cornerBtn, color: T.gold }}><Icon name="share" size={17} style={{ marginRight: 0 }} /></button>
-          )}
+          <button aria-label={shared ? "Send to Roll20" : "Share with your DM"} title={shared ? "Send to Roll20 VTT (teleport full sheet or copy any 1 thing)" : "Share with your DM or export to Roll20"} onClick={() => setShareOpen(true)}
+            style={{ ...cornerBtn, color: T.gold }}><Icon name="share" size={17} style={{ marginRight: 0 }} /></button>
           <button aria-label="How this sheet works" title="How this sheet works" onClick={() => setHelpOpen(true)}
             style={{ ...cornerBtn, fontFamily: "Georgia, serif", fontSize: 18, fontWeight: 700 }}>?</button>
         </div>
@@ -2698,7 +2718,7 @@ function Sheet({ ch: storedCh, onBack, onLevelUp, onDelete, onSpells, onNotes, o
           <div style={{ ...card, padding: 16 }}>
             <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 8 }}>Chronicle</div>
             <div style={{ color: T.dim, fontSize: 12, lineHeight: 1.8, maxHeight: 220, overflowY: "auto" }}>
-              {ch.log.map((l, i) => <div key={i}>{l}</div>)}
+              {(ch.log || []).map((l, i) => <div key={i}>{l}</div>)}
             </div>
           </div>
         )}
@@ -2749,7 +2769,7 @@ function Sheet({ ch: storedCh, onBack, onLevelUp, onDelete, onSpells, onNotes, o
           }} />
       )}
       {helpOpen && <GuideSheet onClose={() => setHelpOpen(false)} />}
-      {shareOpen && <ShareSheet ch={ch} customs={customs} onClose={() => setShareOpen(false)} />}
+      {shareOpen && <ShareSheet ch={ch} customs={customs} onClose={() => setShareOpen(false)} shared={shared} />}
     </div>
   );
 }
