@@ -45,19 +45,49 @@ export function Roll20TransferView({ ch, customs, prevCh = null }) {
   const copy = async (text, message) => {
     setStatus("");
     setManualCopy(null);
+    let success = false;
     try {
-      await navigator.clipboard.writeText(text);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        success = true;
+      }
+    } catch (_) {}
+
+    if (!success) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.cssText = "position:fixed;opacity:0;left:-9999px;top:-9999px;";
+        document.body.appendChild(ta);
+        ta.select();
+        success = document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch (_) {}
+    }
+
+    if (success) {
       setStatus(message);
-    } catch {
+    } else {
       setManualCopy(text);
-      setStatus("Clipboard access is unavailable. Select the text below and copy it manually.");
+      setStatus("Clipboard auto-copy was blocked. Please select and copy the text box below:");
     }
   };
   const choose = (id) => { setSelection(id); setDestination("core"); setStatus(""); setManualCopy(null); };
   const copyFull = () => {
     if (!transfer) return;
     choose("full");
-    copy(JSON.stringify({ ...transfer.payload, label: `Full character: ${ch.name}` }), "Full character copied. Open Roll20, run Ledger → Roll20, paste, and review the target and changes.");
+    copy(JSON.stringify({ ...transfer.payload, label: `Full character: ${ch.name}` }), "✓ Full character copied to clipboard! Open Roll20, run Ledger → Roll20, paste, and review.");
+  };
+  const copyLevelUp = () => {
+    if (!transfer || !levelUpChoice) return;
+    choose("levelup");
+    const lvlOps = transfer.payload.operations.filter((op) => levelUpChoice.operationIds.includes(op.id));
+    const lvlPayload = {
+      ...transfer.payload,
+      label: levelUpChoice.label,
+      operations: lvlOps
+    };
+    copy(JSON.stringify(lvlPayload), `✓ ${levelUpChoice.label} copied to clipboard! Open Roll20, run Ledger → Roll20, and click Apply.`);
   };
 
   return (
@@ -74,8 +104,8 @@ export function Roll20TransferView({ ch, customs, prevCh = null }) {
       {result.error ? <p role="alert" style={{ color: "#d76a76" }}>Cannot prepare this character: {result.error}</p> : <>
         {hasLevelUp ? (
           <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-            <button onClick={() => choose("levelup")} style={{ ...btn(selection === "levelup"), flex: "1 1 180px", padding: "10px 12px", fontSize: 13 }}>
-              🚀 Copy Level Up ({levelUpChoice?.operationIds?.length || 0} items)
+            <button onClick={copyLevelUp} style={{ ...btn(selection === "levelup"), flex: "1 1 180px", padding: "10px 12px", fontSize: 13, background: status.includes("copied") && selection === "levelup" ? "#50fa7b" : undefined, color: status.includes("copied") && selection === "levelup" ? "#111" : undefined }}>
+              {status.includes("copied") && selection === "levelup" ? "✓ Copied to clipboard!" : `🚀 Copy Level Up (${levelUpChoice?.operationIds?.length || 0} items)`}
             </button>
             <button onClick={copyFull} style={{ ...btn(selection === "full"), flex: "1 1 180px", padding: "10px 12px", fontSize: 13 }}>
               Full Character Sheet
@@ -121,7 +151,7 @@ export function Roll20TransferView({ ch, customs, prevCh = null }) {
           <details style={{ marginTop: 10 }}><summary style={{ cursor: "pointer" }}>Inspect included entries</summary><ul style={{ paddingLeft: 20, maxHeight: 180, overflowY: "auto" }}>{operations.map((operation) => <li key={operation.id}>{operation.group} · {operation.label}</li>)}</ul></details>
         </div>
         {!!payload?.warnings?.length && <details style={{ color: T.dim, fontSize: 13, marginBottom: 14 }} open><summary>Transfer notes ({payload.warnings.length})</summary><ul style={{ paddingLeft: 20 }}>{payload.warnings.map((warning, index) => <li key={index} style={{ marginTop: 6 }}>{warning}</li>)}</ul></details>}
-        <button disabled={!operations.length} onClick={() => copy(JSON.stringify(payload), `${label} copied. Run the bookmarklet in Roll20, paste, and review.`)} style={{ ...btn(true), width: "100%" }}>Copy {selection === "full" ? "full character" : "selection"} for Roll20</button>
+        <button disabled={!operations.length} onClick={() => copy(JSON.stringify(payload), `✓ ${label} copied to clipboard! Open Roll20, run the bookmarklet, and click Apply.`)} style={{ ...btn(true), width: "100%" }}>Copy {selection === "full" ? "full character" : selection === "levelup" ? "level up changes" : "selection"} for Roll20</button>
       </>}
       <div role="status" aria-live="polite" style={{ color: manualCopy ? T.gold : T.green, fontSize: 13, marginTop: 12, lineHeight: 1.5 }}>{status}</div>
       {manualCopy !== null && <textarea aria-label="Copy transfer text manually" readOnly value={manualCopy} onFocus={(event) => event.target.select()} rows={6} style={{ ...inputStyle, marginTop: 8, fontFamily: "monospace", fontSize: 12 }} />}
