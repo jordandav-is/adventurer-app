@@ -97,21 +97,12 @@ export function Roll20TransferView({ ch, customs, prevCh = null }) {
         <div style={{ margin: "8px 0 14px", padding: "10px 14px", background: "#252119", border: `1px solid ${T.gold}`, borderRadius: 8 }}>
           <div style={{ color: T.gold, fontWeight: "bold", fontSize: 13 }}>🎉 Level Up to Level {totalLevel(ch)} Complete!</div>
           <div style={{ color: T.dim, fontSize: 12, marginTop: 4, lineHeight: 1.4 }}>
-            We detected {levelUpChoice?.operationIds?.length || 0} updates from this level up. Click below to copy just your level-up changes, or switch to full character sheet if you prefer.
+            We detected {levelUpChoice?.operationIds?.length || 0} updates from this level up. Click below to copy your level-up changes.
           </div>
         </div>
       )}
       {result.error ? <p role="alert" style={{ color: "#d76a76" }}>Cannot prepare this character: {result.error}</p> : <>
-        {hasLevelUp ? (
-          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-            <button onClick={copyLevelUp} style={{ ...btn(selection === "levelup"), flex: "1 1 180px", padding: "10px 12px", fontSize: 13, background: status.includes("copied") && selection === "levelup" ? "#50fa7b" : undefined, color: status.includes("copied") && selection === "levelup" ? "#111" : undefined }}>
-              {status.includes("copied") && selection === "levelup" ? "✓ Copied to clipboard!" : `🚀 Copy Level Up (${levelUpChoice?.operationIds?.length || 0} items)`}
-            </button>
-            <button onClick={copyFull} style={{ ...btn(selection === "full"), flex: "1 1 180px", padding: "10px 12px", fontSize: 13 }}>
-              Full Character Sheet
-            </button>
-          </div>
-        ) : (
+        {!hasLevelUp && (
           <button onClick={copyFull} style={{ ...btn(true), width: "100%", marginBottom: 14 }}>Copy full character</button>
         )}
         <label htmlFor="roll20-choice" style={{ display: "block", margin: "12px 0 6px", fontSize: 13 }}>What to copy</label>
