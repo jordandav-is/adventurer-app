@@ -25,7 +25,6 @@ import {
   spellGrantsOf,
   findItem,
   isWeaponType,
-  strikeProfile,
   schoolName,
   featEffects,
   hasFeat,
@@ -75,7 +74,7 @@ function parseSpellStats(sp) {
   return { save, saveSuccess, damage, damageType, healing, higher };
 }
 
-export function buildRoll20Transfer(storedCh, customs) {
+export function buildRoll20Transfer(storedCh, customs, prevCh = null) {
   if (!storedCh) throw new Error("No character provided to buildRoll20Transfer");
 
   const warnings = [];
@@ -90,14 +89,15 @@ export function buildRoll20Transfer(storedCh, customs) {
     ironMind: hasFeat(ch, "Iron Mind")
   };
   const featSave = (a) => fEff.saves.find((s) => s.abil === a);
-  const saveProfFor = (a) =>
-    (CLASSES[ch.classes[0]?.name]?.saves || []).includes(a) ||
+  const saveProfFor = (a, targetChar = ch) =>
+    (CLASSES[targetChar.classes[0]?.name]?.saves || []).includes(a) ||
     feats.diamondSoul ||
     ((feats.slipperyMind || feats.ironMind) && a === "wis") ||
     !!featSave(a);
 
   const operations = [];
   const choices = [];
+  const levelUpOpIds = [];
 
   const addOp = (op, choiceGroup = null, choiceLabel = null) => {
     operations.push(op);
@@ -110,6 +110,27 @@ export function buildRoll20Transfer(storedCh, customs) {
       });
     }
   };
+
+  // Precompute previous spell names and traits if leveling up
+  const prevSpellNames = new Set();
+  const prevTraitNames = new Set();
+  if (prevCh) {
+    (allKnownCantrips(prevCh, customs) || []).forEach((n) => prevSpellNames.add(NORM(n)));
+    Object.values(prevCh.spells || {}).forEach((b) => {
+      (b.cantrips || []).forEach((n) => prevSpellNames.add(NORM(n)));
+      (b.spells || []).forEach((n) => prevSpellNames.add(NORM(n)));
+      Object.values(b.arcanum || {}).forEach((n) => prevSpellNames.add(NORM(n)));
+    });
+    (prevCh.tomeCantrips || []).forEach((n) => prevSpellNames.add(NORM(n)));
+    (prevCh.boasRituals || []).forEach((n) => prevSpellNames.add(NORM(n)));
+    if (prevCh.racialChoices?.cantrip) prevSpellNames.add(NORM(prevCh.racialChoices.cantrip));
+    spellGrantsOf(prevCh, customs).forEach((g) => prevSpellNames.add(NORM(g.spell)));
+
+    featureBuckets(prevCh, customs).forEach((b) => {
+      b.items.forEach((it) => prevTraitNames.add(NORM(it.name)));
+    });
+    (RACES[prevCh.race]?.traits || []).forEach((t) => prevTraitNames.add(NORM(t)));
+  }
 
   // -------------------------------------------------------------
   // 1. Identity & Multiclassing
@@ -135,7 +156,13 @@ export function buildRoll20Transfer(storedCh, customs) {
   }
 
   if (ch.classes.length > 4) {
-    warnings.push(`Roll20 OGL 5e supports up to 4 classes. Only the first 4 were transferred; classes beyond 4th (${ch.classes.slice(4).map(c => c.name).join(", ")}) are noted in Bio.`);
+    warnings.push(`Roll20 OGL 5e supports up to 4 classes. Only the first 4 were transferred; classes beyond 4th (${ch.classes.slice(4).map((c) => c.name).join(", ")}) are noted in Bio.`);
+  }
+
+  if (prevCh) {
+    const levelChanged = totalLevel(ch) !== totalLevel(prevCh);
+    const classChanged = ch.classes.some((c, i) => !prevCh.classes?.[i] || prevCh.classes[i].level !== c.level || prevCh.classes[i].name !== c.name || prevCh.classes[i].subclass !== c.subclass);
+    if (levelChanged || classChanged) levelUpOpIds.push("attr:identity");
   }
 
   addOp(
@@ -171,6 +198,10 @@ export function buildRoll20Transfer(storedCh, customs) {
     }
     Object.assign(allAbilValues, values);
 
+    if (prevCh && ch.abilities[a] !== prevCh.abilities?.[a]) {
+      levelUpOpIds.push(opId);
+    }
+
     addOp(
       {
         id: opId,
@@ -205,6 +236,10 @@ export function buildRoll20Transfer(storedCh, customs) {
     const values = {
       [`${roll20Name}_save_prof`]: { current: isProf ? "(@{pb})" : "0" }
     };
+
+    if (prevCh && isProf !== saveProfFor(a, prevCh)) {
+      levelUpOpIds.push(opId);
+    }
 
     addOp(
       {
@@ -246,6 +281,14 @@ export function buildRoll20Transfer(storedCh, customs) {
         current: isExp ? "2" : "1"
       }
     };
+
+    if (prevCh) {
+      const prevProf = (prevCh.skills || []).includes(skillName);
+      const prevExp = Array.isArray(prevCh.expertise) && prevCh.expertise.includes(skillName);
+      if (isProf !== prevProf || isExp !== prevExp) {
+        levelUpOpIds.push(opId);
+      }
+    }
 
     const statusLabel = isExp ? "Expertise" : isProf ? "Proficient" : "Untrained";
 
@@ -311,6 +354,16 @@ export function buildRoll20Transfer(storedCh, customs) {
   if (typeof ch.gold === "number") {
     vitalsValues.gp = { current: String(Math.floor(ch.gold)) };
   }
+
+  if (prevCh) {
+    const hpChanged = effMaxHp(ch) !== effMaxHp(prevCh);
+    const slotsChanged = JSON.stringify(spellSlots(ch.classes)) !== JSON.stringify(spellSlots(prevCh.classes));
+    const pactChanged = JSON.stringify(ch.classes.find((c) => c.name === "Warlock")) !== JSON.stringify(prevCh.classes.find((c) => c.name === "Warlock"));
+    if (hpChanged || slotsChanged || pactChanged) {
+      levelUpOpIds.push("attr:vitals");
+    }
+  }
+
   addOp(
     {
       id: "attr:vitals",
@@ -343,6 +396,7 @@ export function buildRoll20Transfer(storedCh, customs) {
     (b.spells || []).forEach((name) => allSpellsMap.set(name, { name, cantrip: false, cls }));
     Object.entries(b.arcanum || {}).forEach(([lvlNum, name]) => allSpellsMap.set(name, { name, level: +lvlNum, cls }));
   });
+
   (ch.tomeCantrips || []).forEach((name) => allSpellsMap.set(name, { name, cantrip: true, source: "Tome" }));
   (ch.boasRituals || []).forEach((name) => allSpellsMap.set(name, { name, cantrip: false, source: "Book of Ancient Secrets" }));
   if (ch.racialChoices?.cantrip) allSpellsMap.set(ch.racialChoices.cantrip, { name: ch.racialChoices.cantrip, cantrip: true, source: "Racial" });
@@ -357,6 +411,10 @@ export function buildRoll20Transfer(storedCh, customs) {
     const school = rawSp?.school ? schoolName(rawSp.school) : "Evocation";
     const opId = `spell:${NORM(spellName)}`;
     spellOpIds.push(opId);
+
+    if (prevCh && !prevSpellNames.has(NORM(spellName))) {
+      levelUpOpIds.push(opId);
+    }
 
     const spellPayload = {
       Category: "Spells",
@@ -376,7 +434,7 @@ export function buildRoll20Transfer(storedCh, customs) {
       Healing: stats.healing,
       "Higher Spell Slot Desc": stats.higher,
       "data-description": rawSp?.text || rawSp?.desc || `Cast ${spellName}.`,
-      "Spellcasting Ability": "Charisma" // default, Roll20 worker auto-infers
+      "Spellcasting Ability": "Charisma"
     };
 
     addOp(
@@ -417,6 +475,10 @@ export function buildRoll20Transfer(storedCh, customs) {
       const opId = `trait:${NORM(featName)}`;
       traitOpIds.push(opId);
 
+      if (prevCh && !prevTraitNames.has(NORM(featName))) {
+        levelUpOpIds.push(opId);
+      }
+
       const desc = it.body || it.detail || featureBody(featName, it.cls, customs, it.sub) || "";
       let sourceCategory = "Class";
       if (bucket.key === "feats") sourceCategory = "Feat";
@@ -450,6 +512,9 @@ export function buildRoll20Transfer(storedCh, customs) {
     const opId = `trait:${NORM(tName)}`;
     if (!traitOpIds.includes(opId)) {
       traitOpIds.push(opId);
+      if (prevCh && !prevTraitNames.has(NORM(tName))) {
+        levelUpOpIds.push(opId);
+      }
       addOp(
         {
           id: opId,
@@ -483,6 +548,7 @@ export function buildRoll20Transfer(storedCh, customs) {
 
   // -------------------------------------------------------------
   // 8. Inventory Items & Weapons (Individual + Group)
+  // -------------------------------------------------------------
   const invOpIds = [];
   const atkOpIds = [];
   (ch.inventory || []).forEach((row) => {
@@ -650,8 +716,19 @@ export function buildRoll20Transfer(storedCh, customs) {
     });
   }
 
+  // If level-up occurred, add Level Up choice at the VERY TOP
+  if (levelUpOpIds.length > 0) {
+    choices.unshift({
+      id: "levelup",
+      group: "Level Up",
+      label: `🚀 Level Up Changes (Level ${lvl}) — ${levelUpOpIds.length} updates`,
+      operationIds: levelUpOpIds,
+      isCategory: true
+    });
+  }
+
   // Full character choice includes everything
-  choices.unshift({
+  choices.push({
     id: "full",
     group: "Full Character Sheet",
     label: `Full Character Sheet (${ch.name})`,

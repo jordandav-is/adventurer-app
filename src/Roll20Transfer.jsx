@@ -1,24 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildRoll20Transfer } from "./roll20-export.js";
+import { totalLevel } from "./rules.js";
 import importerSource from "../public/roll20-importer.js?raw";
 import { T, btn, card } from "./ui.jsx";
 
 const bookmarklet = `javascript:${encodeURIComponent(`void function () {\n${importerSource}\n}();`)}`;
 const inputStyle = { width: "100%", boxSizing: "border-box", background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: 10, font: "inherit" };
 
-export function Roll20TransferView({ ch, customs }) {
-  const [selection, setSelection] = useState("full");
+export function Roll20TransferView({ ch, customs, prevCh = null }) {
+  const bookmark = useRef(null);
+  const result = useMemo(() => {
+    try { return { transfer: buildRoll20Transfer(ch, customs, prevCh) }; }
+    catch (error) { return { error: error.message }; }
+  }, [ch, customs, prevCh]);
+  const transfer = result.transfer;
+  const levelUpChoice = transfer?.choices.find((entry) => entry.id === "levelup");
+  const hasLevelUp = Boolean(prevCh && levelUpChoice);
+  const [selection, setSelection] = useState(hasLevelUp ? "levelup" : "full");
   const [query, setQuery] = useState("");
   const [destination, setDestination] = useState("core");
   const [status, setStatus] = useState("");
   const [manualCopy, setManualCopy] = useState(null);
   const [showSetup, setShowSetup] = useState(false);
-  const bookmark = useRef(null);
-  const result = useMemo(() => {
-    try { return { transfer: buildRoll20Transfer(ch, customs) }; }
-    catch (error) { return { error: error.message }; }
-  }, [ch, customs]);
-  const transfer = result.transfer;
   const choice = transfer?.choices.find((entry) => entry.id === selection);
   const selectedIds = choice ? new Set(choice.operationIds) : null;
   const selectedOperations = transfer ? transfer.payload.operations.filter((operation) => selection === "full" || selectedIds?.has(operation.id)) : [];
@@ -60,10 +63,27 @@ export function Roll20TransferView({ ch, customs }) {
   return (
     <div>
       <p style={{ color: T.dim, fontSize: 13, lineHeight: 1.5, marginTop: 4 }}>Copy one thing or {ch.name}’s full character sheet. Nothing changes in Roll20 until you review and apply it there.</p>
+      {hasLevelUp && (
+        <div style={{ margin: "8px 0 14px", padding: "10px 14px", background: "#252119", border: `1px solid ${T.gold}`, borderRadius: 8 }}>
+          <div style={{ color: T.gold, fontWeight: "bold", fontSize: 13 }}>🎉 Level Up to Level {totalLevel(ch)} Complete!</div>
+          <div style={{ color: T.dim, fontSize: 12, marginTop: 4, lineHeight: 1.4 }}>
+            We detected {levelUpChoice?.operationIds?.length || 0} updates from this level up. Click below to copy just your level-up changes, or switch to full character sheet if you prefer.
+          </div>
+        </div>
+      )}
       {result.error ? <p role="alert" style={{ color: "#d76a76" }}>Cannot prepare this character: {result.error}</p> : <>
-        <button onClick={copyFull} style={{ ...btn(true), width: "100%", marginBottom: 14 }}>Copy full character</button>
-        <label htmlFor="roll20-search" style={{ display: "block", color: T.dim, fontSize: 13, marginBottom: 6 }}>Or find one spell, feature, feat, ability, proficiency, expertise, or section</label>
-        <input id="roll20-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this character’s exportable content" style={inputStyle} />
+        {hasLevelUp ? (
+          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+            <button onClick={() => choose("levelup")} style={{ ...btn(selection === "levelup"), flex: "1 1 180px", padding: "10px 12px", fontSize: 13 }}>
+              🚀 Copy Level Up ({levelUpChoice?.operationIds?.length || 0} items)
+            </button>
+            <button onClick={copyFull} style={{ ...btn(selection === "full"), flex: "1 1 180px", padding: "10px 12px", fontSize: 13 }}>
+              Full Character Sheet
+            </button>
+          </div>
+        ) : (
+          <button onClick={copyFull} style={{ ...btn(true), width: "100%", marginBottom: 14 }}>Copy full character</button>
+        )}
         <label htmlFor="roll20-choice" style={{ display: "block", margin: "12px 0 6px", fontSize: 13 }}>What to copy</label>
         <select id="roll20-choice" value={selection} onChange={(event) => choose(event.target.value)} style={inputStyle}>
           <option value="full">⭐ Full Character Sheet ({ch.name})</option>
@@ -124,7 +144,7 @@ export function Roll20TransferView({ ch, customs }) {
   );
 }
 
-export function Roll20Transfer({ ch, customs, onClose }) {
+export function Roll20Transfer({ ch, customs, prevCh = null, onClose }) {
   const dialog = useRef(null);
   useEffect(() => {
     const previousFocus = document.activeElement;
@@ -141,10 +161,19 @@ export function Roll20Transfer({ ch, customs, onClose }) {
       <section ref={dialog} role="dialog" aria-modal="true" aria-labelledby="roll20-transfer-title" tabIndex={-1} onKeyDown={keydown} onClick={(event) => event.stopPropagation()}
         style={{ ...card, width: "min(720px, 100%)", maxHeight: "92dvh", borderRadius: "16px 16px 0 0", overflowY: "auto", padding: "20px 20px calc(24px + env(safe-area-inset-bottom))", boxSizing: "border-box" }}>
         <header style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "start" }}>
-          <h2 id="roll20-transfer-title" style={{ margin: 0, color: T.gold, fontFamily: "Georgia, serif" }}>Send to Roll20</h2>
+          <div>
+            <h2 id="roll20-transfer-title" style={{ margin: 0, color: T.gold, fontFamily: "Georgia, serif" }}>
+              {prevCh ? "Send to Roll20 · Level Up Complete!" : "Send to Roll20"}
+            </h2>
+            <p style={{ color: T.dim, fontSize: 13, lineHeight: 1.5, marginTop: 4 }}>
+              {prevCh
+                ? `Copy your new Level ${totalLevel(ch)} updates to Roll20.`
+                : `Copy one thing or ${ch.name}’s full character sheet. Nothing changes in Roll20 until you review and apply it there.`}
+            </p>
+          </div>
           <button aria-label="Close Roll20 transfer" onClick={onClose} style={{ ...btn(false), minWidth: 44 }}>×</button>
         </header>
-        <Roll20TransferView ch={ch} customs={customs} />
+        <Roll20TransferView ch={ch} customs={customs} prevCh={prevCh} />
       </section>
     </div>
   );

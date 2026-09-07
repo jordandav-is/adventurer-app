@@ -10,11 +10,13 @@ import { CreateWizard, HorizonArt } from "./CreateWizard.jsx";
 import { HomebrewForge } from "./HomebrewForge.jsx";
 import { LevelUp } from "./LevelUp.jsx";
 import { Sheet, SourcebookSheet, decodeShare } from "./Sheet.jsx";
+import { Roll20Transfer } from "./Roll20Transfer.jsx";
 export default function App() {
   const [chars, setChars] = useState(null);
   const [view, setView] = useState("roster");
   const [activeId, setActiveId] = useState(null);
   const [leveling, setLeveling] = useState(false);
+  const [levelUpTransfer, setLevelUpTransfer] = useState(null);
   const [customs, setCustoms] = useState(EMPTY_CUSTOM);
   const [ioMsg, setIoMsg] = useState("");
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -265,9 +267,22 @@ export default function App() {
 
       {leveling && active && (
         <LevelUp ch={active} customs={customs} onCancel={() => setLeveling(false)}
-          onDone={(next) => { persist(chars.map((c) => (c.id === next.id ? next : c))); setLeveling(false); }} />
+          onDone={(next) => {
+            const prev = active;
+            persist(chars.map((c) => (c.id === next.id ? next : c)));
+            setLeveling(false);
+            setLevelUpTransfer({ prev, next });
+          }} />
       )}
 
+      {levelUpTransfer && (
+        <Roll20Transfer
+          ch={levelUpTransfer.next}
+          prevCh={levelUpTransfer.prev}
+          customs={customs}
+          onClose={() => setLevelUpTransfer(null)}
+        />
+      )}
       {sourcesOpen && (
         <SourcebookSheet customs={customs} off={srcOff} onToggle={toggleSource}
           onEnableAll={() => applySrcOff(new Set())} onClose={() => setSourcesOpen(false)} />
