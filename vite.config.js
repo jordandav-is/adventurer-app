@@ -10,6 +10,7 @@ export default defineConfig({
         codeSplitting: {
           groups: [
             { name: "three", test: /[\\/]node_modules[\\/]three[\\/]/ },
+            { name: "pdf", test: /[\\/]node_modules[\\/](pdf-lib|@pdf-lib|pako|tslib)[\\/]/ },
             {
               name: "vendor",
               test: /[\\/]node_modules[\\/]/,

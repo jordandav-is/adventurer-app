@@ -6,6 +6,7 @@ import { CLASS_THEMES, ClassTag, ICON_PATHS, Icon, LazyList, Portrait, SpellPick
 import { DiceTray, RollTray, roll, rollFeatures, rollNotes } from "./dice.jsx";
 import { assetUrl, frameRect } from "./portrait.js";
 import { Roll20TransferView } from "./Roll20Transfer.jsx";
+import { downloadCharacterPdf } from "./pdf-export.js";
 const SHARE_W = 1200, SHARE_H = 630;
 const CARD_SERIF = 'Georgia, "Liberation Serif", "Times New Roman", serif';
 const CARD_SANS = '-apple-system, "SF Pro Text", "DejaVu Sans", system-ui, sans-serif';
@@ -1983,12 +1984,41 @@ function GuideSheet({ onClose }) {
     </div>
   );
 }
+function PdfExportView({ ch, customs }) {
+  const [state, setState] = useState({ busy: false, notes: null, error: null });
+  const download = async () => {
+    setState({ busy: true, notes: null, error: null });
+    try { setState({ busy: false, notes: await downloadCharacterPdf(ch, customs), error: null }); }
+    catch (e) { setState({ busy: false, notes: null, error: e?.message || "The scribe's hand slipped." }); }
+  };
+  return (
+    <>
+      <p style={{ color: T.dim, fontSize: 13, lineHeight: 1.5, marginTop: 10 }}>
+        The official three-page fillable sheet, inked with {ch.name}’s stats, skills, attacks, spells, gear, and features. Fields stay editable, so you can pencil in the rest by hand.
+      </p>
+      <button style={{ ...btn(true), width: "100%", opacity: state.busy ? 0.6 : 1 }} disabled={state.busy} onClick={download}>
+        <Icon name="down" size={14} /> {state.busy ? "Inking the sheet…" : "Download PDF"}
+      </button>
+      {state.error && <div role="alert" style={{ color: "#d76a76", fontSize: 13, marginTop: 12 }}>{state.error}</div>}
+      {state.notes && (
+        <div style={{ color: T.green, fontSize: 12.5, marginTop: 12, lineHeight: 1.5 }}>
+          Sheet saved.
+          {state.notes.length > 0 && <ul style={{ color: T.dim, paddingLeft: 18, margin: "6px 0 0" }}>{state.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
+        </div>
+      )}
+    </>
+  );
+}
+const SHARE_TABS = [["dm", "share", "Send to your DM"], ["roll20", "d20", "Roll20 VTT"], ["pdf", "down", "PDF sheet"]];
 function ShareSheet({ ch, customs, onClose, shared }) {
   const [tab, setTab] = useState(shared ? "roll20" : "dm");
   const [url, setUrl] = useState(null);
   const [failed, setFailed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [card, setCard] = useState(null);
+  const tabs = shared ? SHARE_TABS.filter(([id]) => id !== "dm") : SHARE_TABS;
+  const heading = tab === "dm" ? "Send to your DM" : tab === "roll20" ? "Send to Roll20" : "Print a character sheet";
+  const blurb = tab === "dm" ? `A read-only snapshot of ${ch.name}, sealed in a link.` : tab === "roll20" ? `Transfer ${ch.name} or copy any 1 spell, feature, or stat to Roll20.` : `The official 5e sheet, filled in and ready for the table.`;
   useEffect(() => {
     let live = true;
     encodeShare(ch, customs).then((u) => { if (live) setUrl(u); }, () => { if (live) setFailed(true); });
@@ -2029,28 +2059,27 @@ function ShareSheet({ ch, customs, onClose, shared }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
             <div>
               <div style={{ fontFamily: "Georgia, serif", fontSize: 21, color: T.gold }}>
-                <Icon name={tab === "dm" ? "share" : "d20"} size={18} /> {tab === "dm" ? "Send to your DM" : "Send to Roll20"}
+                <Icon name={tabs.find(([id]) => id === tab)[1]} size={18} /> {heading}
               </div>
               <div style={{ color: T.dim, fontSize: 13, marginTop: 2 }}>
-                {tab === "dm" ? `A read-only snapshot of ${ch.name}, sealed in a link.` : `Transfer ${ch.name} or copy any 1 spell, feature, or stat to Roll20.`}
+                {blurb}
               </div>
             </div>
             <button aria-label="Close" onClick={onClose}
               style={{ background: "none", border: "none", color: T.dim, cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "10px 4px 10px 14px", margin: "-10px -4px", WebkitTapHighlightColor: "transparent" }}>✕</button>
           </div>
-          {!shared && (
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button style={{ ...btn(tab === "dm"), padding: "6px 14px", fontSize: 13, minHeight: 0 }} onClick={() => setTab("dm")}>
-                <Icon name="share" size={14} /> Send to your DM
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            {tabs.map(([id, icon, label]) => (
+              <button key={id} style={{ ...btn(tab === id), padding: "6px 14px", fontSize: 13, minHeight: 0 }} onClick={() => setTab(id)}>
+                <Icon name={icon} size={14} /> {label}
               </button>
-              <button style={{ ...btn(tab === "roll20"), padding: "6px 14px", fontSize: 13, minHeight: 0 }} onClick={() => setTab("roll20")}>
-                <Icon name="d20" size={14} /> Roll20 VTT
-              </button>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
         <div className="sheet-body" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "6px 20px calc(22px + env(safe-area-inset-bottom))" }}>
-          {tab === "roll20" ? (
+          {tab === "pdf" ? (
+            <PdfExportView ch={ch} customs={customs} />
+          ) : tab === "roll20" ? (
             <Roll20TransferView ch={ch} customs={customs} />
           ) : (
             <>
@@ -2375,7 +2404,7 @@ function Sheet({ ch: storedCh, onBack, onLevelUp, onDelete, onSpells, onNotes, o
             <button aria-label="Sourcebooks" title="Enable or disable sourcebooks" onClick={onSources}
               style={cornerBtn}><Icon name="gear" size={17} style={{ marginRight: 0 }} /></button>
           )}
-          <button aria-label={shared ? "Send to Roll20" : "Share with your DM"} title={shared ? "Send to Roll20 VTT (teleport full sheet or copy any 1 thing)" : "Share with your DM or export to Roll20"} onClick={() => setShareOpen(true)}
+          <button aria-label={shared ? "Send to Roll20 or print a PDF" : "Share with your DM"} title={shared ? "Send to Roll20 VTT or download the official PDF sheet" : "Share with your DM, export to Roll20, or download the official PDF sheet"} onClick={() => setShareOpen(true)}
             style={{ ...cornerBtn, color: T.gold }}><Icon name="share" size={17} style={{ marginRight: 0 }} /></button>
           <button aria-label="How this sheet works" title="How this sheet works" onClick={() => setHelpOpen(true)}
             style={{ ...cornerBtn, fontFamily: "Georgia, serif", fontSize: 18, fontWeight: 700 }}>?</button>
