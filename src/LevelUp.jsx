@@ -1,4 +1,4 @@
-import { ABILITIES, ALL_SKILLS, CANTRIPS_KNOWN, CLASSES, FAVORED_ENEMIES, FIGHTING_STYLES, INVOCATIONS, INVOCATION_DATA, LAND_TERRAINS, LANGS, MC_PREREQ, MC_PROFS, MC_SKILL_GRANT, METAMAGIC, PACT_BOONS, SPELLS_KNOWN, STYLE_DESC, baseSubName } from "./data.js";
+import { ABILITIES, ALL_SKILLS, CANTRIPS_KNOWN, CLASSES, FIGHTING_STYLES, INVOCATIONS, INVOCATION_DATA, LAND_TERRAINS, LANGS, MC_PREREQ, MC_PROFS, MC_SKILL_GRANT, METAMAGIC, PACT_BOONS, SPELLS_KNOWN, STYLE_DESC, baseSubName } from "./data.js";
 import { allChoiceGroups, allFeats, allKnownCantrips, allSubFeats, allSubs, choiceCum, gearProfsOf, subclassProfsAt, choiceOptionsFor, featPickDone, featPickOf, fmtMod, groupMatches, hasStyle, isTechnique, maxSpellLevel, meetsPrereq, mod, profBonus, spellFitsClass, totalLevel } from "./rules.js";
 import { isSourceEnabled, srcSpells } from "./compendium.js";
 import { useEffect, useRef, useState } from "react";
@@ -37,10 +37,6 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const [boasPicks, setBoasPicks] = useState([]);
   const [tomePicks, setTomePicks] = useState([]);
   const [secretsPicks, setSecretsPicks] = useState([]);
-  const [favEnemyPick, setFavEnemyPick] = useState(null);
-  const [feHumanoids, setFeHumanoids] = useState("");
-  const [favLang2, setFavLang2] = useState(null);
-  const [terrainPick2, setTerrainPick2] = useState(null);
   const [deftExp, setDeftExp] = useState(null);
   const [deftLangs, setDeftLangs] = useState([]);
   const [subSkillPicks, setSubSkillPicks] = useState({});
@@ -133,12 +129,6 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     if (takingBoAS && boasPicks.length) logBits.push(`Book of Shadows rituals: ${boasPicks.join(", ")}`);
     const tomeCantrips = boonPick === "Pact of the Tome" && tomePicks.length ? tomePicks : ch.tomeCantrips;
     if (boonPick === "Pact of the Tome" && tomePicks.length) logBits.push(`Tome cantrips: ${tomePicks.join(", ")}`);
-    const feLabel = favEnemyPick === "Two humanoid races" ? `Humanoids (${feHumanoids.trim()})` : favEnemyPick;
-    const rangerChoices = pick === "Ranger" && (favEnemyPick || terrainPick2)
-      ? { ...rc, extraEnemies: [...(rc.extraEnemies || []), ...(feLabel ? [feLabel] : [])], extraTerrains: [...(rc.extraTerrains || []), ...(terrainPick2 ? [terrainPick2] : [])] }
-      : ch.rangerChoices;
-    if (favEnemyPick) logBits.push(`Favored Enemy: ${feLabel}${favLang2 ? ` (${favLang2})` : ""}`);
-    if (terrainPick2) logBits.push(`Natural Explorer: ${terrainPick2}`);
     if (gainsDeft && deftExp) logBits.push(`Deft Explorer: ${deftExp} expertise${deftLangs.length ? `, ${deftLangs.join(", ")}` : ""}`);
     subProfsNow.forEach((p) => { const got = [...(p.skills || []), ...(p.skillChoice || []).flatMap((c, i) => subSkillPicks[`${p.feature}:${i}`] || [])]; if (got.length) logBits.push(`${p.feature}: ${got.join(", ")}`); });
     let choices = ch.choices;
@@ -152,7 +142,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     }
     const grantAll = asiMode === "feat" && featPk?.allSkills ? ALL_SKILLS : [];
     const skills = [...ch.skills, ...(mcSkill ? [mcSkill] : []), ...featSkills, ...grantAll, ...subFixedSkills, ...Object.values(subSkillPicks).flat()].filter((v, i, a) => a.indexOf(v) === i);
-    const languages = [...(ch.languages || []), ...(asiMode === "feat" ? [...(featSel?.langs || []), ...(featPk?.grantLangs || [])] : []), ...deftLangs, ...(favLang2 ? [favLang2] : [])].filter((v, i, a) => a.indexOf(v) === i);
+    const languages = [...(ch.languages || []), ...(asiMode === "feat" ? [...(featSel?.langs || []), ...(featPk?.grantLangs || [])] : []), ...deftLangs].filter((v, i, a) => a.indexOf(v) === i);
     const expertise = [...(ch.expertise || []), ...expPicks, ...(asiMode === "feat" ? featSel?.expertise || [] : []), ...(deftExp ? [deftExp] : [])].filter((v, i, a) => a.indexOf(v) === i);
     const featChoices = asiMode === "feat" && featPick
       ? { ...(ch.featChoices || {}), [featPick]: {
@@ -163,7 +153,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
       : ch.featChoices;
     onDone({
       ...ch, classes, abilities, skills, languages, expertise, invocations, spells: spellsBook, featChoices,
-      boasRituals, tomeCantrips, rangerChoices, choices,
+      boasRituals, tomeCantrips, choices,
       maxHp: ch.maxHp + hpGain + conM + dwarfBonus,
       hpLog: [...ch.hpLog, { cls: pick, gained: hpGain + conM + dwarfBonus, how: hpGain === avg ? "average" : `rolled ${hpGain}` }],
       log: [...ch.log, `Level ${lvl + 1}: ${logBits.join(" · ")}`],
@@ -243,11 +233,6 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const countedSecrets = pick === "Bard" && [10, 14, 18].includes(newClsLevel) ? 2 : 0;
   const spellReqNet = Math.max(0, Math.min(spellReq, spellAllow - Math.min(countedSecrets, secretsPicks.length)));
 
-  const rc = ch.rangerChoices || {};
-  const enemiesTaken = [rc.favEnemy, ...(rc.extraEnemies || [])].filter(Boolean);
-  const terrainsTaken = [rc.natTerrain, ...(rc.extraTerrains || [])].filter(Boolean);
-  const gainsFavEnemy = pick === "Ranger" && [6, 14].includes(newClsLevel);
-  const gainsNatTerrain = false;
   const gainsDeft = pick === "Ranger" && newClsLevel === 2;
   // Skills a subclass feature grants at this level: fixed ones arrive on their own, picks need a choice.
   const subProfsNow = subclassProfsAt(pick, newSub || entry?.subclass, newClsLevel, customs);
@@ -277,7 +262,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
 
   const extrasNeeded = gainsASI || gainsSub || gainsMcSkill || gainsStyle || gainsExpertise || gainsMeta || gainsBoon ||
     invNeed > 0 || canSwapInv || gainsCantrips || gainsSpells || canSwapSpell || gainsArcanum ||
-    gainsBoAS || gainsTome || gainsSecrets || gainsDeft || gainsSubSkills || gainsFavEnemy || gainsMastery || gainsSignature ||
+    gainsBoAS || gainsTome || gainsSecrets || gainsDeft || gainsSubSkills || gainsMastery || gainsSignature ||
     choiceGroupsDue.length > 0;
   const extrasDone =
     (!gainsASI || (asiMode === "feat" && featPickDone(allFeats(customs).find((f) => f.name === featPick), featSel)) || (asiMode === "asi" && asiPicks.length === 2)) &&
@@ -290,7 +275,6 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     (!gainsTome || tomePicks.length >= Math.min(3, tomePool.length)) &&
     secretsPicks.length >= secretsReq &&
     (!gainsDeft || (deftExp && deftLangs.length === 2)) && subSkillChoices.every((c) => (subSkillPicks[c.key] || []).length === c.n) &&
-    (!gainsFavEnemy || (favEnemyPick && (favEnemyPick !== "Two humanoid races" || feHumanoids.trim()) && favLang2)) &&
     (!gainsMastery || ((masteryPools[1].length === 0 || masteryPicks[1]) && (masteryPools[2].length === 0 || masteryPicks[2]))) &&
     (!gainsSignature || signaturePicks.length >= Math.min(2, signaturePool.length)) &&
     choiceGroupsDue.every((d) => (groupPicks[d.g.key] || []).length >= d.need);
@@ -557,26 +541,6 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                 <SpellPickGrid options={secretsPool} picks={secretsPicks} cap={secretsN} onChange={setSecretsPicks} />
               </div>
             )}
-            {gainsFavEnemy && (
-              <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
-                <div style={{ color: T.gold, marginBottom: 8 }}>Additional Favored Enemy — one type, or two humanoid races</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {FAVORED_ENEMIES.filter((e) => !enemiesTaken.includes(e)).map((e) => (
-                    <button key={e} style={{ ...btn(favEnemyPick === e), padding: "5px 10px", fontSize: 13, minHeight: 0 }} onClick={() => setFavEnemyPick(e)}>{e}</button>
-                  ))}
-                </div>
-                {favEnemyPick === "Two humanoid races" && (
-                  <input value={feHumanoids} onChange={(e) => setFeHumanoids(e.target.value)} placeholder="Which two? e.g. gnolls and orcs"
-                    style={{ width: "100%", boxSizing: "border-box", marginTop: 8, background: T.panel, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 10px", fontSize: 14 }} />
-                )}
-                <div style={{ color: T.gold, fontSize: 13, margin: "10px 0 6px" }}>Associated language</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {LANGS.filter((l) => !(ch.languages || []).includes(l)).map((l) => (
-                    <button key={l} {...lorePress(l)} style={{ ...btn(favLang2 === l), padding: "5px 10px", fontSize: 13, minHeight: 0 }} onClick={() => setFavLang2(l)}>{l}</button>
-                  ))}
-                </div>
-              </div>
-            )}
             {subSkillChoices.map((c) => {
               const picked = subSkillPicks[c.key] || [];
               const taken = [...ch.skills, ...(mcSkill ? [mcSkill] : []), ...subFixedSkills, ...Object.entries(subSkillPicks).filter(([k]) => k !== c.key).flatMap(([, v]) => v)];
@@ -692,8 +656,6 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
               {takingBoAS && boasPicks.length > 0 && <>Book of Shadows rituals: <b style={{ color: T.gold }}>{boasPicks.join(", ")}</b><br /></>}
               {tomePicks.length > 0 && <>Tome cantrips: <b style={{ color: T.gold }}>{tomePicks.join(", ")}</b><br /></>}
               {secretsPicks.length > 0 && <>Magical Secrets: <b style={{ color: T.gold }}>{secretsPicks.join(", ")}</b><br /></>}
-              {favEnemyPick && <>Favored Enemy: <b style={{ color: T.gold }}>{favEnemyPick}</b><br /></>}
-              {terrainPick2 && <>Natural Explorer: <b style={{ color: T.gold }}>{terrainPick2}</b><br /></>}
               {(masteryPicks[1] || masteryPicks[2]) && <>Spell Mastery: <b style={{ color: T.gold }}>{[masteryPicks[1], masteryPicks[2]].filter(Boolean).join(", ")}</b><br /></>}
               {signaturePicks.length > 0 && <>Signature Spells: <b style={{ color: T.gold }}>{signaturePicks.join(", ")}</b><br /></>}
               {choiceGroupsDue.filter((d) => (groupPicks[d.g.key] || []).length).map((d) => (

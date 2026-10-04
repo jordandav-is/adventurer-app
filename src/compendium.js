@@ -24,7 +24,7 @@ const isSourceEnabled = (record) => {
 };
 const sourceLabelOf = (record) => {
   if (!record || typeof record !== "object") return "Homebrew & unsourced";
-  const code = sourceCodesOf(record)[0];
+  const code = sourceByCode(record.src) ? record.src : sourceCodesOf(record)[0];
   return record.source || sourceByCode(code)?.name || record.src || "Homebrew & unsourced";
 };
 const spellSrcOf = sourceLabelOf;

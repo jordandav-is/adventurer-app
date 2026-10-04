@@ -4,6 +4,7 @@
     "DMG",
     "EEPC",
     "MM",
+    "MPMM",
     "MTF",
     "PHB",
     "SCAG",
@@ -185,7 +186,7 @@
     "spells": 628,
     "subs": 118
   },
-  "sourceCount": 85,
+  "sourceCount": 86,
   "unresolvedSpellGrants": {},
   "validation": {
     "duplicateIds": 0,

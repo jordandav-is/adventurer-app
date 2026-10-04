@@ -142,6 +142,7 @@ def source_meta(row: dict[str, Any]) -> dict[str, Any]:
 
 
 TAG_RE = re.compile(r"\{@([A-Za-z0-9]+)(?: ([^{}]*))?\}")
+RANGER_KNOWN_SPELL = re.compile(r"(The|Each) spell counts as a ranger spell for you, but it doesn't count against the number of ranger spells you know\.")
 
 
 def strip_tags(value: Any) -> str:
@@ -800,6 +801,7 @@ def convert_classes() -> tuple[list[dict[str, Any]], dict[str, list[dict[str, An
             if not feature: continue
             refs[0:0] = nested_feature_refs(feature.get("entries", []), "subclassFeature")
             text = render_text(feature.get("entries", []))
+            if class_name == "Ranger": text = RANGER_KNOWN_SPELL.sub(lambda m: f"You always have {'it' if m[1] == 'The' else 'each one'} prepared, and it counts as a Ranger spell for you.", text)
             feats[str(level)].append(name)
             granted = feature_profs(feature)
             if granted: profs.append({"at": level, "feature": name, **granted})
@@ -812,7 +814,9 @@ def convert_classes() -> tuple[list[dict[str, Any]], dict[str, list[dict[str, An
         # spells" for an Eldritch Knight) or declares nothing keeps the lookup's own tags.
         grants = spell_grants(row)
         SUBCLASS_SPELLS[(row["className"], row["name"])] = None if not row.get("additionalSpells") or any(g.get("all") for g in grants) else {g["spell"].lower() for g in grants if g.get("spell")}
-        subs[row["className"]].append(with_grants({**provenance(row, "subclass", row["className"]), "name": row["name"], "feats": dict(feats), **({"profs": profs} if profs else {})}, row))
+        # The 2024 Ranger prepares spells, so every Ranger subclass's leveled bonus spells are always prepared.
+        if row["className"] == "Ranger": grants = [{**g, "how": "prepared"} if g.get("how") == "known" and g.get("level") else g for g in grants]
+        subs[row["className"]].append({**provenance(row, "subclass", row["className"]), "name": row["name"], "feats": dict(feats), **({"profs": profs} if profs else {}), **({"grants": grants} if grants else {})})
     for values in subs.values(): values.sort(key=lambda x: x["name"])
     feature_sources = {}
     for f in feature_records:
@@ -1003,7 +1007,7 @@ RACE_ART = {
 def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any], dict[str, Any]]:
     races_data = load(DATA / "races.json")
     fluff_races_raw = resolve_copies(load(DATA / "fluff-races.json").get("raceFluff", []))
-    fluff_races, fluff_art = {}, {}
+    fluff_races, fluff_art, art_rank = {}, {}, {}
     for fl in fluff_races_raw:
         fname, fsrc = fl.get("name", "").lower(), fl.get("source", "")
         ftext = render_text(fl.get("entries", []))
@@ -1015,10 +1019,9 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
         if fname and art:
             fluff_art[(fname, fsrc)] = art
             # Several books illustrate the same race; when no source matches, prefer the latest book we ship.
-            best = fluff_art.get(fname)
-            if best is None or (rank(fl) > rank(best[1]) and (allowed_source(fsrc) or not allowed_source(best[1].get("source")))):
-                fluff_art[fname] = (art, fl)
-    fluff_art = {k: (v[0] if isinstance(v, tuple) else v) for k, v in fluff_art.items()}
+            key = (allowed_source(fsrc), rank(fl))
+            if key > art_rank.get(fname, (False,)):
+                art_rank[fname], fluff_art[fname] = key, art
     raw_races = resolve_copies(races_data.get("race", []))
     raw_subraces = resolve_copies(races_data.get("subrace", []))
     allowed_races = latest([r for r in raw_races if allowed_source(r.get("source")) or minotaur_exception(r)], lambda x: x.get("name", ""))
@@ -1114,7 +1117,10 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
 
     has_sub = {sub.get("raceName", "").lower() for sub in raw_subraces if sub.get("raceName") and allowed_source(sub.get("source"))}
     for r in raw_races:
-        if allowed_source(r.get("source")) and r.get("name", "").lower() not in has_sub:
+        if minotaur_exception(r):
+            # MPMM leaves scores and languages to the origin rules; ship the Theros defaults so the race stays playable under 2014 creation.
+            full_races.append({"ability": [{"str": 2, "con": 1}], "languageProficiencies": [{"common": True, "anyStandard": 1}], **r})
+        elif allowed_source(r.get("source")) and r.get("name", "").lower() not in has_sub:
             full_races.append(r)
 
     rows = latest(full_races, lambda x: x.get("name", ""))
@@ -1649,7 +1655,7 @@ def main() -> None:
         if isinstance(value, dict):
             if value.get("src") == RANGER_SOURCE and not (value.get("name") == "Ranger" or value.get("className") == "Ranger" or path.startswith("subs.Ranger")):
                 leaked.append(value.get("id", path))
-            if value.get("src") == "MPMM" and not (value.get("name") == "Minotaur" or path.startswith("runtime.raceTraits") or path.startswith("runtime.raceLangs")):
+            if value.get("src") == "MPMM" and not (value.get("name") == "Minotaur" or path in {"runtime.races.Minotaur", "runtime.raceLangs.Minotaur"} or path.startswith("runtime.raceTraits")):
                 leaked.append(value.get("id", path))
             for key, child in value.items(): check(child, f"{path}.{key}" if path else key)
         elif isinstance(value, list):

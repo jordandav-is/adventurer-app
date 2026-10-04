@@ -2723,17 +2723,6 @@ function Sheet({ ch: storedCh, onBack, onLevelUp, onDelete, onSpells, onNotes, o
             })}</div>
           )}
           {ch.metamagic?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Metamagic: {ch.metamagic.map((m, i) => <span key={m} {...lorePress(m)} onClick={() => openUse(m)} style={{ cursor: "pointer" }}>{i > 0 ? ", " : ""}{m}</span>)}</div>}
-          {ch.rangerChoices && (() => {
-            const foes = [ch.rangerChoices.favEnemy, ...(ch.rangerChoices.extraEnemies || [])].filter(Boolean);
-            const lands = [ch.rangerChoices.natTerrain, ...(ch.rangerChoices.extraTerrains || [])].filter(Boolean);
-            return (foes.length || lands.length) ? (
-              <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>
-                {foes.length > 0 && <>Favored {foes.length > 1 ? "Enemies" : "Enemy"}: <span {...lorePress("Favored Enemy")} style={{ color: T.ink }}>{foes.join(", ")}</span></>}
-                {foes.length > 0 && lands.length > 0 && " · "}
-                {lands.length > 0 && <>Natural Explorer: {lands.join(", ")}</>}
-              </div>
-            ) : null;
-          })()}
           {ch.choices && Object.entries(ch.choices).filter(([k]) => !CHOICE_KEYS.has(k)).map(([k, v]) => (
             <div key={k} style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>{k}: {v.map((n, i) => <span key={n} {...lorePress(n)}>{i > 0 ? ", " : ""}{n}</span>)}</div>
           ))}

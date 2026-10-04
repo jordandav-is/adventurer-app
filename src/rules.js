@@ -1,4 +1,4 @@
-import { ABILITIES, ABILITY_INFO, ABIL_NAMES, ANCESTRIES, ASI, BACKGROUNDS, BOON_INFO, CASTING_CLASSES, CHOICE_GROUPS, CLASSES, CLASS_GEAR_PROFS, CORE_FEATURE_INFO, DMG_TYPES, DMG_WORD_CODE, FEATS, FEATURE_TEXT, FEAT_INDEX, FEAT_MECHANICS, FEAT_PICKS, GRANTED_SUB_CLASSES, HALF1_SLOTS, HALF_SLOTS, HEALING_TIERS, INVOCATION_DATA, INVOCATION_INFO, ITEM_TYPES, LAND_TERRAINS, LANG_INFO, MANEUVERS, MC_GEAR_PROFS, MC_PREREQ, MC_PROFS, MC_SLOTS, METAMAGIC_INFO, PACT, POTION_EFFECT_ALIAS, PROF_TEXT, RACES, RANGER_PREPARED, SCHOOL_NAMES, SIZE_RANK, SKILL_ABIL, SKILL_INFO, SOURCE_ABBR, SPELLS_KNOWN, SPELL_ABILITY, SRD_FOOT, STYLE_DESC, SUB_FEATS, SUB_LORE, SUB_SPELLS, TEXT_2024, WEAPON_PROPS, baseSubName, normSub, subFeatsFor } from "./data.js";
+import { ABILITIES, ABILITY_INFO, ABIL_NAMES, ANCESTRIES, ASI, BACKGROUNDS, BOON_INFO, CASTING_CLASSES, CHOICE_GROUPS, CLASSES, CLASS_GEAR_PROFS, CORE_FEATURE_INFO, DMG_TYPES, DMG_WORD_CODE, FEATS, FEATURE_TEXT, FEAT_INDEX, FEAT_MECHANICS, FEAT_PICKS, GRANTED_SUB_CLASSES, HALF1_SLOTS, HALF_SLOTS, HEALING_TIERS, INVOCATION_DATA, INVOCATION_INFO, ITEM_TYPES, LAND_TERRAINS, LANG_INFO, MANEUVERS, MC_GEAR_PROFS, MC_PREREQ, MC_PROFS, MC_SLOTS, METAMAGIC_INFO, PACT, POTION_EFFECT_ALIAS, PROF_TEXT, RACES, RANGER_PREPARED, SCHOOL_NAMES, SIZE_RANK, SKILL_ABIL, SKILL_INFO, SOURCE_ABBR, SPELLS_KNOWN, SPELL_ABILITY, SRD_FOOT, STYLE_DESC, SUB_FEATS, SUB_LORE, WEAPON_PROPS, baseSubName, normSub, subFeatsFor } from "./data.js";
 import { EMPTY_CUSTOM, __BASE, __BESTIARY, __SRC_OFF, creatureSrcOf, isSourceEnabled, raceArtUrl, sourceLabelOf, srcSpells, stripBase } from "./compendium.js";
 const mod = (s) => Math.floor((s - 10) / 2);
 const fmtMod = (m) => (m >= 0 ? `+${m}` : `${m}`);
@@ -17,24 +17,26 @@ function subSpellData(subclass, clsName, customs) {
     const terr = m && LAND_TERRAINS[m[1]];
     return terr ? { type: "granted", label: `Circle spells — ${m[1]} (always prepared)`, spells: terr } : null;
   }
-  if (SUB_SPELLS[base]) return SUB_SPELLS[base];
   if (!clsName || !customs) return null;
-  const toks = subTokens(subclass);
-  const tagged = (customs.spells || []).filter((sp) => (sp.classes || "").split(",").some((e) => {
-    const m = e.trim().match(/^(.+?)\s*\(([^)]+)\)$/);
-    return m && m[1].trim().toLowerCase() === clsName.toLowerCase() && toks.includes(normSub(m[2]));
-  }));
-  if (!tagged.length) return null;
-  const grantedLabel = GRANTED_SUB_CLASSES[clsName];
+  const prepared = ((customs.subs?.[clsName] || []).find((s) => s.name === base)?.grants || []).filter((g) => g.how === "prepared" && g.spell);
   const spells = {};
-  tagged.forEach((sp) => {
-    let at = 1;
-    while (at < 20 && maxSpellLevel(clsName, at) < sp.level) at++;
-    (spells[at] = spells[at] || []).push(sp.name);
-  });
+  if (prepared.length) prepared.forEach((g) => (spells[g.at || 1] ||= []).push(g.spell));
+  else {
+    const toks = subTokens(subclass);
+    const tagged = (customs.spells || []).filter((sp) => (sp.classes || "").split(",").some((e) => {
+      const m = e.trim().match(/^(.+?)\s*\(([^)]+)\)$/);
+      return m && m[1].trim().toLowerCase() === clsName.toLowerCase() && toks.includes(normSub(m[2]));
+    }));
+    if (!tagged.length) return null;
+    tagged.forEach((sp) => {
+      let at = 1;
+      while (at < 20 && maxSpellLevel(clsName, at) < sp.level) at++;
+      (spells[at] ||= []).push(sp.name);
+    });
+  }
   Object.values(spells).forEach((arr) => arr.sort());
-  return grantedLabel
-    ? { type: "granted", label: `${grantedLabel} — ${base} (always prepared)`, spells }
+  return prepared.length || GRANTED_SUB_CLASSES[clsName]
+    ? { type: "granted", label: `${GRANTED_SUB_CLASSES[clsName] || "Subclass spells"} — ${base} (always prepared)`, spells }
     : { type: "expanded", label: `Expanded spell list — ${base} (added to your ${clsName} options)`, spells };
 }
 const meetsPrereq = (cls, ab) => (MC_PREREQ[cls] || [{ int: 13 }]).some((req) => Object.entries(req).every(([k, v]) => ab[k] >= v));
@@ -42,7 +44,6 @@ function featureBody(rawName, cls, customs, sub) {
   const name = String(rawName || "").trim();
   const strip = baseSubName(name);
   const ft = customs?.featureTexts || {};
-  if (cls === "Ranger" && TEXT_2024.has(strip)) return FEATURE_TEXT[strip] || FEATURE_TEXT[name] || ft[name] || ft[strip];
   const subKey = cls && sub ? `${cls}:${baseSubName(sub)}:` : null;
   return (subKey && (ft[subKey + name] || ft[subKey + strip]))
     || (cls && (ft[`${cls}:${name}`] || ft[`${cls}:${strip}`] || FEATURE_TEXT[`${cls}:${name}`] || FEATURE_TEXT[`${cls}:${strip}`]))
@@ -1261,12 +1262,6 @@ function featureBuckets(ch, customs) {
     if (c.name === "Warlock") {
       if (ch.pactBoon) items.push(item(ch.pactBoon, { detail: "pact boon" }));
       (ch.invocations || []).forEach((inv) => items.push(item(inv, { detail: "eldritch invocation" })));
-    }
-    if (c.name === "Ranger" && ch.rangerChoices) {
-      const foes = [ch.rangerChoices.favEnemy, ...(ch.rangerChoices.extraEnemies || [])].filter(Boolean);
-      const lands = [ch.rangerChoices.natTerrain, ...(ch.rangerChoices.extraTerrains || [])].filter(Boolean);
-      if (foes.length) items.push(item("Favored Enemy", { detail: foes.join(", ") }));
-      if (lands.length) items.push(item("Natural Explorer", { detail: lands.join(", ") }));
     }
     Object.entries(ch.choices || {}).filter(([k, v]) => v?.length && choiceHost(k) === c).forEach(([k, v]) => v.forEach((n) => items.push(item(n, { detail: k }))));
     buckets.push({ key: `class:${c.name}`, label: `Class · level ${c.level}`, title: c.name, cls: c.name, items });

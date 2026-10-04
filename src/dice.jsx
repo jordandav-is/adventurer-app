@@ -202,10 +202,6 @@ function rollNotes(ch, kind, abil) {
   }
   if (kind === "check" || kind === "skill") {
     if (f.barbarian >= 1 && abil === "str" && !hasEffect(ch, "rage")) n.push("Rage: advantage on Strength checks while raging");
-    if ((abil === "wis" || abil === "int") && classLevel(ch, "Ranger") >= 1) {
-      const foes = [ch.rangerChoices?.favEnemy, ...(ch.rangerChoices?.extraEnemies || [])].filter(Boolean);
-      if (foes.length) n.push(`Favored Enemy: advantage on Survival checks to track and Intelligence checks to recall — ${foes.join(", ")}`);
-    }
   }
   if (kind === "attack") {
     if (f.barbarian >= 2 && abil === "str" && !hasEffect(ch, "reckless-attack")) n.push("Reckless Attack: take advantage now, grant it until your next turn");

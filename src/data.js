@@ -295,13 +295,6 @@ const LAND_TERRAINS = {
   Swamp: { 3: ["Darkness", "Acid Arrow"], 5: ["Water Walk", "Stinking Cloud"], 7: ["Freedom of Movement", "Locate Creature"], 9: ["Insect Plague", "Scrying"] },
   Underdark: { 3: ["Spider Climb", "Web"], 5: ["Gaseous Form", "Stinking Cloud"], 7: ["Greater Invisibility", "Stone Shape"], 9: ["Cloudkill", "Insect Plague"] },
 };
-const SUB_SPELLS = {
-  "Life Domain": { type: "granted", label: "Domain spells (always prepared)", spells: { 1: ["Bless", "Cure Wounds"], 3: ["Lesser Restoration", "Spiritual Weapon"], 5: ["Beacon of Hope", "Revivify"], 7: ["Death Ward", "Guardian of Faith"], 9: ["Mass Cure Wounds", "Raise Dead"] } },
-  "Oath of Devotion": { type: "granted", label: "Oath spells (always prepared)", spells: { 3: ["Protection from Evil and Good", "Sanctuary"], 5: ["Lesser Restoration", "Zone of Truth"], 9: ["Beacon of Hope", "Dispel Magic"], 13: ["Freedom of Movement", "Guardian of Faith"], 17: ["Commune", "Flame Strike"] } },
-  "Fey Wanderer": { type: "granted", label: "Fey Wanderer spells (always prepared)", spells: { 3: ["Charm Person"], 5: ["Misty Step"], 9: ["Summon Fey"], 13: ["Dimension Door"], 17: ["Mislead"] } },
-  "Gloom Stalker": { type: "granted", label: "Gloom Stalker spells (always prepared)", spells: { 3: ["Disguise Self"], 5: ["Rope Trick"], 9: ["Fear"], 13: ["Greater Invisibility"], 17: ["Seeming"] } },
-  "The Fiend": { type: "expanded", label: "Expanded spell list (added to your Warlock options)", spells: { 1: ["Burning Hands", "Command"], 3: ["Blindness/Deafness", "Scorching Ray"], 5: ["Fireball", "Stinking Cloud"], 7: ["Fire Shield", "Wall of Fire"], 9: ["Flame Strike", "Hallow"] } },
-};
 const baseSubName = (sub) => (sub || "").replace(/\s*\([^)]*\)$/, "");
 const normSub = (s) => {
   let x = (s || "").toLowerCase().trim();
@@ -314,8 +307,6 @@ const SPELL_LVL_HINT = { "Burning Hands": 1, "Command": 1, "Blindness/Deafness":
 const SKILL_ABIL = { Acrobatics: "dex", "Animal Handling": "wis", Arcana: "int", Athletics: "str", Deception: "cha", History: "int", Insight: "wis", Intimidation: "cha", Investigation: "int", Medicine: "wis", Nature: "int", Perception: "wis", Performance: "cha", Persuasion: "cha", Religion: "int", "Sleight of Hand": "dex", Stealth: "dex", Survival: "wis" };
 const METAMAGIC = ["Careful Spell", "Distant Spell", "Empowered Spell", "Extended Spell", "Heightened Spell", "Quickened Spell", "Subtle Spell", "Twinned Spell"];
 const PACT_BOONS = ["Pact of the Blade", "Pact of the Chain", "Pact of the Tome"];
-const FAVORED_ENEMIES = ["Aberrations", "Beasts", "Celestials", "Constructs", "Dragons", "Elementals", "Fey", "Fiends", "Giants", "Monstrosities", "Oozes", "Plants", "Undead", "Two humanoid races"];
-const NE_TERRAINS = ["Arctic", "Coast", "Desert", "Forest", "Grassland", "Mountain", "Swamp"];
 const INVOCATION_DATA = [
   ["Agonizing Blast", 0, "eldritch blast cantrip"], ["Armor of Shadows", 0, ""], ["Ascendant Step", 9, ""],
   ["Beast Speech", 0, ""], ["Beguiling Influence", 0, ""], ["Bewitching Whispers", 7, ""],
@@ -567,7 +558,6 @@ const FEATURE_TEXT = {
   "Improved Divine Smite": "Whenever you hit a creature with a melee weapon, it takes an extra 1d8 radiant damage.",
   "Cleansing Touch": "As an action, end one spell on yourself or on one willing creature you touch. Uses equal to your Charisma modifier (minimum 1) per long rest.",
   "Aura improvements": "Your Aura of Protection and Aura of Courage now extend 30 feet from you.",
-  "Favored Enemy": "You have significant experience studying, tracking, hunting, and even talking to a certain type of enemy.\nChoose a type of favored enemy: aberrations, beasts, celestials, constructs, dragons, elementals, fey, fiends, giants, monstrosities, oozes, plants, or undead. Alternatively, you can select two races of humanoid (such as gnolls and orcs) as favored enemies.\nYou have advantage on Wisdom (Survival) checks to track your favored enemies, as well as on Intelligence checks to recall information about them. When you gain this feature, you also learn one language of your choice that is spoken by your favored enemies, if they speak one at all.\nYou choose one additional favored enemy, as well as an associated language, at 6th and 14th level.\nYou also always have the Hunter's Mark spell prepared, castable for free a number of times tracked under Feature Uses (2, rising to 3/4/5/6 at ranger levels 5/9/13/17).",
   "Weapon Mastery": "Your training lets you use the mastery properties of two kinds of weapons of your choice with which you have proficiency. Whenever you finish a long rest, you can change the kinds of weapons you chose. (Mastery properties are rules text on each weapon — the sheet doesn't automate them.)",
   "Deft Explorer": "Thanks to your travels, you gain Expertise in one of your skill proficiencies, and you learn two languages of your choice.",
   "Roving": "Your speed increases by 10 feet while you aren't wearing heavy armor, and you gain a climb speed and a swim speed equal to your speed.",
@@ -576,14 +566,7 @@ const FEATURE_TEXT = {
   "Nature's Veil": "As a bonus action, you invoke spirits of nature to become invisible until the start of your next turn. You can use this a number of times equal to your Wisdom modifier (minimum once), regaining all uses on a long rest.",
   "Precise Hunter": "You have advantage on attack rolls against the creature currently marked by your Hunter's Mark.",
   "Epic Boon": "You gain an Epic Boon feat, or another feat of your choice for which you qualify — take it through this level's Ability Score Improvement panel.",
-  "Favored Enemy improvement": "Choose an additional favored enemy type (and an associated language).",
-  "Natural Explorer": "Choose a favored terrain. There, doubled proficiency on related Intelligence and Wisdom checks, difficult terrain doesn't slow your group, you can't become lost except by magic, you stay alert while doing other activities, you can stealth alone at a normal pace, you find twice as much food foraging, and tracking reveals exact numbers, sizes, and how long ago they passed.",
-  "Natural Explorer improvement": "Choose an additional favored terrain.",
-  "Favored Enemy & Natural Explorer improvements": "Choose one additional favored enemy (with a language) and one additional favored terrain.",
-  "Primeval Awareness": "As an action, expend a spell slot to sense for 1 minute per slot level whether any aberrations, celestials, dragons, elementals, fey, fiends, or undead are present within 1 mile (6 miles in favored terrain) — but not their number or location.",
   "Land's Stride": "Moving through nonmagical difficult terrain costs you no extra movement, and you can pass through nonmagical plants without being slowed or harmed by them. You also have advantage on saving throws against magically created or manipulated plants that impede movement.",
-  "Hide in Plain Sight": "Spend 1 minute creating camouflage and press yourself against a solid surface: while you remain there without moving or acting, you gain +10 to Dexterity (Stealth) checks.",
-  "Vanish": "You can use the Hide action as a bonus action, and you can't be tracked by nonmagical means unless you choose to leave a trail.",
   "Feral Senses": "Your connection to the wilderness grants you blindsight with a range of 30 feet.",
   "Foe Slayer": "The damage die of your Hunter's Mark is a d10 rather than a d6.",
   "Sneak Attack": "Once per turn, deal extra damage (1d6, +1d6 every two rogue levels) to one creature you hit with a finesse or ranged weapon attack if you have advantage on the roll — or if another enemy of the target is within 5 feet of it and you don't have disadvantage.",
@@ -761,13 +744,6 @@ Object.values(SUB_LORE).forEach((s) => Object.values(s.features).forEach((fx) =>
   const k = baseSubName(f.n);
   if (!FEATURE_TEXT[k]) FEATURE_TEXT[k] = f.t;
 })));
-const TEXT_2024 = new Set([
-  "Favored Enemy", "Feral Senses", "Foe Slayer", "Hunter's Prey", "Defensive Tactics", "Superior Hunter's Defense",
-  "Hunter's Lore", "Superior Hunter's Prey", "Primal Companion", "Exceptional Training", "Bestial Fury", "Share Spells",
-  "Dreadful Strikes", "Otherworldly Glamour", "Beguiling Twist", "Fey Reinforcements", "Misty Wanderer",
-  "Roving", "Tireless", "Deft Explorer", "Nature's Veil", "Relentless Hunter", "Precise Hunter", "Weapon Mastery",
-  "Dread Ambusher", "Umbral Sight", "Iron Mind", "Stalker's Flurry", "Shadowy Dodge",
-]);
 const FEATS = [
   { name: "Alert", cat: "Origin", desc: "Add your proficiency bonus to initiative; swap initiative with a willing ally", fx: { init: true },
     text: "Initiative Proficiency. When you roll Initiative, you can add your Proficiency Bonus to the roll.\nInitiative Swap. Immediately after you roll Initiative, you can swap your Initiative with the Initiative of one willing ally in the same combat. You can't make this swap if you or the ally has the Incapacitated condition." },
@@ -1167,4 +1143,4 @@ const ABIL_MIN = 1, ABIL_MAX = 30;
 const SCHOOL_NAMES = { A: "Abjuration", C: "Conjuration", D: "Divination", EN: "Enchantment", EV: "Evocation", I: "Illusion", N: "Necromancy", T: "Transmutation" };
 const ARCANUM_UNLOCK = { 6: 11, 7: 13, 8: 15, 9: 17 };
 const PREP_ALL_CLASSES = ["Artificer", "Cleric", "Druid", "Paladin", "Ranger"];
-export { ABILITIES, ABIL_NAMES, RACES, LANGS, RACE_LANGS, ANCESTRIES, ALL_SKILLS, BACKGROUNDS, ALIGNMENTS, FIGHTING_STYLES, STYLE_DESC, PROF_TEXT, START_GOLD, GEAR_LISTS, STARTING_GEAR, LAND_TERRAINS, SUB_SPELLS, baseSubName, normSub, GRANTED_SUB_CLASSES, SPELL_LVL_HINT, SKILL_ABIL, METAMAGIC, PACT_BOONS, FAVORED_ENEMIES, INVOCATION_DATA, MC_PREREQ, MC_PROFS, MC_SKILL_GRANT, ASI, CLASSES, SUB_FEATS, subFeatsFor, SRD_FOOT, CLASS_BLURB, FEATURE_TEXT, SUB_LORE, TEXT_2024, FEATS, FEAT_INDEX, FEAT_CATS, FEAT_MECHANICS, MANEUVERS, FEAT_PICKS, INVOCATIONS, CANTRIPS_KNOWN, SPELLS_KNOWN, RANGER_PREPARED, SPELL_ABILITY, MC_SLOTS, HALF_SLOTS, HALF1_SLOTS, PACT, CASTING_CLASSES, CHOICE_GROUPS, CHOICE_KEYS, ITEM_TYPES, DMG_TYPES, WEAPON_PROPS, SOURCE_ABBR, CLASS_GEAR_PROFS, MC_GEAR_PROFS, SIZE_RANK, DMG_WORD_CODE, HEALING_TIERS, POTION_EFFECT_ALIAS, LANG_INFO, SKILL_INFO, INVOCATION_INFO, METAMAGIC_INFO, BOON_INFO, ABILITY_INFO, CORE_FEATURE_INFO, STD_ARRAY, PB_COST, ABIL_MIN, ABIL_MAX, SCHOOL_NAMES, ARCANUM_UNLOCK, PREP_ALL_CLASSES };
+export { ABILITIES, ABIL_NAMES, RACES, LANGS, RACE_LANGS, ANCESTRIES, ALL_SKILLS, BACKGROUNDS, ALIGNMENTS, FIGHTING_STYLES, STYLE_DESC, PROF_TEXT, START_GOLD, GEAR_LISTS, STARTING_GEAR, LAND_TERRAINS, baseSubName, normSub, GRANTED_SUB_CLASSES, SPELL_LVL_HINT, SKILL_ABIL, METAMAGIC, PACT_BOONS, INVOCATION_DATA, MC_PREREQ, MC_PROFS, MC_SKILL_GRANT, ASI, CLASSES, SUB_FEATS, subFeatsFor, SRD_FOOT, CLASS_BLURB, FEATURE_TEXT, SUB_LORE, FEATS, FEAT_INDEX, FEAT_CATS, FEAT_MECHANICS, MANEUVERS, FEAT_PICKS, INVOCATIONS, CANTRIPS_KNOWN, SPELLS_KNOWN, RANGER_PREPARED, SPELL_ABILITY, MC_SLOTS, HALF_SLOTS, HALF1_SLOTS, PACT, CASTING_CLASSES, CHOICE_GROUPS, CHOICE_KEYS, ITEM_TYPES, DMG_TYPES, WEAPON_PROPS, SOURCE_ABBR, CLASS_GEAR_PROFS, MC_GEAR_PROFS, SIZE_RANK, DMG_WORD_CODE, HEALING_TIERS, POTION_EFFECT_ALIAS, LANG_INFO, SKILL_INFO, INVOCATION_INFO, METAMAGIC_INFO, BOON_INFO, ABILITY_INFO, CORE_FEATURE_INFO, STD_ARRAY, PB_COST, ABIL_MIN, ABIL_MAX, SCHOOL_NAMES, ARCANUM_UNLOCK, PREP_ALL_CLASSES };

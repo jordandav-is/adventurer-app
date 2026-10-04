@@ -1,4 +1,4 @@
-import { ABILITIES, ABIL_MAX, ABIL_MIN, ABIL_NAMES, ALIGNMENTS, ALL_SKILLS, ANCESTRIES, BACKGROUNDS, CANTRIPS_KNOWN, CLASSES, FAVORED_ENEMIES, FEAT_MECHANICS, FIGHTING_STYLES, GEAR_LISTS, ITEM_TYPES, LANGS, PB_COST, RACES, RACE_LANGS, STARTING_GEAR, START_GOLD, STD_ARRAY, STYLE_DESC } from "./data.js";
+import { ABILITIES, ABIL_MAX, ABIL_MIN, ABIL_NAMES, ALIGNMENTS, ALL_SKILLS, ANCESTRIES, BACKGROUNDS, CANTRIPS_KNOWN, CLASSES, FEAT_MECHANICS, FIGHTING_STYLES, GEAR_LISTS, ITEM_TYPES, LANGS, PB_COST, RACES, RACE_LANGS, STARTING_GEAR, START_GOLD, STD_ARRAY, STYLE_DESC } from "./data.js";
 import { allChoiceGroups, allFeats, allSubs, canEquip, choiceCum, choiceOptionsFor, groupMatches, featGrantedSpells, featPickDone, featPickOf, findItem, subclassProfsAt, fmtMod, formatStandardRaceBonus, getDefaultRacialSlots, getRacialBonusPool, isArmorType, isWeaponType, mod, searchRank, spellCapacity, spellFitsClass } from "./rules.js";
 import { isSourceEnabled, srcSpells, uid } from "./compendium.js";
 import { useEffect, useState } from "react";
@@ -321,10 +321,6 @@ function CreateWizard({ onDone, onCancel, customs }) {
   const [gold, setGold] = useState(null);
   const [spellPicks, setSpellPicks] = useState({ cantrips: [], spells: [] });
   const [rogueExp, setRogueExp] = useState([]);
-  const [favEnemy, setFavEnemy] = useState(null);
-  const [favHumanoids, setFavHumanoids] = useState("");
-  const [favLang, setFavLang] = useState(null);
-  const [natTerrain, setNatTerrain] = useState(null);
   const [persona, setPersona] = useState({ traits: "", ideals: "", bonds: "", flaws: "" });
   const [goldRoll, setGoldRoll] = useState(null);
   const [gearMode, setGearMode] = useState(null);
@@ -431,7 +427,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
     step === 0 ? name.trim().length > 0 :
     step === 1 ? (!raceData.lineageTrait || !!lineageTrait) :
     step === 2 ? langPicks.length === langNeed && (bg !== "Custom" || bgSkills.length === 2) && (race !== "Dragonborn" || ancestry) && raceSkills.length === raceSkillNeed && (race !== "High Elf" || heCantrip.trim()) :
-    step === 3 ? skills.length === clsData.nSkills && (clsData.subLvl > 1 || subclass) && subSkillChoices.every((c) => (subSkillPicks[c.key] || []).length === c.n) && choiceGroups1.every((d) => (groupPicks1[d.g.key] || []).length === Math.min(d.need, d.options.length)) && (cls !== "Fighter" || style) && (cls !== "Rogue" || rogueExp.length === 2) && (cls !== "Ranger" || (favEnemy && (favEnemy !== "Two humanoid races" || favHumanoids.trim()) && favLang)) :
+    step === 3 ? skills.length === clsData.nSkills && (clsData.subLvl > 1 || subclass) && subSkillChoices.every((c) => (subSkillPicks[c.key] || []).length === c.n) && choiceGroups1.every((d) => (groupPicks1[d.g.key] || []).length === Math.min(d.need, d.options.length)) && (cls !== "Fighter" || style) && (cls !== "Rogue" || rogueExp.length === 2) :
     step === 4 ? customAsiReady && (!raceData.feat || featPickDone(raceFeatDef, raceFeat)) :
     step === 6 ? (gearMode === "standard" ? standardReady : gearMode === "gold" ? gold !== null : false) :
     true;
@@ -444,7 +440,6 @@ function CreateWizard({ onDone, onCancel, customs }) {
       inventory,
       styles: style ? [style] : [], notes: "", persona,
       metamagic: [], pactBoon: null, invocations: [],
-      rangerChoices: cls === "Ranger" ? { favEnemy: favEnemy === "Two humanoid races" ? `Humanoids (${favHumanoids.trim()})` : favEnemy } : null,
 
       spells: castsAt1 && (spellPicks.cantrips.length || spellPicks.spells.length) ? { [cls]: spellPicks } : {},
       abilities: finalScores, method,
@@ -458,7 +453,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
         cantrips: raceFeat.cantrips || [], spells: raceFeat.spells || [], maneuvers: raceFeat.maneuvers || [], weapons: raceFeat.weapons || [],
       } } : {},
       expertise: [...rogueExp, ...(raceFeat?.expertise || [])].filter((v, i, a) => a.indexOf(v) === i),
-      languages: [...RACE_LANGS[race].fixed, ...langPicks, ...(cls === "Ranger" && favLang ? [favLang] : []), ...(raceFeat?.langs || []), ...(raceFeat?.name ? featPickOf(raceFeat.name)?.grantLangs || [] : [])].filter((v, i, a) => a.indexOf(v) === i),
+      languages: [...RACE_LANGS[race].fixed, ...langPicks, ...(raceFeat?.langs || []), ...(raceFeat?.name ? featPickOf(raceFeat.name)?.grantLangs || [] : [])].filter((v, i, a) => a.indexOf(v) === i),
       racialChoices: {
         ancestry: race === "Dragonborn" ? ancestry : null,
         cantrip: race === "High Elf" ? heCantrip.trim() : null,
@@ -691,7 +686,7 @@ function CreateWizard({ onDone, onCancel, customs }) {
         <div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10, marginBottom: 16 }}>
             {Object.entries(CLASSES).filter(([, d]) => isSourceEnabled(d)).map(([c, d]) => (
-              <div key={c} onClick={() => { setCls(c); setSkills([]); setSubclass(null); setStyle(null); setRogueExp([]); setFavEnemy(null); setNatTerrain(null); setSpellPicks({ cantrips: [], spells: [] }); setGearMode(null); setGearPicks({}); setPurchases([]); setGold(null); setGoldRoll(null); }}
+              <div key={c} onClick={() => { setCls(c); setSkills([]); setSubclass(null); setStyle(null); setRogueExp([]); setSpellPicks({ cantrips: [], spells: [] }); setGearMode(null); setGearPicks({}); setPurchases([]); setGold(null); setGoldRoll(null); }}
                 style={{ ...card, padding: 12, cursor: "pointer", borderColor: cls === c ? T.gold : T.edge, background: cls === c ? T.panel2 : T.panel }}>
                 <div style={{ fontFamily: "Georgia, serif", fontSize: 16 }}><ClassTag name={c} size={15} /></div>
                 <div style={{ color: T.dim, fontSize: 11, marginTop: 4 }}>d{d.die} · saves {d.saves.map((s) => s.toUpperCase()).join("/")}{d.caster ? ` · ${d.caster} caster` : ""}</div>
@@ -772,26 +767,6 @@ function CreateWizard({ onDone, onCancel, customs }) {
                   {skills.map((sk) => (
                     <button key={sk} style={{ ...btn(rogueExp.includes(sk)), padding: "5px 10px", fontSize: 13, minHeight: 0 }}
                       onClick={() => setRogueExp(rogueExp.includes(sk) ? rogueExp.filter((x) => x !== sk) : rogueExp.length < 2 ? [...rogueExp, sk] : rogueExp)}>{sk}</button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {cls === "Ranger" && (
-              <div style={{ marginTop: 10 }}>
-                <div style={{ color: T.gold, fontSize: 14, marginBottom: 6 }}>Favored Enemy — one type, or two humanoid races</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {FAVORED_ENEMIES.map((f) => (
-                    <button key={f} style={{ ...btn(favEnemy === f), padding: "5px 10px", fontSize: 13, minHeight: 0 }} onClick={() => setFavEnemy(f)}>{f}</button>
-                  ))}
-                </div>
-                {favEnemy === "Two humanoid races" && (
-                  <input value={favHumanoids} onChange={(e) => setFavHumanoids(e.target.value)} placeholder="Which two? e.g. gnolls and orcs"
-                    style={{ width: "100%", boxSizing: "border-box", marginTop: 8, background: T.panel2, color: T.ink, border: `1px solid ${T.edge}`, borderRadius: 8, padding: "8px 10px", fontSize: 14 }} />
-                )}
-                <div style={{ color: T.gold, fontSize: 13, margin: "10px 0 6px" }}>Associated language — one your favored enemies speak</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {LANGS.filter((l) => !RACE_LANGS[race].fixed.includes(l) && !langPicks.includes(l)).map((l) => (
-                    <button key={l} {...lorePress(l)} style={{ ...btn(favLang === l), padding: "5px 10px", fontSize: 13, minHeight: 0 }} onClick={() => setFavLang(l)}>{l}</button>
                   ))}
                 </div>
               </div>
