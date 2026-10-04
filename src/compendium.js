@@ -1,13 +1,16 @@
-import { ABILITIES, ABIL_NAMES, BACKGROUNDS, BOON_INFO, CLASSES, FIGHTING_STYLES, INVOCATION_DATA, INVOCATION_INFO, MANEUVERS, METAMAGIC, METAMAGIC_INFO, PACT_BOONS, RACES, RACE_LANGS, STYLE_DESC, normSub } from "./data.js";
+import { ABILITIES, ABIL_NAMES, BACKGROUNDS, CLASSES, RACES, RACE_LANGS, normSub } from "./data.js";
+// Vite fingerprints both files, so the service worker can keep them until a new bake changes the hash.
+const COMPENDIUM_URL = new URL("./content/compendium.json", import.meta.url);
+const BESTIARY_URL = new URL("./content/bestiary.json", import.meta.url);
 const uid = () => Math.random().toString(36).slice(2, 10);
 let __SRC_OFF = new Set();
 let __SOURCES = [];
 const setSourceExclusions = (sources) => { __SRC_OFF = sources; };
 let __BESTIARY = [];
-const SRD_SRC = "System Reference Document 5.1";
 // Race art is bundled under public/art by the bake; the compendium stores paths relative to it.
 const raceArtUrl = (path) => (path ? "art/" + path.split("/").map(encodeURIComponent).join("/") : null);
-const sourceByCode = (code) => __SOURCES.find((source) => source.code === code);
+let SOURCE_BY_CODE = new Map();
+const sourceByCode = (code) => SOURCE_BY_CODE.get(code);
 const sourceCodesOf = (record) => {
   if (!record || typeof record !== "object") return [];
   if (Array.isArray(record.sources) && record.sources.length) return record.sources;
@@ -27,8 +30,6 @@ const sourceLabelOf = (record) => {
   const code = sourceByCode(record.src) ? record.src : sourceCodesOf(record)[0];
   return record.source || sourceByCode(code)?.name || record.src || "Homebrew & unsourced";
 };
-const spellSrcOf = sourceLabelOf;
-const creatureSrcOf = sourceLabelOf;
 const srcSpells = (list) => list.filter(isSourceEnabled);
 const KEY = "dnd-srd-characters-v1";
 async function loadChars() {
@@ -54,64 +55,39 @@ async function saveSrcPrefs(off) {
 const CKEY = "dnd-custom-content-v1";
 const EMPTY_CUSTOM = { subs: {}, feats: [], spells: [], items: [], featureTexts: {} };
 let __BASE = null;
+let __OPTIONS = [];
+const OPTION_BY_NAME = new Map();
+// Pick-one options are typed by 5etools featureType codes: EI invocations, MM metamagic, MV:B maneuvers, PB pact boons,
+// AI infusions, AS arcane shots, RN runes, ED elemental disciplines, FS:x fighting styles. Optional class features carry none.
+const optionsOfType = (type) => __OPTIONS.filter((o) => o.type.includes(type) && isSourceEnabled(o));
+const optionNamed = (name) => OPTION_BY_NAME.get(name) || null;
+const classOptionsOf = (cls) => __OPTIONS.filter((o) => o.className === cls && !o.type.length && isSourceEnabled(o));
+const STYLE_TYPE = { Fighter: "FS:F", Paladin: "FS:P", Ranger: "FS:R", Bard: "FS:B" };
+const stylesFor = (cls) => (STYLE_TYPE[cls] ? optionsOfType(STYLE_TYPE[cls]).map((o) => o.name) : []);
+const styleSummary = (name) => (OPTION_BY_NAME.get(name)?.text || "").split("\n")[0];
 const hydrateRuntime = (base) => {
-  __SOURCES = Array.isArray(base.sources) ? base.sources : [];
-  Object.entries(base.runtime?.classes || {}).forEach(([name, value]) => {
-    CLASSES[name] = { ...(CLASSES[name] || {}), ...value };
-  });
-  Object.assign(RACES, base.runtime?.races || {});
-  Object.assign(RACE_LANGS, base.runtime?.raceLangs || {});
-  Object.assign(BACKGROUNDS, base.runtime?.backgrounds || {});
-
-  if (Array.isArray(base.runtime?.invocations)) {
-    INVOCATION_DATA.length = 0;
-    base.runtime.invocations.forEach((inv) => {
-      INVOCATION_DATA.push([inv.name, inv.lvl, inv.req, inv.src, inv.sources]);
-    });
-  }
-  if (base.runtime?.invocationInfo) Object.assign(INVOCATION_INFO, base.runtime.invocationInfo);
-
-  if (Array.isArray(base.runtime?.metamagic)) {
-    METAMAGIC.length = 0;
-    base.runtime.metamagic.forEach((m) => {
-      METAMAGIC.push(m.name);
-    });
-  }
-  if (base.runtime?.metamagicInfo) Object.assign(METAMAGIC_INFO, base.runtime.metamagicInfo);
-
-  if (base.runtime?.maneuvers) {
-    Object.entries(base.runtime.maneuvers).forEach(([name, m]) => {
-      MANEUVERS[name] = m.desc || m;
-    });
-  }
-
-  if (base.runtime?.fightingStyles) {
-    Object.entries(base.runtime.fightingStyles).forEach(([cls, list]) => {
-      FIGHTING_STYLES[cls] = list.map((s) => s.name);
-    });
-  }
-  if (base.runtime?.styleDesc) Object.assign(STYLE_DESC, base.runtime.styleDesc);
-
-  if (Array.isArray(base.runtime?.pactBoons)) {
-    PACT_BOONS.length = 0;
-    base.runtime.pactBoons.forEach((b) => {
-      PACT_BOONS.push(b.name);
-    });
-  }
-  if (base.runtime?.boonInfo) Object.assign(BOON_INFO, base.runtime.boonInfo);
+  __SOURCES = base.sources;
+  SOURCE_BY_CODE = new Map(__SOURCES.map((source) => [source.code, source]));
+  Object.assign(CLASSES, base.runtime.classes);
+  Object.assign(RACES, base.runtime.races);
+  Object.assign(RACE_LANGS, base.runtime.raceLangs);
+  Object.assign(BACKGROUNDS, base.runtime.backgrounds);
+  __OPTIONS = base.optionalFeatures;
+  __OPTIONS.forEach((o) => OPTION_BY_NAME.set(o.name, o));
 };
-async function fetchBaseCompendium() {
-  if (__BASE) return __BASE;
-  try {
-    const res = await fetch("compendium.json");
-    if (!res.ok) return null;
-    __BASE = await res.json();
-    hydrateRuntime(__BASE);
-    __BESTIARY = Array.isArray(__BASE.bestiary) ? __BASE.bestiary : [];
-    if (typeof window !== "undefined") window.__ledgerBase = __BASE;
-    return __BASE;
-  } catch { return null; }
-}
+const fetchJson = async (url) => {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+};
+let basePromise = null, bestiaryPromise = null;
+const fetchBaseCompendium = () => (basePromise ||= fetchJson(COMPENDIUM_URL)
+  .then((base) => { hydrateRuntime(base); return (__BASE = base); })
+  .catch((e) => { basePromise = null; throw e; }));
+// The bestiary only feeds summons and creature lookups, so it loads after the sheet is already usable.
+const loadBestiary = () => (bestiaryPromise ||= fetchJson(BESTIARY_URL)
+  .then((list) => (__BESTIARY = list))
+  .catch(() => { bestiaryPromise = null; return __BESTIARY; }));
 function stripBase(c, base) {
   if (!base) return c;
   const sig = (x) => JSON.stringify(x);
@@ -285,4 +261,4 @@ function parseCompendiumXML(text) {
   return out;
 }
 if (typeof window !== "undefined") window.__parseCompendium = parseCompendiumXML;
-export { __SRC_OFF, __SOURCES, __BESTIARY, SRD_SRC, raceArtUrl, sourceCodesOf, sourceLabelOf, isSourceEnabled, spellSrcOf, creatureSrcOf, srcSpells, setSourceExclusions, loadChars, saveChars, loadSrcPrefs, saveSrcPrefs, EMPTY_CUSTOM, __BASE, fetchBaseCompendium, stripBase, loadCustom, saveCustom, exportLedger, mergeLedger, unionCustoms, mergeCompendium, parseCompendiumXML, uid };
+export { __SRC_OFF, __SOURCES, __BESTIARY, raceArtUrl, sourceCodesOf, sourceLabelOf, isSourceEnabled, srcSpells, setSourceExclusions, loadChars, saveChars, loadSrcPrefs, saveSrcPrefs, EMPTY_CUSTOM, __BASE, fetchBaseCompendium, loadBestiary, optionsOfType, optionNamed, classOptionsOf, stylesFor, styleSummary, stripBase, loadCustom, saveCustom, exportLedger, mergeLedger, unionCustoms, mergeCompendium, parseCompendiumXML, uid };

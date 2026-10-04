@@ -24,7 +24,8 @@ VETOOLS_ROOT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else APP_ROOT.pa
 DATA = VETOOLS_ROOT / "data"
 IMG_ROOT = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else APP_ROOT.parent / "5etools-img"
 ART = APP_ROOT / "public" / "art"
-OUT = APP_ROOT / "public" / "compendium.json"
+OUT = APP_ROOT / "src" / "content" / "compendium.json"
+BESTIARY_OUT = APP_ROOT / "src" / "content" / "bestiary.json"
 REPORT = APP_ROOT / "public" / "content-report.json"
 CUTOFF = "2020-11-17"
 RANGER_SOURCE = "XPHB"
@@ -835,129 +836,32 @@ def convert_classes() -> tuple[list[dict[str, Any]], dict[str, list[dict[str, An
     return converted_classes, dict(subs), feature_records, feature_texts, feature_sources
 
 
-def convert_optional_features() -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def level_prereq(row: dict[str, Any]) -> int:
+    return max((int(p["level"].get("level") if isinstance(p["level"], dict) else p["level"]) for p in row.get("prerequisite") or [] if p.get("level")), default=0)
+
+
+def invocation_req(row: dict[str, Any]) -> str:
+    prereqs = row.get("prerequisite") or []
+    pact = next((f"Pact of the {p['pact']}" for p in prereqs if p.get("pact")), "")
+    spells = " ".join(str(sp) for p in prereqs for sp in p.get("spell") or [])
+    return pact or ("eldritch blast cantrip" if "eldritch blast" in spells else "hex/curse" if "hex" in spells else "")
+
+
+def convert_optional_features() -> list[dict[str, Any]]:
+    """Every pick-one option (invocations, maneuvers, infusions, fighting styles…) and every optional class feature,
+    typed by 5etools featureType codes; the app derives each option list from `type`."""
     rows = [x for x in load(DATA / "optionalfeatures.json").get("optionalfeature", []) if allowed_source(x.get("source"))]
     for path in sorted((DATA / "class").glob("class-*.json")):
-        for row in load(path).get("classFeature", []):
-            if row.get("isClassFeatureVariant") and (allowed_source(row.get("source")) or ranger_exception(row)):
-                rows.append(row)
+        # The 2024 Ranger already folds in its Tasha's alternatives, so its optional class features are left out.
+        rows += [x for x in load(path).get("classFeature", []) if x.get("isClassFeatureVariant") and allowed_source(x.get("source")) and x.get("className") != "Ranger"]
     rows = latest(resolve_copies(rows), lambda x: (x.get("className", ""), x.get("name", ""), tuple(x.get("featureType", []))))
     out = []
-    opt_map = {}
     for row in rows:
-        text = render_text(row.get("entries", []))
-        rec = {**provenance(row, "optional-feature", row.get("className", "general")), "name": row["name"], "className": row.get("className"), "level": row.get("level"), "featureType": row.get("featureType", []), "replaces": row.get("consumes", {}).get("name"), "prerequisite": prerequisite_text(row.get("prerequisite")), "text": text}
-        out.append(rec)
-        if row.get("name") and text:
-            opt_map[row["name"]] = {"name": row["name"], "desc": text, "src": row.get("source"), "sources": rec["sources"]}
-    return out, opt_map
-
-def convert_mechanics_options() -> dict[str, Any]:
-    opt_raw = load(DATA / "optionalfeatures.json").get("optionalfeature", [])
-    rows = [x for x in resolve_copies(opt_raw) if allowed_source(x.get("source"))]
-    invocations, inv_info = [], {}
-    metamagic, mm_info = [], {}
-    maneuvers, style_desc = {}, {}
-    fighting_styles = defaultdict(list)
-    pact_boons, boon_info = [], {}
-    infusions, arcane_shots, runes, elemental_disciplines = [], [], [], []
-
-    for row in rows:
-        name = row.get("name")
-        src = row.get("source")
-        fts = row.get("featureType", [])
-        text = render_text(row.get("entries", []))
-        meta = source_meta(row)
-
-        if "EI" in fts:
-            lvl = 0
-            pact = ""
-            other_req = ""
-            for p in row.get("prerequisite", []):
-                if p.get("level"):
-                    l = p["level"].get("level") if isinstance(p["level"], dict) else p["level"]
-                    lvl = max(lvl, int(l))
-                if p.get("pact"):
-                    pact = f"Pact of the {p['pact']}"
-                if p.get("spell"):
-                    for sp in p["spell"]:
-                        if "eldritch blast" in sp: other_req = "eldritch blast cantrip"
-                        elif "hex" in sp: other_req = "hex/curse"
-            req_text = pact or other_req
-            invocations.append(with_grants({
-                "name": name,
-                "lvl": lvl,
-                "req": req_text,
-                "desc": text,
-                "src": src,
-                "sources": meta["sources"],
-            }, row))
-            inv_info[name] = text
-
-        if "MM" in fts:
-            metamagic.append({"name": name, "desc": text, "src": src, "sources": meta["sources"]})
-            mm_info[name] = text
-
-        if any("MV" in x for x in fts):
-            maneuvers[name] = {"name": name, "desc": text, "src": src, "sources": meta["sources"]}
-
-        if any("FS" in x for x in fts):
-            style_desc[name] = text.split("\n")[0] if text else ""
-            style = with_grants({"name": name, "src": src, "sources": meta["sources"]}, row)
-            if "FS:F" in fts or "FS" in fts: fighting_styles["Fighter"].append(style)
-            if "FS:P" in fts: fighting_styles["Paladin"].append(style)
-            if "FS:R" in fts: fighting_styles["Ranger"].append(style)
-            if "FS:B" in fts: fighting_styles["Bard"].append(style)
-
-        if "PB" in fts:
-            pact_boons.append(with_grants({"name": name, "desc": text, "src": src, "sources": meta["sources"]}, row))
-            boon_info[name] = text
-
-        if "AI" in fts:
-            prereq_lvl = 0
-            for p in row.get("prerequisite", []):
-                if p.get("level"):
-                    l = p["level"].get("level") if isinstance(p["level"], dict) else p["level"]
-                    prereq_lvl = max(prereq_lvl, int(l))
-            infusions.append({"name": name, "minLevel": prereq_lvl, "desc": text, "src": src, "sources": meta["sources"]})
-
-        if "AS" in fts:
-            arcane_shots.append({"name": name, "desc": text, "src": src, "sources": meta["sources"]})
-
-        if "RN" in fts:
-            runes.append({"name": name, "desc": text, "src": src, "sources": meta["sources"]})
-
-        if "ED" in fts:
-            prereq_lvl = 0
-            for p in row.get("prerequisite", []):
-                if p.get("level"):
-                    l = p["level"].get("level") if isinstance(p["level"], dict) else p["level"]
-                    prereq_lvl = max(prereq_lvl, int(l))
-            elemental_disciplines.append({"name": name, "minLevel": prereq_lvl, "desc": text, "src": src, "sources": meta["sources"]})
-
-    invocations.sort(key=lambda x: (x["lvl"], x["name"]))
-    metamagic.sort(key=lambda x: x["name"])
-    pact_boons.sort(key=lambda x: x["name"])
-    infusions.sort(key=lambda x: (x["minLevel"], x["name"]))
-    arcane_shots.sort(key=lambda x: x["name"])
-    runes.sort(key=lambda x: x["name"])
-    elemental_disciplines.sort(key=lambda x: (x["minLevel"], x["name"]))
-
-    return {
-        "invocations": invocations,
-        "invocationInfo": inv_info,
-        "metamagic": metamagic,
-        "metamagicInfo": mm_info,
-        "maneuvers": maneuvers,
-        "fightingStyles": dict(fighting_styles),
-        "styleDesc": style_desc,
-        "pactBoons": pact_boons,
-        "boonInfo": boon_info,
-        "infusions": infusions,
-        "arcaneShots": arcane_shots,
-        "runes": runes,
-        "elementalDisciplines": elemental_disciplines,
-    }
+        rec = {**provenance(row, "optional-feature", row.get("className", "general")), "name": row["name"], "type": row.get("featureType", []), "text": render_text(row.get("entries", []))}
+        if row.get("className"): rec.update(className=row["className"], level=row.get("level"))
+        extras = {"consumes": row.get("consumes", {}).get("name"), "prerequisite": prerequisite_text(row.get("prerequisite")), "minLevel": level_prereq(row), "req": invocation_req(row) if "EI" in rec["type"] else None}
+        out.append(with_grants({**rec, **{k: v for k, v in extras.items() if v}}, row))
+    return sorted(out, key=lambda x: (x.get("minLevel", 0), x["name"], x["id"]))
 
 
 def race_bonus(row: dict[str, Any]) -> tuple[dict[str, int], dict[str, Any]]:
@@ -1026,6 +930,8 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
     raw_subraces = resolve_copies(races_data.get("subrace", []))
     allowed_races = latest([r for r in raw_races if allowed_source(r.get("source")) or minotaur_exception(r)], lambda x: x.get("name", ""))
     base_by_name = {r["name"].lower(): r for r in allowed_races if r.get("name")}
+    # Subraces extend one edition of their race (Zendikar goblins extend PSZ's Goblin, not Eberron's).
+    base_by_key = {(r["name"].lower(), r.get("source")): r for r in raw_races if r.get("name") and allowed_source(r.get("source"))}
     full_races = []
     race_traits = {}
 
@@ -1048,7 +954,7 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
         base_name = sub.get("raceName")
         if not base_name:
             continue
-        base = base_by_name.get(base_name.lower())
+        base = base_by_key.get((base_name.lower(), sub.get("raceSource"))) or base_by_name.get(base_name.lower())
         if not base:
             continue
         merged = copy.deepcopy(base)
@@ -1115,12 +1021,12 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
             merged["languageProficiencies"] = (base.get("languageProficiencies") or []) + sub["languageProficiencies"]
         full_races.append(merged)
 
-    has_sub = {sub.get("raceName", "").lower() for sub in raw_subraces if sub.get("raceName") and allowed_source(sub.get("source"))}
+    has_sub = {(sub.get("raceName", "").lower(), sub.get("raceSource")) for sub in raw_subraces if sub.get("raceName") and allowed_source(sub.get("source"))}
     for r in raw_races:
         if minotaur_exception(r):
             # MPMM leaves scores and languages to the origin rules; ship the Theros defaults so the race stays playable under 2014 creation.
             full_races.append({"ability": [{"str": 2, "con": 1}], "languageProficiencies": [{"common": True, "anyStandard": 1}], **r})
-        elif allowed_source(r.get("source")) and r.get("name", "").lower() not in has_sub:
+        elif allowed_source(r.get("source")) and (r.get("name", "").lower(), r.get("source")) not in has_sub:
             full_races.append(r)
 
     rows = latest(full_races, lambda x: x.get("name", ""))
@@ -1172,6 +1078,7 @@ def convert_races() -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any
             **choice,
             "speed": speed,
             "flavor": race_flavor,
+            "text": text,
             **({"art": race_art} if race_art else {}),
             "traits": traits or ([text] if text else []),
             "src": row.get("source"),
@@ -1573,6 +1480,7 @@ def main() -> None:
     if not DATA.exists():
         raise SystemExit(f"5etools data not found: {DATA}")
     existing = load(OUT) if OUT.exists() else {}
+    existing_bestiary = load(BESTIARY_OUT) if BESTIARY_OUT.exists() else existing.get("bestiary", [])
     spell_lookup = load(DATA / "generated" / "gendata-spell-source-lookup.json")
     raw_spells = collect_json("spells/spells-*.json", "spell")
     spells = latest([x for x in raw_spells if allowed_source(x.get("source"))], lambda x: x.get("name", ""))
@@ -1580,7 +1488,7 @@ def main() -> None:
     raw_feats = load(DATA / "feats.json").get("feat", [])
     feats = latest(resolve_copies([x for x in raw_feats if allowed_source(x.get("source"))]), lambda x: x.get("name", ""))
     classes, subs, features, feature_texts, feature_sources = convert_classes()
-    optional_features, opt_feature_map = convert_optional_features()
+    optional_features = convert_optional_features()
     races, runtime_races, race_langs, race_traits = convert_races()
     backgrounds, runtime_backgrounds = convert_backgrounds()
 
@@ -1600,7 +1508,7 @@ def main() -> None:
     converted_feats = merge_existing([convert_feat(x) for x in feats], existing.get("feats", []), "feat")
     converted_spells = merge_existing([convert_spell(x, spell_lookup) for x in spells], existing.get("spells", []), "spell")
     converted_items = merge_existing([convert_item(x) for x in items], existing.get("items", []), "item")
-    bestiary = merge_existing(bestiary, existing.get("bestiary", []), "creature")
+    bestiary = merge_existing(bestiary, existing_bestiary, "creature")
 
     class_runtime = {}
     for row in classes:
@@ -1623,31 +1531,29 @@ def main() -> None:
             "subs": [x["name"] for x in subs.get(name, [])],
             **({"grants": row["grants"]} if row.get("grants") else {}),
         }
-    mechanics = convert_mechanics_options()
+    # The app reads only what ships in `output`; the full records stay in the audit below.
     output = {
-        "meta": {"schemaVersion": 2, "cutoff": CUTOFF, "exception": "XPHB Ranger and Ranger subclasses only", "report": "content-report.json"},
+        "meta": {"schemaVersion": 3, "cutoff": CUTOFF, "exception": "XPHB Ranger and Ranger subclasses only", "report": "content-report.json"},
         "sources": sorted(SOURCES.values(), key=lambda x: (x["published"], x["code"])),
-        "classes": classes, "races": races, "backgrounds": backgrounds,
-        "subs": subs, "features": features, "optionalFeatures": optional_features,
+        "subs": subs, "optionalFeatures": optional_features,
         "feats": converted_feats,
         "spells": converted_spells,
         "items": converted_items,
-        "rewards": [with_grants({**provenance(x, "reward"), "name": x["name"], "type": x.get("type"), "text": render_text(x.get("entries", []))}, x) for x in rewards],
-        "bestiary": bestiary,
         "featureTexts": feature_texts,
         "runtime": {
             "classes": class_runtime,
             "races": runtime_races,
             "raceLangs": race_langs,
             "raceTraits": race_traits,
-            "optionalFeatureMap": opt_feature_map,
             "backgrounds": runtime_backgrounds,
             "featureSources": feature_sources,
-            **mechanics,
         },
-        "skippedClasses": [],
     }
-    counts = {k: len(v) if isinstance(v, list) else sum(len(x) for x in v.values()) if k == "subs" else len(v) for k, v in output.items() if k in {"classes", "races", "backgrounds", "subs", "features", "optionalFeatures", "feats", "spells", "items", "rewards", "bestiary"}}
+    audited = {
+        **output, "classes": classes, "races": races, "backgrounds": backgrounds, "features": features, "bestiary": bestiary,
+        "rewards": [with_grants({**provenance(x, "reward"), "name": x["name"], "type": x.get("type"), "text": render_text(x.get("entries", []))}, x) for x in rewards],
+    }
+    counts = {k: len(v) if isinstance(v, list) else sum(len(x) for x in v.values()) if k == "subs" else len(v) for k, v in audited.items() if k in {"classes", "races", "backgrounds", "subs", "features", "optionalFeatures", "feats", "spells", "items", "rewards", "bestiary"}}
     output["meta"]["counts"] = counts
 
     leaked = []
@@ -1660,7 +1566,7 @@ def main() -> None:
             for key, child in value.items(): check(child, f"{path}.{key}" if path else key)
         elif isinstance(value, list):
             for i, child in enumerate(value): check(child, f"{path}[{i}]")
-    check(output)
+    check(audited)
     if leaked:
         raise SystemExit("Unrelated XPHB records leaked: " + ", ".join(leaked[:20]))
     unresolved = Counter()
@@ -1671,7 +1577,7 @@ def main() -> None:
             for child in value.values(): scan_tags(child)
         elif isinstance(value, list):
             for child in value: scan_tags(child)
-    scan_tags(output)
+    scan_tags(audited)
     if unresolved:
         raise SystemExit("Unresolved 5etools tags: " + ", ".join(f"{k}={v}" for k, v in unresolved.most_common()))
     ids = []
@@ -1684,7 +1590,7 @@ def main() -> None:
         elif isinstance(value, list):
             for child in value:
                 collect_ids(child)
-    collect_ids(output)
+    collect_ids(audited)
     duplicate_ids = sorted(x for x, count in Counter(ids).items() if count > 1)
     if duplicate_ids:
         raise SystemExit("Duplicate canonical IDs: " + ", ".join(duplicate_ids[:20]))
@@ -1730,8 +1636,9 @@ def main() -> None:
     REPORT.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     bundle_art(sorted({entry["art"] for entry in runtime_races.values() if entry.get("art")}))
-    OUT.write_text(json.dumps(output, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    print(f"Baked {OUT} ({OUT.stat().st_size / 1048576:.1f} MiB)")
+    for path, data in ((OUT, output), (BESTIARY_OUT, bestiary)):
+        path.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        print(f"Baked {path} ({path.stat().st_size / 1048576:.1f} MiB)")
     print(json.dumps(counts, indent=2, sort_keys=True))
 
 

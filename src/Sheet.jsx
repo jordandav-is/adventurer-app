@@ -1,6 +1,6 @@
-import { ABILITIES, ABIL_NAMES, ALL_SKILLS, ANCESTRIES, ARCANUM_UNLOCK, ASI, CANTRIPS_KNOWN, CHOICE_KEYS, CLASSES, DMG_TYPES, INVOCATIONS, INVOCATION_DATA, ITEM_TYPES, PACT, PREP_ALL_CLASSES, PROF_TEXT, RACES, SKILL_ABIL, SPELL_ABILITY, SPELL_LVL_HINT, STYLE_DESC, baseSubName } from "./data.js";
-import { EFFECT_BY_KEY, EFFECT_LIB, SUMMON_LIB, allKnownCantrips, allSubFeats, ammoRowFor, applyEffectPatch, armorClass, attuneBlocker, attunedRows, attunementCap, b64uFromBytes, bladeRiderTier, bytesFromB64u, canEquip, characterChoiceGroups, classLevel, consumableEffectKey, crShow, creatureByName, describeCustomFx, effDefOf, effEnds, effMaxHp, effectiveAbilities, effectsOf, equippedOf, featChoiceOf, featChoiceSummary, featEffects, featureBuckets, featureItems, featHpBonus, findItem, fmtMod, fxMods, gearMods, hasEffect, hasStyle, hasSub, healingDiceFor, grantAbilityFor, grantLabel, grantTrackerFor, grantsFor, instMaxHp, isArmorType, isEquippable, isBladeCantrip, isConcDef, isConcInst, isConsumableRow, isWeaponType, knownSpellNames, maxSpellLevel, minionApplyHp, minionAttackRolls, minionHp, minionSaves, minionSkills, minionsOf, mod, pipeBytes, portraitBrief, profBonus, profSummary, round2, schoolName, searchRank, shareCustomsFor, sourceOf, speedOf, spellCapacity, spellFitsClass, spellGrantsOf, spellSlots, spiritAc, spiritDefFromSpell, spiritHp, strikeProfile, subSpellData, bonusProfsOf, summonDefFor, summonFormsFor, summonerSpellAtk, totalLevel, useRecipe, useTrackersFor, usesAmmo } from "./rules.js";
-import { EMPTY_CUSTOM, SRD_SRC, __BESTIARY, __SOURCES, creatureSrcOf, isSourceEnabled, sourceCodesOf, sourceLabelOf, spellSrcOf, srcSpells, uid } from "./compendium.js";
+import { ABILITIES, ABIL_NAMES, ALL_SKILLS, ANCESTRIES, ARCANUM_UNLOCK, CANTRIPS_KNOWN, CHOICE_KEYS, CLASSES, DMG_TYPES, INVOCATIONS, ITEM_TYPES, PACT, PREP_ALL_CLASSES, PROF_TEXT, RACES, SKILL_ABIL, SPELL_ABILITY, baseSubName } from "./data.js";
+import { EFFECT_BY_KEY, EFFECT_LIB, SUMMON_LIB, allKnownCantrips, ammoRowFor, applyEffectPatch, armorClass, attuneBlocker, attunedRows, attunementCap, b64uFromBytes, bladeRiderTier, bytesFromB64u, canEquip, characterChoiceGroups, classLevel, consumableEffectKey, crShow, creatureByName, describeCustomFx, effDefOf, effEnds, effMaxHp, effectiveAbilities, effectsOf, equippedOf, featChoiceSummary, featEffects, featureBuckets, featureItems, featHpBonus, findItem, fmtMod, fxMods, gearMods, hasEffect, hasStyle, hasSub, healingDiceFor, grantAbilityFor, grantLabel, grantTrackerFor, grantsFor, instMaxHp, isArmorType, isBladeCantrip, isConcDef, isConcInst, isConsumableRow, isWeaponType, knownSpellNames, maxSpellLevel, minionApplyHp, minionAttackRolls, minionHp, minionSaves, minionSkills, minionsOf, mod, pipeBytes, portraitBrief, profBonus, profSummary, round2, schoolName, searchRank, shareCustomsFor, sourceOf, speedOf, spellCapacity, spellFitsClass, spellGrantsOf, spellSlots, spiritAc, spiritDefFromSpell, spiritHp, strikeProfile, subSpellData, bonusProfsOf, summonDefFor, summonFormsFor, summonerSpellAtk, totalLevel, useRecipe, useTrackersFor, usesAmmo } from "./rules.js";
+import { EMPTY_CUSTOM, __BESTIARY, __SOURCES, optionsOfType, sourceCodesOf, srcSpells, styleSummary, uid } from "./compendium.js";
 import React, { useEffect, useState } from "react";
 import { CLASS_THEMES, ClassTag, ICON_PATHS, Icon, LazyList, Portrait, SpellPickGrid, PortraitButton, T, __showLore, btn, card, cornerBtn, lorePress } from "./ui.jsx";
 import { DiceTray, RollTray, roll, rollFeatures, rollNotes } from "./dice.jsx";
@@ -392,7 +392,7 @@ function InvocationManager({ ch, onInvocations, readOnly }) {
   const knownCantrips = ch.spells?.Warlock?.cantrips || [];
   const hasEB = knownCantrips.some((n) => /eldritch blast/i.test(n));
   const reqMet = (req) => !req || (req === "eldritch blast cantrip" ? hasEB : ch.pactBoon === req);
-  const options = INVOCATION_DATA.filter(([n, lvl, req, src, sources]) => !mine.includes(n) && wl.level >= lvl && isSourceEnabled({ src, sources }));
+  const options = optionsOfType("EI").filter((o) => !mine.includes(o.name) && wl.level >= (o.minLevel || 0));
   return (
       <div style={{ ...card, padding: 16, marginTop: 14 }}>
       <div style={{ color: T.gold, fontFamily: "Georgia, serif", fontSize: 17, marginBottom: 4 }}>Eldritch Invocations</div>
@@ -411,7 +411,7 @@ function InvocationManager({ ch, onInvocations, readOnly }) {
         <div style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 70, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={() => setOpen(false)}>
           <div style={{ ...card, width: "min(560px, 100%)", maxHeight: "75vh", overflowY: "auto", borderRadius: "16px 16px 0 0", padding: 16, paddingBottom: "calc(16px + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
             <div style={{ color: T.gold, fontFamily: "Georgia, serif", marginBottom: 8 }}>Learn an invocation</div>
-            {options.map(([n, lvl, req]) => {
+            {options.map(({ name: n, minLevel: lvl = 0, req }) => {
               const ok = reqMet(req);
               return (
                 <div key={n} {...lorePress(n)} onClick={() => { if (!ok) return; onInvocations([...mine, n]); setOpen(false); }}
@@ -489,7 +489,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
     const data = e && subSpellData(e.subclass, clsName, customs);
     if (!data || data.type !== "expanded") return [];
     return Object.entries(data.spells).filter(([lvl]) => +lvl <= e.level)
-      .flatMap(([, arr]) => arr).map((n) => pool.find((sp) => sp.name === n) || { name: n, level: SPELL_LVL_HINT[n] || 1, school: "", classes: clsName });
+      .flatMap(([, arr]) => arr).map((n) => pool.find((sp) => sp.name === n) || { name: n, level: 1, school: "", classes: clsName });
   };
   const listFor = (clsName, kind, arcLvl) => {
     if (kind === "boas") {
@@ -523,7 +523,7 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
     onSpells({ ...book, [clsName]: { cantrips: [], spells: [], ...(book[clsName] || {}), arcanum: arc } });
   };
 
-  const spLvl = (n) => pool.find((sp) => sp.name === n)?.level ?? SPELL_LVL_HINT[n] ?? 1;
+  const spLvl = (n) => pool.find((sp) => sp.name === n)?.level ?? 1;
   const slotsAll = spellSlots(ch.classes) || [];
   const usedSlotsArr = ch.usedSlots || [];
   const pactAll = wl ? PACT(wl.level) : null;
@@ -569,7 +569,6 @@ function SpellManager({ ch, customs, onSpells, onUpdate, onPrepare, onUse, readO
     byLevel(grantedNow).forEach(([l, arr]) => addGroup(+l, (subData.label || "Granted").replace(/\s*\(always prepared\)/, " · always prepared"), arr, T.green));
     Object.entries(mine.arcanum || {}).forEach(([l, n]) => addGroup(+l, "Mystic Arcanum", [n], "#b48ead"));
   });
-  if (classLevel(ch, "Ranger") >= 1) addGroup(1, "Favored Enemy · always prepared", ["Hunter's Mark"], T.green);
   {
     const GRANT_TINT = { race: "#8fbcbb", feat: "#8fbcbb", background: "#8fbcbb", invocation: "#b48ead", "pact boon": "#b48ead", class: T.green, subclass: T.green, item: T.gold };
     const byLabel = new Map();
@@ -2726,7 +2725,7 @@ function Sheet({ ch: storedCh, onBack, onLevelUp, onDelete, onSpells, onNotes, o
           {ch.choices && Object.entries(ch.choices).filter(([k]) => !CHOICE_KEYS.has(k)).map(([k, v]) => (
             <div key={k} style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>{k}: {v.map((n, i) => <span key={n} {...lorePress(n)}>{i > 0 ? ", " : ""}{n}</span>)}</div>
           ))}
-          {ch.styles?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Fighting Styles: {ch.styles.map((f) => `${f} (${STYLE_DESC[f]})`).join(" · ")}</div>}
+          {ch.styles?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Fighting Styles: {ch.styles.map((f) => `${f} (${styleSummary(f)})`).join(" · ")}</div>}
           <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Proficiencies ({ch.classes[0].name}): {PROF_TEXT[ch.classes[0].name]}{bonusProfsOf(ch, customs).map((p) => ` — plus ${p.source}: ${profSummary(p)}`).join("")}{ch.classes.length > 1 ? " — plus multiclass grants (see Chronicle)" : ""}</div>
           {ch.languages?.length > 0 && <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Languages: {ch.languages.map((l, i) => <span key={l + i} {...lorePress(l)}>{i > 0 ? ", " : ""}{l}</span>)}</div>}
           <div style={{ color: T.dim, fontSize: 13, marginTop: 8 }}>Racial traits: {RACES[ch.race].traits.map((t, i) => <span key={t} {...lorePress(t.replace(/\s*\(.*$/, ""))} onClick={() => openUse(t.replace(/\s*\(.*$/, ""))} style={{ cursor: "pointer" }}>{i > 0 ? " · " : ""}{t}</span>)}{ch.racialChoices?.ancestry ? ` · ${ch.racialChoices.ancestry} dragon ancestry (${ANCESTRIES[ch.racialChoices.ancestry]})` : ""}{ch.racialChoices?.cantrip ? ` · Cantrip: ${ch.racialChoices.cantrip}` : ""}{ch.racialChoices?.lineage ? ` · Lineage gift: ${ch.racialChoices.lineage === "darkvision" ? "Darkvision 60 ft" : "an extra skill proficiency"}` : ""}</div>

@@ -1,7 +1,6 @@
-/* Network-first service worker: always tries the network for fresh builds,
-   falls back to cache when the tavern has no signal. Cache name is versioned
-   by build via query param busting on registration. */
-const CACHE = "ledger-v2";
+/* Fingerprinted build assets (the app bundle, the compendium, the bestiary) are served from the cache once fetched;
+   everything else is network-first and falls back to the cache when the tavern has no signal. */
+const CACHE = "ledger-v3";
 
 self.addEventListener("install", (e) => {
   self.skipWaiting();
@@ -13,19 +12,21 @@ self.addEventListener("activate", (e) => {
   );
 });
 
+const fetchAndCache = (request, opts) => fetch(request, opts).then((res) => {
+  if (res.ok) {
+    const copy = res.clone();
+    caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
+  }
+  return res;
+});
+
 self.addEventListener("fetch", (e) => {
   // same-origin GETs only: sync/API traffic must never land in the offline cache
   if (e.request.method !== "GET" || !e.request.url.startsWith(self.location.origin)) return;
+  if (new URL(e.request.url).pathname.includes("/assets/")) {
+    e.respondWith(caches.match(e.request).then((hit) => hit || fetchAndCache(e.request)));
+    return;
+  }
   const opts = e.request.mode === "navigate" ? { cache: "reload" } : undefined;
-  e.respondWith(
-    fetch(e.request, opts)
-      .then((res) => {
-        if (res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
-        }
-        return res;
-      })
-      .catch(() => caches.match(e.request))
-  );
+  e.respondWith(fetchAndCache(e.request, opts).catch(() => caches.match(e.request)));
 });

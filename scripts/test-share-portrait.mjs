@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { b64uFromBytes, bytesFromB64u, portraitBrief } from "../src/rules.js";
 import { RACES, CLASSES, ABILITIES } from "../src/data.js";
-import { EMPTY_CUSTOM } from "../src/compendium.js";
+import { EMPTY_CUSTOM, fetchBaseCompendium } from "../src/compendium.js";
+
+// Races and classes come from the baked compendium, which the app fetches by URL.
+globalThis.fetch = async (url) => new Response(await readFile(url));
+await fetchBaseCompendium();
 
 const pipeBytes = async (bytes, transform) =>
   new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(transform)).arrayBuffer());

@@ -1,6 +1,6 @@
-import { ABILITIES, ALL_SKILLS, CLASSES, CLASS_BLURB, FEAT_CATS, FEAT_MECHANICS, LANGS, MANEUVERS, PROF_TEXT, SRD_FOOT, SUB_LORE, baseSubName } from "./data.js";
-import { allFeats, crShow, featBlockedBy, featGrantedSpells, featureBody, fmtMod, infoFor, mod, schoolName, searchRank, sourceOf, spellFitsClass, subSpellData } from "./rules.js";
-import { srcSpells } from "./compendium.js";
+import { ABILITIES, ALL_SKILLS, CLASSES, CLASS_BLURB, FEAT_MECHANICS, LANGS, PROF_TEXT, baseSubName } from "./data.js";
+import { allFeats, crShow, featBlockedBy, featGrantedSpells, featureBody, fmtMod, infoFor, mod, schoolName, searchRank, sourceOf, spellFitsClass, subSpellData, subclassOf } from "./rules.js";
+import { optionsOfType, srcSpells } from "./compendium.js";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { clampFrame, conjure, ensurePortraitRecord, flushAssets, forge, frameRect, frameStyle, importPhoto, importModel, referenceImagePayload, thumbOf, useAssetUrl } from "./portrait.js";
 const StageView = lazy(() => import("./stage-view.jsx"));
@@ -168,8 +168,8 @@ function StatBlock({ c }) {
     </div>
   );
 }
-function FeatureLine({ name, cls, customs }) {
-  const body = featureBody(name, cls, customs);
+function FeatureLine({ name, cls, sub, customs }) {
+  const body = featureBody(name, cls, customs, sub);
   return (
     <div style={{ marginTop: 8 }}>
       <span {...lorePress(name)} style={{ color: T.ink, fontWeight: 700, fontSize: 13.5 }}>{name}</span>
@@ -179,17 +179,15 @@ function FeatureLine({ name, cls, customs }) {
 }
 function SubclassDetail({ name, cls, customs, nowLevel = 1, terrain }) {
   const base = baseSubName(name);
-  const lore = SUB_LORE[base];
-  const custom = !lore && Object.values(customs?.subs || {}).flat().find((s) => s.name === name || s.name === base);
+  const record = subclassOf(base, customs)?.record;
+  if (!record) return null;
   const spellName = base === "Circle of the Land" ? (terrain ? `${base} (${terrain})` : null) : name;
   const sd = spellName ? subSpellData(spellName, cls, customs) : null;
-  const featLevels = lore
-    ? Object.entries(lore.features)
-    : custom ? Object.entries(custom.feats || {}).map(([l, names]) => [l, names.map((n) => ({ n, t: featureBody(n, cls, customs) }))]) : [];
-  if (!lore && !custom) return null;
+  // A subclass's opening feature shares its name and introduces it.
+  const intro = featureBody(record.name, cls, customs, record.name);
   return (
     <div style={{ marginTop: 12, borderTop: `1px solid ${T.edge}`, paddingTop: 10 }}>
-      {lore?.flavor && <div style={{ color: T.ink, fontSize: 13, fontStyle: "italic", lineHeight: 1.6, opacity: 0.9 }}>{lore.flavor}</div>}
+      {intro && <div style={{ color: T.ink, fontSize: 13, fontStyle: "italic", lineHeight: 1.6, opacity: 0.9, whiteSpace: "pre-line" }}>{intro}</div>}
       {base === "Circle of the Land" && !terrain && (
         <div style={{ color: "#b48ead", fontSize: 12, marginTop: 8 }}>Each land grants its own always-prepared circle spells — choose a terrain to see them.</div>
       )}
@@ -204,15 +202,15 @@ function SubclassDetail({ name, cls, customs, nowLevel = 1, terrain }) {
           ))}
         </div>
       )}
-      {featLevels.sort((a, b) => a[0] - b[0]).map(([l, fx]) => (
+      {Object.entries(record.feats || {}).map(([l, fx]) => [l, fx.filter((f) => f !== record.name)]).filter(([, fx]) => fx.length).sort((a, b) => a[0] - b[0]).map(([l, fx]) => (
         <div key={l} style={{ marginTop: 10 }}>
           <div style={{ color: T.gold, fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase" }}>
             {cls} level {l}{+l <= nowLevel ? <span style={{ color: T.green }}> — you gain this now</span> : ""}
           </div>
-          {fx.map((f) => <FeatureLine key={f.n} name={f.n} cls={cls} customs={customs} />)}
+          {fx.map((f) => <FeatureLine key={f} name={f} cls={cls} sub={record.name} customs={customs} />)}
         </div>
       ))}
-      <div style={{ color: T.dim, fontSize: 11, marginTop: 10 }}>{lore ? SRD_FOOT : "Custom content — imported feature text appears here when available."}</div>
+      <div style={{ color: T.dim, fontSize: 11, marginTop: 10 }}>{record.src ? sourceOf(record) : "Custom content — imported feature text appears here when available."}</div>
     </div>
   );
 }
@@ -659,7 +657,8 @@ function FeatChooser({ customs, abilities, level, caster, held = [], styles = []
     .filter((f) => !held.includes(f.name))
     .filter((f) => !(f.fx?.style && styles.includes(f.fx.style)))
     .filter((f) => allowEpic || f.cat !== "Epic Boon");
-  const cats = ["All", ...FEAT_CATS.filter((c) => pool.some((f) => f.cat === c))];
+  const kinds = [...new Set(pool.map((f) => f.cat))];
+  const cats = ["All", ...(kinds.length > 1 ? kinds : [])];
   const needle = q.trim().toLowerCase();
   const shown = pool.filter((f) =>
     (cat === "All" || f.cat === cat) &&
@@ -761,7 +760,7 @@ function FeatPickPanel({ pick: pk, value, set, customs, level = 20, skillsTaken,
       {pk.allSkills && <div style={{ color: T.green, fontSize: 12, marginTop: 8 }}>Grants proficiency in every skill — the sheet marks them all.</div>}
       {pk.expertise?.n > 0 && chipRow("Expertise (double proficiency)", expPool, "expertise", pk.expertise.n)}
       {pk.langs?.n > 0 && chipRow("Languages", LANGS.filter((l) => !knownLangs.includes(l) && !(value.langs || []).includes(l)).concat(value.langs || []).sort(), "langs", pk.langs.n, undefined, true)}
-      {pk.maneuvers?.n > 0 && chipRow("Battle Master maneuvers · long-press to read", Object.keys(MANEUVERS), "maneuvers", pk.maneuvers.n, undefined, true)}
+      {pk.maneuvers?.n > 0 && chipRow("Battle Master maneuvers · long-press to read", optionsOfType("MV:B").map((o) => o.name), "maneuvers", pk.maneuvers.n, undefined, true)}
       {pk.weapons?.n > 0 && chipRow("Weapon proficiencies · long-press to read", weaponPool, "weapons", pk.weapons.n, undefined, true)}
       {grants.length > 0 && (
         <div style={{ color: T.green, fontSize: 12, marginTop: 8 }}>

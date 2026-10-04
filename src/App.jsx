@@ -1,16 +1,18 @@
 import { AccountPanel } from "./account.jsx";
-import { EMPTY_CUSTOM, __BASE, exportLedger, fetchBaseCompendium, loadChars, loadCustom, loadSrcPrefs, mergeCompendium, mergeLedger, saveChars, saveCustom, saveSrcPrefs, setSourceExclusions, stripBase, unionCustoms } from "./compendium.js";
+import { EMPTY_CUSTOM, __BASE, exportLedger, fetchBaseCompendium, loadBestiary, loadChars, loadCustom, loadSrcPrefs, mergeCompendium, mergeLedger, saveChars, saveCustom, saveSrcPrefs, setSourceExclusions, stripBase, unionCustoms } from "./compendium.js";
 import { SYNC_URL } from "./sync-config.js";
 import { flushAssets } from "./portrait.js";
 import { effMaxHp, effectsOf, foldStarredSpells, totalLevel } from "./rules.js";
 import { useEffect, useRef, useState } from "react";
-import { ClassTag, GLOBAL_CSS, Icon, LoreSheet, Portrait, SHELL_STYLE, T, card } from "./ui.jsx";
+import { ClassTag, GLOBAL_CSS, Icon, LoreSheet, Portrait, SHELL_STYLE, T, btn, card } from "./ui.jsx";
 import { InitiativeOverlay, roll } from "./InitiativeEasterEgg.jsx";
 import { CreateWizard, HorizonArt } from "./CreateWizard.jsx";
 import { HomebrewForge } from "./HomebrewForge.jsx";
 import { LevelUp } from "./LevelUp.jsx";
 import { Sheet, SourcebookSheet, decodeShare } from "./Sheet.jsx";
 import { Roll20Transfer } from "./Roll20Transfer.jsx";
+// Characters made before the compendium named these subraces the old way.
+const LEGACY_RACES = { "Aasimar (Protector)": "Protector Aasimar", "Aasimar (Scourge)": "Scourge Aasimar", "Aasimar (Fallen)": "Fallen Aasimar" };
 export default function App() {
   const [chars, setChars] = useState(null);
   const [view, setView] = useState("roster");
@@ -46,35 +48,38 @@ export default function App() {
     applySrcOff(next);
   };
 
+  const [bootError, setBootError] = useState(null);
+  const [, setBestiaryLoaded] = useState(false);
   useEffect(() => {
+    if (bootError) return;
     (async () => {
-      const base = await fetchBaseCompendium();
+      let base;
+      try { base = await fetchBaseCompendium(); } catch (e) { setBootError(e.message || "offline"); return; }
+      loadBestiary().then(() => setBestiaryLoaded(true));
       const [cs, stored, srcPrefs] = await Promise.all([loadChars(), loadCustom(), loadSrcPrefs()]);
       setSourceExclusions(srcPrefs);
       setSrcOff(srcPrefs);
-      let effective = stored;
-      if (base) {
-        effective = mergeCompendium(stored, base).customs;
-        const slim = stripBase(stored, base);
-        const shrunk = (stored.spells || []).length !== slim.spells.length || (stored.items || []).length !== slim.items.length
-          || (stored.feats || []).length !== slim.feats.length || Object.keys(stored.featureTexts || {}).length !== Object.keys(slim.featureTexts).length
-          || Object.values(stored.subs || {}).flat().length !== Object.values(slim.subs).flat().length;
-        if (shrunk) saveCustom(slim);
-      }
+      let effective = mergeCompendium(stored, base).customs;
+      const slim = stripBase(stored, base);
+      const shrunk = (stored.spells || []).length !== slim.spells.length || (stored.items || []).length !== slim.items.length
+        || (stored.feats || []).length !== slim.feats.length || Object.keys(stored.featureTexts || {}).length !== Object.keys(slim.featureTexts).length
+        || Object.values(stored.subs || {}).flat().length !== Object.values(slim.subs).flat().length;
+      if (shrunk) saveCustom(slim);
       effective = { ...effective, spells: foldStarredSpells(effective.spells || []) };
       setCustoms(effective);
 
       const names = new Set(effective.spells.map((sp) => sp.name));
-      let starFixes = 0;
+      let fixes = 0;
       const fixName = (n) => {
         if (typeof n === "string" && /\*$/.test(n)) {
           const plain = n.replace(/\*+$/, "");
-          if (!names.has(n) && names.has(plain)) { starFixes++; return plain; }
+          if (!names.has(n) && names.has(plain)) { fixes++; return plain; }
         }
         return n;
       };
-      const deStarChar = (ch) => ({
+      const migrate = (ch) => ({
         ...ch,
+        ...(LEGACY_RACES[ch.race] ? (fixes++, { race: LEGACY_RACES[ch.race] }) : {}),
         spells: Object.fromEntries(Object.entries(ch.spells || {}).map(([cls, b]) => [cls, {
           ...b,
           cantrips: (b.cantrips || []).map(fixName),
@@ -86,11 +91,11 @@ export default function App() {
         ...(ch.racialChoices?.cantrip ? { racialChoices: { ...ch.racialChoices, cantrip: fixName(ch.racialChoices.cantrip) } } : {}),
         ...(ch.choices ? { choices: Object.fromEntries(Object.entries(ch.choices).map(([k, v]) => [k, Array.isArray(v) ? v.map(fixName) : v])) } : {}),
       });
-      const migrated = cs.map(deStarChar);
-      if (starFixes) saveChars(migrated);
-      setChars(starFixes ? migrated : cs);
+      const migrated = cs.map(migrate);
+      if (fixes) saveChars(migrated);
+      setChars(fixes ? migrated : cs);
     })();
-  }, []);
+  }, [bootError]);
   const booted = chars !== null;
   useEffect(() => {
     if (!booted || !SYNC_URL) return;
@@ -131,6 +136,12 @@ export default function App() {
     cloud ? cloud.pushChars(next, prev) : (preload.current = { ...preload.current, chars: next, prevChars: preload.current?.prevChars ?? prev });
   };
 
+  if (bootError) return (
+    <div style={{ minHeight: "100vh", background: T.bg, display: "flex", flexDirection: "column", gap: 14, alignItems: "center", justifyContent: "center", color: T.dim, fontFamily: "Georgia, serif", padding: 24, textAlign: "center" }}>
+      The rulebooks could not be fetched ({bootError}). Check the connection and try again.
+      <button style={btn(true)} onClick={() => setBootError(null)}>Try again</button>
+    </div>
+  );
   if (chars === null) return (
     <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", color: T.dim, fontFamily: "Georgia, serif" }}>
       Unsealing the vault…
@@ -315,7 +326,8 @@ export function SharedView({ token, onExit }) {
         // The compendium must hydrate the race and class tables before the link can be validated against them.
         const base = await fetchBaseCompendium();
         const payload = await decodeShare(token);
-        const customs = base ? mergeCompendium(payload.x, base).customs : payload.x;
+        const customs = mergeCompendium(payload.x, base).customs;
+        loadBestiary().then(() => live && setState((s) => ({ ...s })));
         if (!live) return;
         document.title = `${payload.c.name} · ${payload.c.classes.map((c) => `${c.name} ${c.level}`).join(" / ")} — The Adventurer's Ledger`;
         setState({ status: "ok", ch: payload.c, customs, when: payload.t });

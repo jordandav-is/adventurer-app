@@ -1,5 +1,5 @@
-import { ABILITIES, ABILITY_INFO, ABIL_NAMES, ANCESTRIES, ASI, BACKGROUNDS, BOON_INFO, CASTING_CLASSES, CHOICE_GROUPS, CLASSES, CLASS_GEAR_PROFS, CORE_FEATURE_INFO, DMG_TYPES, DMG_WORD_CODE, FEATS, FEATURE_TEXT, FEAT_INDEX, FEAT_MECHANICS, FEAT_PICKS, GRANTED_SUB_CLASSES, HALF1_SLOTS, HALF_SLOTS, HEALING_TIERS, INVOCATION_DATA, INVOCATION_INFO, ITEM_TYPES, LAND_TERRAINS, LANG_INFO, MANEUVERS, MC_GEAR_PROFS, MC_PREREQ, MC_PROFS, MC_SLOTS, METAMAGIC_INFO, PACT, POTION_EFFECT_ALIAS, PROF_TEXT, RACES, RANGER_PREPARED, SCHOOL_NAMES, SIZE_RANK, SKILL_ABIL, SKILL_INFO, SOURCE_ABBR, SPELLS_KNOWN, SPELL_ABILITY, SRD_FOOT, STYLE_DESC, SUB_FEATS, SUB_LORE, WEAPON_PROPS, baseSubName, normSub, subFeatsFor } from "./data.js";
-import { EMPTY_CUSTOM, __BASE, __BESTIARY, __SRC_OFF, creatureSrcOf, isSourceEnabled, raceArtUrl, sourceLabelOf, srcSpells, stripBase } from "./compendium.js";
+import { ABILITIES, ABILITY_INFO, ABIL_NAMES, ANCESTRIES, ASI, BACKGROUNDS, CASTING_CLASSES, CHOICE_GROUPS, CLASSES, CLASS_GEAR_PROFS, CORE_FEATURE_INFO, DMG_TYPES, DMG_WORD_CODE, FEAT_MECHANICS, FEAT_PICKS, GRANTED_SUB_CLASSES, HALF1_SLOTS, HALF_SLOTS, HEALING_TIERS, ITEM_TYPES, LAND_TERRAINS, LANG_INFO, MC_GEAR_PROFS, MC_PREREQ, MC_PROFS, MC_SLOTS, PACT, POTION_EFFECT_ALIAS, PROF_TEXT, RACES, RANGER_PREPARED, SCHOOL_NAMES, SIZE_RANK, SKILL_ABIL, SKILL_INFO, SOURCE_ABBR, SPELLS_KNOWN, SPELL_ABILITY, SRD_FOOT, WEAPON_PROPS, baseSubName, normSub } from "./data.js";
+import { EMPTY_CUSTOM, __BASE, __BESTIARY, __SRC_OFF, classOptionsOf, isSourceEnabled, optionNamed, optionsOfType, raceArtUrl, sourceLabelOf, srcSpells, stripBase, styleSummary } from "./compendium.js";
 const mod = (s) => Math.floor((s - 10) / 2);
 const fmtMod = (m) => (m >= 0 ? `+${m}` : `${m}`);
 const profBonus = (lvl) => Math.ceil(lvl / 4) + 1;
@@ -46,9 +46,8 @@ function featureBody(rawName, cls, customs, sub) {
   const ft = customs?.featureTexts || {};
   const subKey = cls && sub ? `${cls}:${baseSubName(sub)}:` : null;
   return (subKey && (ft[subKey + name] || ft[subKey + strip]))
-    || (cls && (ft[`${cls}:${name}`] || ft[`${cls}:${strip}`] || FEATURE_TEXT[`${cls}:${name}`] || FEATURE_TEXT[`${cls}:${strip}`]))
+    || (cls && (ft[`${cls}:${name}`] || ft[`${cls}:${strip}`]))
     || ft[name] || ft[strip]
-    || FEATURE_TEXT[name] || FEATURE_TEXT[strip]
     || CORE_FEATURE_INFO[strip]
     || (/\bfeature\b$/i.test(strip) ? "Granted by your subclass at this level — read its entry for the details." : null);
 }
@@ -59,14 +58,14 @@ const featChoiceOf = (ch, name) => {
   const hit = Object.entries(choices).find(([k]) => String(k).toLowerCase().replace(/[^a-z0-9]/g, "") === targetNorm);
   return hit ? hit[1] : {};
 };
+const normName = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const MECHANICS_BY_NAME = new Map(Object.entries(FEAT_MECHANICS).map(([k, v]) => [normName(k), v]));
+const PICKS_BY_NAME = new Map(Object.entries(FEAT_PICKS).map(([k, v]) => [normName(k), v]));
 function featEffects(ch, customs) {
   const out = { hpPerLevel: 0, speed: 0, init: null, saves: [], mediumDexCap: 2, styles: [], sources: [] };
-  const feats = allFeats(customs || EMPTY_CUSTOM);
   (ch?.feats || []).forEach((n) => {
-    const normN = String(n || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-    const def = feats.find((f) => String(f.name || "").toLowerCase().replace(/[^a-z0-9]/g, "") === normN);
-    const fxKey = Object.keys(FEAT_MECHANICS).find((k) => String(k).toLowerCase().replace(/[^a-z0-9]/g, "") === normN);
-    const f = def?.fx || (fxKey ? FEAT_MECHANICS[fxKey] : null);
+    const def = featNamed(n, customs);
+    const f = def?.fx || MECHANICS_BY_NAME.get(normName(n));
     if (!f) return;
     if (f.hpPerLevel) { out.hpPerLevel += f.hpPerLevel; out.sources.push(n); }
     if (f.speed) { out.speed += f.speed; out.sources.push(n); }
@@ -98,31 +97,24 @@ function featBlockedBy(def, { abilities, level, caster, armor, martial }) {
   }
   return null;
 }
-const featPickOf = (name, def) => {
-  if (def?.pick) return def.pick;
-  const normN = String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const pkKey = Object.keys(FEAT_PICKS).find((k) => String(k).toLowerCase().replace(/[^a-z0-9]/g, "") === normN);
-  return pkKey ? FEAT_PICKS[pkKey] : null;
-};
+const featPickOf = (name, def) => def?.pick || PICKS_BY_NAME.get(normName(name)) || null;
 // ---- Spell grants: the one channel for every spell a character can cast that isn't a class-list pick.
 // Baked from 5etools' structured additionalSpells / attachedSpells blocks onto races, feats, classes, subclasses,
 // invocations, pact boons, backgrounds, and items. Each grant: { spell, level, how, cost, at, uses?, each?, resource?, ability?, castAt? }
 // cost: will · slot · daily · rest · limited · charges · resource · ritual · item.
 const GRANT_COST_TEXT = { will: "at will", slot: "", daily: "per long rest", rest: "per short rest", limited: "limited uses", charges: "item charges", ritual: "ritual only", item: "as the item describes" };
-const normName = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 const featRecord = (name, customs) => {
-  // The character's own feat record wins; a record without grants (the static fallback table) defers to the baked one.
-  const find = (key) => {
-    const own = allFeats(customs || EMPTY_CUSTOM).find((f) => normName(f.name) === key) || null;
-    const baked = (__BASE?.feats || []).find((f) => normName(f.name) === key) || null;
+  // The character's own feat record wins; a record without grants defers to the baked one.
+  const find = (n) => {
+    const own = featNamed(n, customs);
+    const baked = (__BASE?.feats || []).find((f) => normName(f.name) === normName(n)) || null;
     return own?.grants ? own : baked || own;
   };
-  const exact = find(normName(name));
+  const exact = find(name);
   if (exact?.grants) return exact;
-  const base = find(normName(baseSubName(name)));
+  const base = find(baseSubName(name));
   return base?.grants ? base : exact || base;
 };
-const optionRecord = (list, name) => (__BASE?.runtime?.[list] || []).find((x) => x.name === name) || null;
 const isCantripPick = (g) => /(^|\|)level=0(\||$)/.test(g.choose || "");
 // Names the character picked to fill a choose-a-spell grant (Magic Initiate's cantrips, a High Elf's wizard cantrip…).
 const chosenFor = (ch, kind, holder, g) => {
@@ -145,7 +137,13 @@ function grantChoiceGroups(customs) {
   })));
   return [...byKey.values()];
 }
-const allChoiceGroups = (customs) => [...CHOICE_GROUPS, ...grantChoiceGroups(customs)];
+// Tasha's optional class features are opt-in: one group per class, every option available from its level, none required.
+const optionalFeatureGroups = () => Object.keys(CLASSES).flatMap((cls) => {
+  const counts = {};
+  classOptionsOf(cls).forEach((o) => { counts[o.level] = (counts[o.level] || 0) + 1; });
+  return Object.keys(counts).length ? [{ key: `${cls} Optional Features`, cls, source: { classOptions: cls }, counts, optional: true }] : [];
+});
+const allChoiceGroups = (customs) => [...CHOICE_GROUPS, ...grantChoiceGroups(customs), ...optionalFeatureGroups()];
 function spellGrantsOf(ch, customs) {
   if (!ch) return [];
   const lvl = totalLevel(ch);
@@ -164,8 +162,8 @@ function spellGrantsOf(ch, customs) {
     const sub = c.subclass && (customs?.subs?.[c.name] || []).find((s) => s.name === c.subclass || s.name === baseSubName(c.subclass));
     if (sub) add("subclass", baseSubName(c.subclass), sub.grants, c.level, ["expanded", "prepared"]);
   });
-  (ch.invocations || []).forEach((n) => add("invocation", n, optionRecord("invocations", n)?.grants, lvl));
-  if (ch.pactBoon) add("pact boon", ch.pactBoon, optionRecord("pactBoons", ch.pactBoon)?.grants, lvl);
+  (ch.invocations || []).forEach((n) => add("invocation", n, optionNamed(n)?.grants, lvl));
+  if (ch.pactBoon) add("pact boon", ch.pactBoon, optionNamed(ch.pactBoon)?.grants, lvl);
   if (ch.background) add("background", ch.background, BACKGROUNDS[ch.background]?.grants, lvl);
   (ch.inventory || []).forEach((r) => { const it = findItem(r.name, customs); if (itemActive(r, it)) add("item", r.name, it.grants, lvl); });
   return out;
@@ -286,26 +284,10 @@ const isTechnique = (sp) => !(sp.classes || "").split(",").some((e) => {
 const choiceCum = (g, level) => Object.entries(g.counts).reduce((s, [l, n]) => s + (level >= +l ? n : 0), 0);
 const groupMatches = (g, clsName, subclass) => g.cls === clsName && (!g.sub || (subclass && subTokens(subclass).includes(normSub(g.sub))));
 function choiceOptionsFor(g, customs) {
-  if (g.key === "Maneuvers") {
-    return Object.keys(MANEUVERS).map((name) => ({ name })).sort((a, b) => a.name.localeCompare(b.name));
-  }
-  if (g.key === "Arcane Shot Options") {
-    const list = __BASE?.runtime?.arcaneShots || [];
-    if (list.length) return list.filter(isSourceEnabled).map((s) => ({ name: s.name })).sort((a, b) => a.name.localeCompare(b.name));
-  }
-  if (g.key === "Runes") {
-    const list = __BASE?.runtime?.runes || [];
-    if (list.length) return list.filter(isSourceEnabled).map((r) => ({ name: r.name })).sort((a, b) => a.name.localeCompare(b.name));
-  }
-  if (g.key === "Elemental Disciplines") {
-    const list = __BASE?.runtime?.elementalDisciplines || [];
-    if (list.length) return list.filter(isSourceEnabled).map((d) => ({ name: d.name, minLvl: d.minLevel || 0 })).sort((a, b) => (a.minLvl || 0) - (b.minLvl || 0) || a.name.localeCompare(b.name));
-  }
-  if (g.key === "Infusions") {
-    const list = __BASE?.runtime?.infusions || [];
-    if (list.length) return list.filter(isSourceEnabled).map((i) => ({ name: i.name, minLvl: i.minLevel || 0 })).sort((a, b) => (a.minLvl || 0) - (b.minLvl || 0) || a.name.localeCompare(b.name));
-  }
-  if (g.source.list && g.source.list.length) return g.source.list.map((n) => ({ name: n }));
+  if (g.source.type) return optionsOfType(g.source.type).map((o) => ({ name: o.name, minLvl: o.minLevel || 0 }))
+    .sort((a, b) => a.minLvl - b.minLvl || a.name.localeCompare(b.name));
+  if (g.source.classOptions) return classOptionsOf(g.source.classOptions).map((o) => ({ name: o.name, minLvl: o.level })).sort((a, b) => a.minLvl - b.minLvl || a.name.localeCompare(b.name));
+  if (g.source.list) return g.source.list.map((n) => ({ name: n }));
   if (g.source.spellChoose) {
     const f = spellChooseFilter(g.source.spellChoose);
     const levels = (f.level || ["0"]).map(Number);
@@ -334,7 +316,7 @@ function characterChoiceGroups(ch, customs) {
   const out = [];
   for (const g of allChoiceGroups(customs)) {
     const entry = ch.classes.find((c) => groupMatches(g, c.name, c.subclass));
-    if (!entry) continue;
+    if (!entry || (g.optional && !choiceCum(g, entry.level))) continue;
     const options = choiceOptionsFor(g, customs);
     if (!options.length) continue;
     const grants = Object.entries(g.grant || {}).flatMap(([l, arr]) => (entry.level >= +l ? arr : []));
@@ -746,10 +728,10 @@ const USE_TRACKERS = [
   { key: "favored-enemy-24", name: "Favored Enemy (free Hunter's Mark)", cls: "Ranger", when: (ch) => classLevel(ch, "Ranger") >= 1, max: (ch) => { const l = classLevel(ch, "Ranger"); return l >= 17 ? 6 : l >= 13 ? 5 : l >= 9 ? 4 : l >= 5 ? 3 : 2; }, per: "long" },
   { key: "tireless", name: "Tireless", cls: "Ranger", when: (ch) => classLevel(ch, "Ranger") >= 10, max: (ch) => Math.max(1, mod(ch.abilities.wis)), per: "long" },
   { key: "natures-veil", name: "Nature's Veil", cls: "Ranger", when: (ch) => classLevel(ch, "Ranger") >= 14, max: (ch) => Math.max(1, mod(ch.abilities.wis)), per: "long" },
-  { key: "healing-hands", name: "Healing Hands", when: (ch) => /^Aasimar/.test(ch.race), max: () => 1, per: "long" },
-  { key: "radiant-soul", name: "Radiant Soul", when: (ch) => ch.race === "Aasimar (Protector)" && totalLevel(ch) >= 3, max: () => 1, per: "long" },
-  { key: "radiant-consumption", name: "Radiant Consumption", when: (ch) => ch.race === "Aasimar (Scourge)" && totalLevel(ch) >= 3, max: () => 1, per: "long" },
-  { key: "necrotic-shroud", name: "Necrotic Shroud", when: (ch) => ch.race === "Aasimar (Fallen)" && totalLevel(ch) >= 3, max: () => 1, per: "long" },
+  { key: "healing-hands", name: "Healing Hands", when: (ch) => / Aasimar$/.test(ch.race), max: () => 1, per: "long" },
+  { key: "radiant-soul", name: "Radiant Soul", when: (ch) => ch.race === "Protector Aasimar" && totalLevel(ch) >= 3, max: () => 1, per: "long" },
+  { key: "radiant-consumption", name: "Radiant Consumption", when: (ch) => ch.race === "Scourge Aasimar" && totalLevel(ch) >= 3, max: () => 1, per: "long" },
+  { key: "necrotic-shroud", name: "Necrotic Shroud", when: (ch) => ch.race === "Fallen Aasimar" && totalLevel(ch) >= 3, max: () => 1, per: "long" },
   { key: "firbolg-magic", name: "Firbolg Magic", when: (ch) => ch.race === "Firbolg", max: () => 1, per: "short" },
   { key: "hidden-step", name: "Hidden Step", when: (ch) => ch.race === "Firbolg", max: () => 1, per: "short" },
   { key: "stones-endurance", name: "Stone's Endurance", when: (ch) => ch.race === "Goliath", max: () => 1, per: "short" },
@@ -1076,44 +1058,19 @@ function infoFor(rawName, customs) {
       body: item.text || null, foot: sourceOf(item),
     };
   }
-  const inv = INVOCATION_DATA.find(([n]) => n === name || n === strip);
-  if (inv) return { title: inv[0], meta: ["Eldritch Invocation", inv[1] > 0 ? `requires warlock ${inv[1]}` : "", inv[2] ? `requires ${inv[2]}` : ""].filter(Boolean).join(" · "), body: INVOCATION_INFO[inv[0]] || null, foot: sourceOf({ src: inv[3], sources: inv[4] }) || "Player's Handbook (2014)" };
-  const mmObj = (__BASE?.runtime?.metamagic || []).find((m) => m.name === name || m.name === strip);
-  if (METAMAGIC_INFO[name]) return { title: name, meta: "Metamagic", body: METAMAGIC_INFO[name], foot: sourceOf(mmObj) || "Player's Handbook (2014) p.101" };
-  const mvObj = (__BASE?.runtime?.maneuvers || {})[strip] || (__BASE?.runtime?.maneuvers || {})[name];
-  if (MANEUVERS[strip]) return { title: strip, meta: "Battle Master maneuver", body: MANEUVERS[strip] + "\n\nManeuvers ride on superiority dice — a Battle Master's own, or the single d6 the Martial Adept feat grants (regained on a short or long rest).", foot: sourceOf(mvObj) || "Player's Handbook (2014) p.73" };
-  const infusion = (__BASE?.runtime?.infusions || []).find((x) => x.name === name || x.name === strip);
-  if (infusion) return { title: infusion.name, meta: ["Artificer Infusion", infusion.minLevel ? `requires level ${infusion.minLevel}` : ""].filter(Boolean).join(" · "), body: infusion.desc || null, foot: sourceOf(infusion) };
-  const arcaneShot = (__BASE?.runtime?.arcaneShots || []).find((x) => x.name === name || x.name === strip);
-  if (arcaneShot) return { title: arcaneShot.name, meta: "Arcane Shot", body: arcaneShot.desc || null, foot: sourceOf(arcaneShot) };
-  const rune = (__BASE?.runtime?.runes || []).find((x) => x.name === name || x.name === strip);
-  if (rune) return { title: rune.name, meta: "Rune Knight Rune", body: rune.desc || null, foot: sourceOf(rune) };
-  const elemDisc = (__BASE?.runtime?.elementalDisciplines || []).find((x) => x.name === name || x.name === strip);
-  if (elemDisc) return { title: elemDisc.name, meta: ["Elemental Discipline", elemDisc.minLevel ? `requires monk ${elemDisc.minLevel}` : ""].filter(Boolean).join(" · "), body: elemDisc.desc || null, foot: sourceOf(elemDisc) };
-  const boonObj = (__BASE?.runtime?.pactBoons || []).find((b) => b.name === name || b.name === strip);
-  if (BOON_INFO[name]) return { title: name, meta: "Pact Boon", body: BOON_INFO[name], foot: sourceOf(boonObj) || "Player's Handbook (2014) p.107" };
-  const fs = strip.replace(/^Fighting Style:\s*/, "");
-  if (STYLE_DESC[fs] || STYLE_DESC[strip]) return { title: `Fighting Style: ${fs}`, meta: "Fighting Style", body: STYLE_DESC[fs] || STYLE_DESC[strip], foot: (STYLE_DESC[fs]?.includes("Tasha") || fs === "Blind Fighting" || fs === "Interception" || fs === "Superior Technique" || fs === "Thrown Weapon Fighting" || fs === "Unarmed Fighting" || fs === "Blessed Warrior" || fs === "Druidic Warrior" ? "Tasha's Cauldron of Everything p.41" : "Player's Handbook (2014) p.72") };
+  const opt = optionNamed(name) || optionNamed(strip) || optionNamed(strip.replace(/^Fighting Style:\s*/, ""));
+  if (opt && isSourceEnabled(opt)) return optionInfo(opt);
   if (LANG_INFO[name]) return { title: name, meta: "Language", body: LANG_INFO[name], foot: "Player's Handbook (2014) p.123" };
   if (ABILITY_INFO[name]) return { title: name, meta: "Ability score", body: ABILITY_INFO[name], foot: "Player's Handbook (2014) p.173" };
   if (SKILL_ABIL[name]) return { title: name, meta: `Skill · ${ABIL_NAMES[SKILL_ABIL[name]]}`, body: SKILL_INFO[name], foot: "Player's Handbook (2014) p.174" };
-  const cleanNorm = String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const stripNorm = String(strip || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const feat = allFeats(customs || EMPTY_CUSTOM).find((f) => {
-    const fn = String(f.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-    return fn === cleanNorm || fn === stripNorm || cleanNorm.startsWith(fn);
-  });
+  const feat = featNamed(name, customs) || featNamed(strip, customs) || allFeats(customs).find((f) => normName(name).startsWith(normName(f.name)));
   if (feat) return { title: feat.name, meta: ["Feat", feat.prereq && `Prerequisite: ${feat.prereq}`].filter(Boolean).join(" · "), body: feat.text || feat.desc || null, foot: sourceOf(feat) };
   const rt = (__BASE?.runtime?.raceTraits || {})[name] || (__BASE?.runtime?.raceTraits || {})[strip];
   if (rt) return { title: rt.name, meta: rt.race ? `Racial trait · ${rt.race}` : "Racial trait", body: rt.desc, foot: sourceOf(rt) };
-  const optF = (__BASE?.runtime?.optionalFeatureMap || {})[name] || (__BASE?.runtime?.optionalFeatureMap || {})[strip];
-  if (optF) return { title: optF.name, meta: "Optional Feature", body: optF.desc, foot: sourceOf(optF) };
   const raceName = RACES[name] ? name : RACES[strip] ? strip : null;
   if (raceName) {
     const raceData = RACES[raceName];
-    // The baked race record carries every trait written out in full; the runtime entry only names them.
-    const record = (__BASE?.races || []).find((r) => r.name === raceName);
-    const traits = record?.text || (raceData.traits?.length ? raceData.traits.map((t) => `• ${t}`).join("\n") : null);
+    const traits = raceData.text || (raceData.traits?.length ? raceData.traits.map((t) => `• ${t}`).join("\n") : null);
     if (raceData.flavor || traits) {
       return {
         title: raceName,
@@ -1125,19 +1082,17 @@ function infoFor(rawName, customs) {
       };
     }
   }
-  for (const [cls, arr] of Object.entries(customs?.subs || {})) {
-    const s = arr.find((x) => (x.name === name || x.name === strip) && isSourceEnabled(x));
-    if (s) return { title: s.name, meta: `${cls} subclass`, body: Object.entries(s.feats).map(([l, fx]) => `Level ${l}: ${fx.join(", ")}`).join("\n"), foot: sourceOf(s) || "Long-press any feature name for its own entry." };
+  const sub = subclassOf(strip, customs);
+  if (sub && isSourceEnabled(sub.record)) {
+    const { cls, record } = sub;
+    const sd = subSpellData(record.name, cls, customs);
+    const lines = [
+      featureBody(record.name, cls, customs, record.name),
+      sd && `${sd.label}: ${Object.entries(sd.spells).map(([l, arr]) => `${cls} ${l}: ${arr.join(", ")}`).join("; ")}.`,
+      ...Object.entries(record.feats).map(([l, fx]) => `Level ${l}: ${fx.filter((f) => f !== record.name).join(", ")}`).filter((line) => !line.endsWith(": ")),
+    ];
+    return { title: record.name, meta: `${CLASSES[cls]?.subName || "Subclass"} · ${cls}`, body: lines.filter(Boolean).join("\n"), foot: sourceOf(record) || "Long-press any feature name for its own entry." };
   }
-  if (SUB_LORE[strip]) {
-    const sl = SUB_LORE[strip];
-    const sd = subSpellData(strip === "Circle of the Land" ? name : strip, sl.cls, customs);
-    const lines = [sl.flavor];
-    if (sd) { lines.push(`${sd.label} — ` + Object.entries(sd.spells).sort((a, b) => a[0] - b[0]).map(([l, arr]) => `${sl.cls} ${l}: ${arr.join(", ")}`).join("; ") + "."); }
-    Object.entries(sl.features).sort((a, b) => a[0] - b[0]).forEach(([l, fx]) => fx.forEach((f) => lines.push(`Level ${l} — ${f.n}. ${f.t}`)));
-    return { title: strip, meta: `${CLASSES[sl.cls].subName} · ${sl.cls}`, body: lines.join("\n"), foot: SRD_FOOT };
-  }
-  if (SUB_FEATS[strip]) return { title: strip, meta: "Subclass", body: Object.entries(SUB_FEATS[strip]).map(([l, fx]) => `Level ${l}: ${fx.join(", ")}`).join("\n"), foot: SRD_FOOT };
   const bgd = BACKGROUNDS[name] || BACKGROUNDS[strip];
   if (bgd) {
     const bgTitle = BACKGROUNDS[name] ? name : strip;
@@ -1166,7 +1121,6 @@ function infoFor(rawName, customs) {
     const scope = key.includes(":") ? key.split(":") : null;
     return { title: scope ? scope[scope.length - 1] : strip, meta: scope ? `Feature · ${scope.slice(0, -1).reverse().join(" · ")}` : "Feature", body: ft[key], foot: sourceOf(fSrc) || sourceOf(ft[key]) || SRD_FOOT };
   }
-  if (FEATURE_TEXT[name] || FEATURE_TEXT[strip]) return { title: strip, meta: "Feature", body: FEATURE_TEXT[name] || FEATURE_TEXT[strip], foot: sourceOf(fSrc) || SRD_FOOT };
   if (CORE_FEATURE_INFO[strip]) return { title: strip, meta: "Feature", body: CORE_FEATURE_INFO[strip], foot: sourceOf(fSrc) || "Player's Handbook (2014)" };
   const eff = EFFECT_LIB.find((x) => x.name === name || x.name === strip);
   if (eff) return { title: eff.name, meta: [eff.kind === "Condition" ? "Condition" : `${eff.kind} · trackable effect`, eff.conc && "Concentration", eff.dur].filter(Boolean).join(" · "), body: [eff.brief, eff.desc].filter(Boolean).join("\n"), foot: "Player's Handbook (2014) p.290" };
@@ -1177,40 +1131,45 @@ function infoFor(rawName, customs) {
   return null;
 }
 const allSubs = (cls, customs) => {
-  const imported = customs?.subs?.[cls] || [];
-  const activeImported = imported.filter(isSourceEnabled);
-  const activeNames = new Set(activeImported.map((sub) => sub.name));
-  const staticNames = (CLASSES[cls]?.subs || []).filter((name) => {
-    const record = imported.find((sub) => sub.name === name);
-    return !record || isSourceEnabled(record);
-  });
-  return staticNames.concat(activeImported.map((sub) => sub.name).filter((name) => !activeNames.has(name) || !staticNames.includes(name)));
+  const records = customs?.subs?.[cls] || [];
+  return [...new Set([...(CLASSES[cls]?.subs || []), ...records.map((s) => s.name)])].filter((name) => isSourceEnabled(records.find((s) => s.name === name)));
 };
-const customSubFeats = (subclass, level, customs) => {
-  for (const arr of Object.values(customs?.subs || {})) {
-    const hit = arr.find((s) => s.name === subclass || s.name === baseSubName(subclass));
-    if (hit) return hit.feats?.[level] || [];
+const subclassOf = (name, customs) => {
+  for (const [cls, arr] of Object.entries(customs?.subs || {})) {
+    const record = arr.find((s) => s.name === name || s.name === baseSubName(name));
+    if (record) return { cls, record };
   }
-  return [];
+  return null;
 };
-const allSubFeats = (subclass, level, customs) =>
-  SUB_FEATS[baseSubName(subclass || "")]
-    ? subFeatsFor(subclass, level)
-    : subFeatsFor(subclass, level).concat(customSubFeats(subclass, level, customs));
-const allFeats = (customs) => {
-  const imported = customs?.feats || [];
-  const map = new Map((imported.some((f) => f.canonical) ? [] : FEATS).map((f) => [f.name, f]));
-  imported.forEach((f) => {
-    const base = map.get(f.name);
-    const fx = FEAT_MECHANICS[f.name];
-    map.set(f.name, {
-      cat: base?.cat || "Imported", ...f,
-      ...(!f.canonical && !f.bump?.length && fx?.bump ? { bump: fx.bump } : {}),
-    });
-  });
+const allSubFeats = (subclass, level, customs) => (subclass && subclassOf(subclass, customs)?.record.feats?.[level]) || [];
+// Feats are read on every render, so each customs object keeps its filtered list until the source toggles change.
+const featCache = new WeakMap();
+const featsOf = (customs) => {
+  customs ||= EMPTY_CUSTOM;
+  const hit = featCache.get(customs);
+  if (hit?.off === __SRC_OFF) return hit;
   // A feat whose baked proficiencies include a weapon pick (Weapon Master: four weapons) collects that pick like any other.
   const withProfPicks = (pick, f) => (f.profs?.weapons?.choose ? { ...(pick || {}), weapons: { n: f.profs.weapons.choose.n } } : pick);
-  return [...map.values()].filter(isSourceEnabled).map((f) => ({ ...f, pick: withProfPicks(featPickOf(f.name, f), f) }));
+  const list = [...new Map((customs.feats || []).map((f) => [f.name, f])).values()].filter(isSourceEnabled).map((f) => {
+    const bump = !f.canonical && !f.bump?.length && MECHANICS_BY_NAME.get(normName(f.name))?.bump;
+    return { cat: "Imported", ...f, ...(bump ? { bump } : {}), pick: withProfPicks(featPickOf(f.name, f), f) };
+  });
+  const entry = { off: __SRC_OFF, list, byName: new Map(list.map((f) => [normName(f.name), f])) };
+  featCache.set(customs, entry);
+  return entry;
+};
+const allFeats = (customs) => featsOf(customs).list;
+const featNamed = (name, customs) => featsOf(customs).byName.get(normName(name)) || null;
+const OPTION_KINDS = { EI: ["Eldritch Invocation", "warlock"], MM: ["Metamagic"], "MV:B": ["Battle Master maneuver"], PB: ["Pact Boon"], AI: ["Artificer Infusion", "artificer"], AS: ["Arcane Shot"], RN: ["Rune Knight Rune"], ED: ["Elemental Discipline", "monk"] };
+const optionInfo = (o) => {
+  const style = o.type.some((t) => t.startsWith("FS"));
+  const [kind, cls = "level"] = OPTION_KINDS[o.type[0]] || [style ? "Fighting Style" : `${o.className || "Optional"} feature (optional)`];
+  return {
+    title: style ? `Fighting Style: ${o.name}` : o.name,
+    meta: [kind, o.minLevel && `requires ${cls} ${o.minLevel}`, o.req && `requires ${o.req}`, o.level && `level ${o.level}`, o.consumes && `spends ${o.consumes}`].filter(Boolean).join(" · "),
+    body: o.text + (o.type.includes("MV:B") ? "\n\nManeuvers ride on superiority dice — a Battle Master's own, or the single d6 the Martial Adept feat grants (regained on a short or long rest)." : ""),
+    foot: sourceOf(o),
+  };
 };
 const featChoiceSummary = (ch, name) => {
   const c = featChoiceOf(ch, name);
@@ -1242,7 +1201,8 @@ function featureBuckets(ch, customs) {
     ...(bgProfs ? [{ name: "Proficiencies", detail: bgProfs }] : []),
   ] });
   const styleHost = ch.classes.find((c) => Object.values(CLASSES[c.name]?.feats || {}).flat().includes("Fighting Style")) || ch.classes[0];
-  const choiceHost = (key) => ch.classes.find((c) => c.name === CHOICE_GROUPS.find((g) => g.key === key)?.cls) || ch.classes[0];
+  const groups = allChoiceGroups(customs);
+  const choiceHost = (key) => ch.classes.find((c) => c.name === groups.find((g) => g.key === key)?.cls) || ch.classes[0];
   ch.classes.forEach((c) => {
     const cls = CLASSES[c.name];
     if (!cls) return;
@@ -1257,7 +1217,7 @@ function featureBuckets(ch, customs) {
       });
       if (cls.asi.includes(l) && !(cls.feats[l] || []).includes(ASI)) items.push(item(ASI, { cls: c.name, level: l }));
     }
-    if (c === styleHost) (ch.styles || []).forEach((st) => items.push(item(`Fighting Style: ${st}`, { detail: STYLE_DESC[st] })));
+    if (c === styleHost) (ch.styles || []).forEach((st) => items.push(item(`Fighting Style: ${st}`, { detail: styleSummary(st) })));
     if (c.name === "Sorcerer") (ch.metamagic || []).forEach((m) => items.push(item(m, { detail: "metamagic" })));
     if (c.name === "Warlock") {
       if (ch.pactBoon) items.push(item(ch.pactBoon, { detail: "pact boon" }));
@@ -1304,7 +1264,6 @@ function shareCustomsFor(ch, customs) {
     [...(c.cantrips || []), ...(c.spells || [])].forEach(addSpell);
   });
   spellGrantsOf(ch, customs).forEach((g) => addSpell(g.spell));
-  if (ch.classes.some((c) => c.name === "Ranger")) addSpell("Hunter's Mark");
   const itemNames = new Set((ch.inventory || []).map((r) => norm(r.name)));
   const subKeep = new Set(ch.classes.flatMap((c) => (c.subclass ? [norm(c.subclass), norm(baseSubName(c.subclass))] : [])));
   const subs = {};
@@ -1426,4 +1385,4 @@ const portraitBrief = (ch, customs) => {
     notes: (ch.notes || "").slice(0, 800),
   };
 };
-export { mod, fmtMod, profBonus, subSpellData, meetsPrereq, featureBody, featChoiceOf, featEffects, hasStyle, featHpBonus, featBlockedBy, featPickOf, featGrantedSpells, spellGrantsOf, grantsFor, grantAbilityFor, grantLabel, grantTrackerKey, grantTrackerFor, featPickDone, spellCapacity, maxSpellLevel, foldStarredSpells, spellFitsClass, spellSlots, totalLevel, isTechnique, choiceCum, groupMatches, choiceOptionsFor, allChoiceGroups, characterChoiceGroups, allKnownCantrips, sourceOf, findItem, isArmorType, isWeaponType, equippedOf, canEquip, bonusProfsOf, gearProfsOf, attunementCap, isEquippable, itemActive, attunedRows, attuneBlocker, effectiveAbilities, gearMods, subclassProfsOf, subclassProfsAt, profSummary, armorClass, classLevel, hasSub, hasFeat, effectsOf, knownSpellNames, EFFECT_LIB, EFFECT_BY_KEY, hasEffect, effDefOf, isConcDef, isConcInst, effEnds, instMaxHp, describeCustomFx, applyEffectPatch, fxMods, effMaxHp, speedOf, useTrackersFor, minionsOf, crShow, creatureByName, summonFormsFor, SUMMON_LIB, summonDefFor, spiritHp, spiritAc, spiritDefFromSpell, minionAttackRolls, summonerSpellAtk, minionSaves, minionSkills, minionHp, minionApplyHp, isBladeCantrip, bladeRiderTier, strikeProfile, useRecipe, usesAmmo, ammoRowFor, isConsumableRow, healingDiceFor, consumableEffectKey, allSubs, allSubFeats, allFeats, b64uFromBytes, bytesFromB64u, pipeBytes, shareCustomsFor, getRacialBonusPool, getDefaultRacialSlots, formatStandardRaceBonus, searchRank, schoolName, round2, infoFor, featChoiceSummary, featureBuckets, featureItems, portraitBrief };
+export { mod, fmtMod, profBonus, subSpellData, meetsPrereq, featureBody, featChoiceOf, featEffects, hasStyle, featHpBonus, featBlockedBy, featPickOf, featGrantedSpells, spellGrantsOf, grantsFor, grantAbilityFor, grantLabel, grantTrackerKey, grantTrackerFor, featPickDone, spellCapacity, maxSpellLevel, foldStarredSpells, spellFitsClass, spellSlots, totalLevel, isTechnique, choiceCum, groupMatches, choiceOptionsFor, allChoiceGroups, characterChoiceGroups, allKnownCantrips, sourceOf, findItem, isArmorType, isWeaponType, equippedOf, canEquip, bonusProfsOf, gearProfsOf, attunementCap, isEquippable, itemActive, attunedRows, attuneBlocker, effectiveAbilities, gearMods, subclassProfsOf, subclassProfsAt, profSummary, armorClass, classLevel, hasSub, hasFeat, effectsOf, knownSpellNames, EFFECT_LIB, EFFECT_BY_KEY, hasEffect, effDefOf, isConcDef, isConcInst, effEnds, instMaxHp, describeCustomFx, applyEffectPatch, fxMods, effMaxHp, speedOf, useTrackersFor, minionsOf, crShow, creatureByName, summonFormsFor, SUMMON_LIB, summonDefFor, spiritHp, spiritAc, spiritDefFromSpell, minionAttackRolls, summonerSpellAtk, minionSaves, minionSkills, minionHp, minionApplyHp, isBladeCantrip, bladeRiderTier, strikeProfile, useRecipe, usesAmmo, ammoRowFor, isConsumableRow, healingDiceFor, consumableEffectKey, allSubs, allSubFeats, allFeats, subclassOf, b64uFromBytes, bytesFromB64u, pipeBytes, shareCustomsFor, getRacialBonusPool, getDefaultRacialSlots, formatStandardRaceBonus, searchRank, schoolName, round2, infoFor, featChoiceSummary, featureBuckets, featureItems, portraitBrief };

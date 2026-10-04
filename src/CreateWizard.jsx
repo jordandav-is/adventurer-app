@@ -1,6 +1,6 @@
-import { ABILITIES, ABIL_MAX, ABIL_MIN, ABIL_NAMES, ALIGNMENTS, ALL_SKILLS, ANCESTRIES, BACKGROUNDS, CANTRIPS_KNOWN, CLASSES, FEAT_MECHANICS, FIGHTING_STYLES, GEAR_LISTS, ITEM_TYPES, LANGS, PB_COST, RACES, RACE_LANGS, STARTING_GEAR, START_GOLD, STD_ARRAY, STYLE_DESC } from "./data.js";
+import { ABILITIES, ABIL_MAX, ABIL_MIN, ABIL_NAMES, ALIGNMENTS, ALL_SKILLS, ANCESTRIES, BACKGROUNDS, CANTRIPS_KNOWN, CLASSES, FEAT_MECHANICS, GEAR_LISTS, ITEM_TYPES, LANGS, PB_COST, RACES, RACE_LANGS, STARTING_GEAR, START_GOLD, STD_ARRAY } from "./data.js";
 import { allChoiceGroups, allFeats, allSubs, canEquip, choiceCum, choiceOptionsFor, groupMatches, featGrantedSpells, featPickDone, featPickOf, findItem, subclassProfsAt, fmtMod, formatStandardRaceBonus, getDefaultRacialSlots, getRacialBonusPool, isArmorType, isWeaponType, mod, searchRank, spellCapacity, spellFitsClass } from "./rules.js";
-import { isSourceEnabled, srcSpells, uid } from "./compendium.js";
+import { isSourceEnabled, srcSpells, styleSummary, stylesFor, uid } from "./compendium.js";
 import { useEffect, useState } from "react";
 import { ClassDetail, ClassTag, FeatChooser, Icon, LazyList, Portrait, SubclassDetail, PortraitButton, T, btn, card, lorePress } from "./ui.jsx";
 import { DiceTray, roll } from "./dice.jsx";
@@ -698,10 +698,10 @@ function CreateWizard({ onDone, onCancel, customs }) {
             <div style={{ ...card, padding: 14, marginBottom: 14 }}>
               <div style={{ color: T.gold, fontSize: 14, marginBottom: 8 }}>Fighting Style (level 1)</div>
               <div style={{ display: "grid", gap: 6 }}>
-                {FIGHTING_STYLES.Fighter.map((f) => (
+                {stylesFor("Fighter").map((f) => (
                   <div key={f} {...lorePress("Fighting Style: " + f)} onClick={() => setStyle(f)} style={{ ...card, background: style === f ? T.panel : T.panel2, borderColor: style === f ? T.gold : T.edge, padding: "8px 12px", cursor: "pointer" }}>
                     <span style={{ color: style === f ? T.gold : T.ink, fontWeight: 700 }}>{f}</span>
-                    <span style={{ color: T.dim, fontSize: 12 }}> — {STYLE_DESC[f]}</span>
+                    <span style={{ color: T.dim, fontSize: 12 }}> — {styleSummary(f)}</span>
                   </div>
                 ))}
               </div>

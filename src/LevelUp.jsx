@@ -1,6 +1,6 @@
-import { ABILITIES, ALL_SKILLS, CANTRIPS_KNOWN, CLASSES, FIGHTING_STYLES, INVOCATIONS, INVOCATION_DATA, LAND_TERRAINS, LANGS, MC_PREREQ, MC_PROFS, MC_SKILL_GRANT, METAMAGIC, PACT_BOONS, SPELLS_KNOWN, STYLE_DESC, baseSubName } from "./data.js";
+import { ABILITIES, ALL_SKILLS, CANTRIPS_KNOWN, CLASSES, INVOCATIONS, LAND_TERRAINS, LANGS, MC_PREREQ, MC_PROFS, MC_SKILL_GRANT, SPELLS_KNOWN, baseSubName } from "./data.js";
 import { allChoiceGroups, allFeats, allKnownCantrips, allSubFeats, allSubs, choiceCum, gearProfsOf, subclassProfsAt, choiceOptionsFor, featPickDone, featPickOf, fmtMod, groupMatches, hasStyle, isTechnique, maxSpellLevel, meetsPrereq, mod, profBonus, spellFitsClass, totalLevel } from "./rules.js";
-import { isSourceEnabled, srcSpells } from "./compendium.js";
+import { isSourceEnabled, optionNamed, optionsOfType, srcSpells, styleSummary, stylesFor } from "./compendium.js";
 import { useEffect, useRef, useState } from "react";
 import { ClassTag, FeatChooser, FeatureLine, Icon, Portrait, SpellPickGrid, SubclassDetail, T, btn, card, lorePress } from "./ui.jsx";
 import { DiceTray, roll } from "./dice.jsx";
@@ -165,14 +165,14 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   };
 
   const styleClass = pick === "Fighter" || (entry?.subclass === "Champion" && newClsLevel === 10) ? "Fighter" : pick;
-  const gainsStyle = feats.some((f) => /Fighting Style/.test(f)) && FIGHTING_STYLES[styleClass];
-  const styleOptions = gainsStyle ? (FIGHTING_STYLES[styleClass] || []).filter((f) => !hasStyle(ch, f)) : [];
+  const gainsStyle = feats.some((f) => /Fighting Style/.test(f)) && stylesFor(styleClass).length > 0;
+  const styleOptions = gainsStyle ? stylesFor(styleClass).filter((f) => !hasStyle(ch, f)) : [];
   const gainsTerrain = gainsSub && newSub === "Circle of the Land";
   const gainsExpertise = feats.some((f) => f.startsWith("Expertise"));
   const expPool = ch.skills.filter((sk) => !(ch.expertise || []).includes(sk));
   const gainsMeta = pick === "Sorcerer" && feats.some((f) => f.startsWith("Metamagic"));
   const metaNeed = newClsLevel === 3 ? 2 : 1;
-  const metaPool = METAMAGIC.filter((m) => !(ch.metamagic || []).includes(m));
+  const metaPool = optionsOfType("MM").map((o) => o.name).filter((m) => !(ch.metamagic || []).includes(m));
   const gainsBoon = feats.some((f) => f === "Pact Boon");
 
   const effSub = gainsSub ? (gainsTerrain && terrPick ? `${newSub} (${terrPick})` : newSub) : entry?.subclass;
@@ -189,7 +189,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
   const boonHeld = boonPick || ch.pactBoon;
   const invReqMet = (req) => !req || (req === "eldritch blast cantrip" ? hasEB : boonHeld === req);
   const invTaken = [...curInv.filter((n) => n !== invSwapOut), ...invPicks, ...(invSwapIn ? [invSwapIn] : [])];
-  const invOptions = INVOCATION_DATA.filter(([n, lvl, req, src, sources]) => newClsLevel >= lvl && !invTaken.includes(n) && isSourceEnabled({ src, sources }));
+  const invOptions = optionsOfType("EI").filter((o) => newClsLevel >= (o.minLevel || 0) && !invTaken.includes(o.name));
 
   const sortSp = (a, b) => a.level - b.level || a.name.localeCompare(b.name);
   const cantripTarget = CANTRIPS_KNOWN[pick] ? CANTRIPS_KNOWN[pick](newClsLevel) : 0;
@@ -253,8 +253,9 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     const options = choiceOptionsFor(g, customs);
     if (!options.length) return null;
     const held = ch.choices?.[g.key] || [];
-    const avail = options.filter((o) => !held.includes(o.name) && (!o.minLvl || o.minLvl <= newClsLevel));
-    const need = Math.min(Math.max(0, choiceCum(g, newClsLevel) - held.filter((n) => !(g.grant && Object.values(g.grant).flat().includes(n))).length), avail.length);
+    // Optional features surface once, at the level they unlock; they stay addable from the sheet afterwards.
+    const avail = options.filter((o) => !held.includes(o.name) && (g.optional ? o.minLvl === newClsLevel : !o.minLvl || o.minLvl <= newClsLevel));
+    const need = g.optional ? avail.length : Math.min(Math.max(0, choiceCum(g, newClsLevel) - held.filter((n) => !(g.grant && Object.values(g.grant).flat().includes(n))).length), avail.length);
     return need > 0 ? { g, avail, need, held } : null;
   }).filter(Boolean);
 
@@ -277,7 +278,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
     (!gainsDeft || (deftExp && deftLangs.length === 2)) && subSkillChoices.every((c) => (subSkillPicks[c.key] || []).length === c.n) &&
     (!gainsMastery || ((masteryPools[1].length === 0 || masteryPicks[1]) && (masteryPools[2].length === 0 || masteryPicks[2]))) &&
     (!gainsSignature || signaturePicks.length >= Math.min(2, signaturePool.length)) &&
-    choiceGroupsDue.every((d) => (groupPicks[d.g.key] || []).length >= d.need);
+    choiceGroupsDue.every((d) => d.g.optional || (groupPicks[d.g.key] || []).length >= d.need);
 
   return (
     <div ref={scrollRef} style={{ position: "fixed", inset: 0, background: "#000000c8", zIndex: 50, overflowY: "auto", padding: "calc(30px + env(safe-area-inset-top)) 14px calc(30px + env(safe-area-inset-bottom))" }}>
@@ -403,7 +404,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                     <div key={f} {...lorePress("Fighting Style: " + f)} onClick={() => setStylePick(f)}
                       style={{ ...card, background: stylePick === f ? T.panel : T.panel2, borderColor: stylePick === f ? T.gold : T.edge, padding: "8px 12px", cursor: "pointer" }}>
                       <span style={{ color: stylePick === f ? T.gold : T.ink, fontWeight: 700 }}>{f}</span>
-                      <span style={{ color: T.dim, fontSize: 12 }}> — {STYLE_DESC[f]}</span>
+                      <span style={{ color: T.dim, fontSize: 12 }}> — {styleSummary(f)}</span>
                     </div>
                   ))}
                 </div>
@@ -436,7 +437,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
               <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
                 <div style={{ color: T.gold, marginBottom: 8 }}>Pact Boon</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {PACT_BOONS.map((b) => <button key={b} {...lorePress(b)} style={{ ...btn(boonPick === b), padding: "6px 14px" }} onClick={() => setBoonPick(b)}>{b}</button>)}
+                  {optionsOfType("PB").map(({ name: b }) => <button key={b} {...lorePress(b)} style={{ ...btn(boonPick === b), padding: "6px 14px" }} onClick={() => setBoonPick(b)}>{b}</button>)}
                 </div>
               </div>
             )}
@@ -444,7 +445,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
               <div style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
                 <div style={{ color: T.gold, marginBottom: 8 }}>Eldritch Invocations — choose {invNeed} ({invPicks.length}/{invNeed})</div>
                 <div style={{ maxHeight: 240, overflowY: "auto", border: `1px solid ${T.edge}`, borderRadius: 8 }}>
-                  {invOptions.concat(invPicks.map((n) => INVOCATION_DATA.find(([x]) => x === n))).sort((a, b) => a[0].localeCompare(b[0])).map(([n, lvl, req]) => {
+                  {invOptions.concat(invPicks.map(optionNamed).filter(Boolean)).sort((a, b) => a.name.localeCompare(b.name)).map(({ name: n, minLevel: lvl = 0, req }) => {
                     const on = invPicks.includes(n);
                     const ok = on || (invReqMet(req) && invPicks.length < invNeed);
                     return (
@@ -470,7 +471,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
                 </div>
                 {invSwapOut && (
                   <div style={{ maxHeight: 180, overflowY: "auto", border: `1px solid ${T.edge}`, borderRadius: 8 }}>
-                    {invOptions.map(([n, lvl, req]) => {
+                    {invOptions.map(({ name: n, minLevel: lvl = 0, req }) => {
                       const ok = invReqMet(req);
                       return (
                         <div key={n} {...lorePress(n)} onClick={() => ok && setInvSwapIn(invSwapIn === n ? null : n)}
@@ -603,7 +604,7 @@ function LevelUp({ ch, onDone, onCancel, customs }) {
             )}
             {choiceGroupsDue.map((d) => (
               <div key={d.g.key} style={{ ...card, background: T.panel2, padding: 14, marginBottom: 12 }}>
-                <div style={{ color: T.gold, marginBottom: 8 }}>{d.g.key} — choose {d.need} ({(groupPicks[d.g.key] || []).length}/{d.need})</div>
+                <div style={{ color: T.gold, marginBottom: 8 }}>{d.g.key} — {d.g.optional ? "optional, take any" : `choose ${d.need} (${(groupPicks[d.g.key] || []).length}/${d.need})`}</div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {d.avail.map((o) => {
                     const on = (groupPicks[d.g.key] || []).includes(o.name);

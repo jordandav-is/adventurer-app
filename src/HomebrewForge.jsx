@@ -1,4 +1,4 @@
-import { CLASSES, FEATS } from "./data.js";
+import { CLASSES } from "./data.js";
 import { parseCompendiumXML } from "./compendium.js";
 import { useState } from "react";
 import { T, btn, card } from "./ui.jsx";
@@ -174,7 +174,7 @@ function HomebrewForge({ customs, onSave, onBack }) {
                   });
                   if (Array.isArray(data.feats)) {
                     const clean = data.feats.filter((f) => f && typeof f.name === "string")
-                      .filter((f) => !next.feats.some((e) => e.name === f.name) && !FEATS.some((e) => e.name === f.name))
+                      .filter((f) => !next.feats.some((e) => e.name === f.name))
                       .map((f) => ({ name: f.name, desc: f.desc || "" }));
                     next.feats = [...next.feats, ...clean]; nFeats = clean.length;
                   }

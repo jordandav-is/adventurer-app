@@ -23,6 +23,16 @@ Drag or use left/right arrows to turn the figure; scroll, pinch, or use `+`/`−
 
 The Verdant Watch's geometry, stone/bark/ground textures, and botanical sprites are original app assets, inspired by the woodland composition of BG3 character creation rather than extracted game assets. `src/woodland.js` builds the scene; `scripts/bake-woodland.py` deterministically regenerates the nine images in `public/environments/woodland/` using Python, NumPy, and Pillow. The checked-in images need no Python at runtime or build time. Regenerate them with `python scripts/bake-woodland.py` after installing those two Python dependencies. The Tripo character is a separate, user-provided preview asset, not part of the environment asset set.
 
+### Rules content
+
+All game content — classes, subclasses, races, backgrounds, feats, spells, items, optional features, and the bestiary — comes from `src/content/compendium.json` and `src/content/bestiary.json`. Both are baked from a [5etools-src](https://github.com/5etools-mirror-3/5etools-src) checkout and its image mirror, and nothing in `src/` repeats them:
+
+```sh
+python3 scripts/bake-canonical-5e.py ../5etools-src ../5etools-img
+```
+
+The bake keeps official material published through Tasha's Cauldron of Everything (2020-11-17). It makes two exceptions: the 2024 Ranger with its subclasses, and the Monsters of the Multiverse Minotaur. Older Ranger subclasses are adapted to the 2024 class, so their bonus spells are always prepared. Pick-one options (invocations, maneuvers, infusions, runes, fighting styles, metamagic) and Tasha's optional class features ship as one typed `optionalFeatures` list. A new option type needs only a `CHOICE_GROUPS` entry naming its type. `public/content-report.json` records counts, rejected post-cutoff sources, and validation results. Vite fingerprints both JSON files, and the service worker serves fingerprinted assets from its cache, so returning visits skip the download until the content changes.
+
 ### Sync Worker (optional)
 ```sh
 cd worker
